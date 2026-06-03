@@ -1,0 +1,25 @@
+﻿name: {{name}}
+displayName: "{{name}}"
+description: "A skill created with skill-forge"
+shortDescription: "Short description"
+version: "1.0.0"
+
+instructions: |
+  # {{name}}
+  ## Instructions
+  Your skill instructions here.
+
+triggers:
+  disableModelInvocation: true
+  allowImplicitInvocation: true
+
+ui:
+  brandColor: "#3B82F6"
+
+resources:
+  scripts:
+    - scripts/
+  references:
+    - references/
+  assets:
+    - assets/

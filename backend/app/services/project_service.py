@@ -1,0 +1,1777 @@
+import hashlib
+import json
+import logging
+import shutil
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy import delete, func, select
+
+from app.core.database import async_session_factory
+from app.models.project import Project, ProjectSkill, UserSkillDeployment
+from app.models.skill_change_log import SkillChangeLog
+from app.models.skill_package import SkillPackage
+from app.models.team import Team
+from app.models.user import User
+from app.services.content_transfer import (
+    build_install_tree,
+    collect_store_resources,
+    write_files,
+)
+from app.services.native_skill_store import NativeSkillStore
+from app.services.skill_diff_service import (
+    diff_abstract_packages,
+    parse_native_skill,
+    summarize_changes,
+)
+
+logger = logging.getLogger(__name__)
+
+SUPPORTED_TOOLS = {"cursor", "codex"}
+GITIGNORE_BLOCK = [
+    "# VibeHub local skill deployments",
+    ".cursor/skills/",
+    ".codex/skills/",
+]
+
+
+def _project_to_dict(project: Project, skill_count: int = 0) -> Dict[str, Any]:
+    return {
+        "id": project.id,
+        "team_id": project.team_id,
+        "name": project.name,
+        "description": project.description,
+        "created_by": project.created_by,
+        "skill_count": skill_count,
+        "created_at": project.created_at.isoformat() if project.created_at else None,
+        "updated_at": project.updated_at.isoformat() if project.updated_at else None,
+    }
+
+
+def _compute_content_hash(store_path: str) -> str:
+    # R2 收敛（M0 §7.2）：排序键统一为「相对 root 的 POSIX 路径字符串的
+    # UTF-8 字节序」，大小写敏感、不做 normcase、分隔符恒为 '/'。
+    # 必须与 native_skill_store._compute_dir_hash 位级一致，否则跨平台/
+    # 中文名会导致 dirty 误判。
+    root = Path(store_path)
+    if not root.exists():
+        return ""
+
+    digest = hashlib.sha256()
+    has_files = False
+    files = sorted(
+        (p for p in root.rglob("*") if p.is_file()),
+        key=lambda p: p.relative_to(root).as_posix().encode("utf-8"),
+    )
+    for file_path in files:
+        rel = file_path.relative_to(root).as_posix()
+        digest.update(rel.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(file_path.read_bytes())
+        digest.update(b"\0")
+        has_files = True
+    return digest.hexdigest() if has_files else ""
+
+
+def _install_root(deploy_path: str, tool_type: str) -> Path:
+    root = Path(deploy_path)
+    if tool_type == "cursor":
+        return root / ".cursor" / "skills"
+    if tool_type == "codex":
+        return root / ".codex" / "skills"
+    raise ValueError("tool_type must be cursor or codex")
+
+
+def _ensure_gitignore(project_root: str) -> None:
+    root = Path(project_root)
+    root.mkdir(parents=True, exist_ok=True)
+    gitignore = root / ".gitignore"
+    existing = gitignore.read_text(encoding="utf-8") if gitignore.exists() else ""
+    lines = existing.splitlines()
+    missing = [line for line in GITIGNORE_BLOCK if line not in lines]
+    if not missing:
+        return
+
+    prefix = "\n" if existing and not existing.endswith("\n") else ""
+    block = "\n".join(missing)
+    suffix = "\n" if not block.endswith("\n") else ""
+    gitignore.write_text(f"{existing}{prefix}{block}{suffix}", encoding="utf-8")
+
+
+def _deployment_to_dict(row: Optional[UserSkillDeployment]) -> Optional[Dict[str, Any]]:
+    if not row:
+        return None
+    return {
+        "id": row.id,
+        "user_id": row.user_id,
+        "project_id": row.project_id,
+        "team_skill_id": row.team_skill_id,
+        "skill_name": row.skill_name,
+        "tool_type": row.tool_type,
+        "deploy_path": row.deploy_path,
+        "install_path": row.install_path,
+        "repo_version": row.repo_version,
+        "repo_hash": row.repo_hash,
+        "installed_hash": row.installed_hash,
+        "status": row.status,
+        "tracking_enabled": row.tracking_enabled,
+        "local_dirty": row.local_dirty,
+        "last_seen_at": row.last_seen_at.isoformat() if row.last_seen_at else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+async def _write_change_log(
+    *,
+    session,
+    team_id: Optional[str],
+    project_id: Optional[str],
+    deployment_id: Optional[str],
+    skill_id: str,
+    user_id: str,
+    action: str,
+    version: int,
+    diff_summary: str = "",
+    source: str = "user_deployment",
+    base_hash: str = "",
+    new_hash: str = "",
+    change_items: Optional[List[Dict[str, Any]]] = None,
+) -> None:
+    session.add(
+        SkillChangeLog(
+            team_id=team_id,
+            project_id=project_id,
+            deployment_id=deployment_id,
+            skill_id=skill_id,
+            user_id=user_id,
+            action=action,
+            version=version,
+            diff_summary=diff_summary,
+            source=source,
+            base_hash=base_hash,
+            new_hash=new_hash,
+            change_items=json.dumps(change_items or [], ensure_ascii=False),
+        )
+    )
+
+
+# ------------------------------------------------------------------
+# Project CRUD
+# ------------------------------------------------------------------
+
+
+async def create_project(
+    team_id: str, name: str, description: str, created_by: str
+) -> Dict[str, Any]:
+    async with async_session_factory() as session:
+        project = Project(
+            team_id=team_id,
+            name=name,
+            description=description,
+            created_by=created_by,
+        )
+        session.add(project)
+        await session.commit()
+        await session.refresh(project)
+        return _project_to_dict(project, skill_count=0)
+
+
+async def get_project(project_id: str) -> Optional[Dict[str, Any]]:
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        if not project:
+            return None
+        count = await session.scalar(
+            select(func.count()).select_from(ProjectSkill).where(
+                ProjectSkill.project_id == project_id
+            )
+        )
+        return _project_to_dict(project, skill_count=count or 0)
+
+
+async def update_project(
+    project_id: str, name: Optional[str] = None, description: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        if not project:
+            return None
+        if name is not None:
+            project.name = name
+        if description is not None:
+            project.description = description
+        await session.commit()
+        await session.refresh(project)
+        count = await session.scalar(
+            select(func.count()).select_from(ProjectSkill).where(
+                ProjectSkill.project_id == project_id
+            )
+        )
+        return _project_to_dict(project, skill_count=count or 0)
+
+
+async def delete_project(project_id: str) -> bool:
+    """
+    删除项目及其关联数据（动态日志、用户部署记录、Skill 关联）。
+
+    显式清理子表，不依赖数据库外键级联，保证跨引擎一致。
+    各用户本地已部署的文件分布在各自机器上，平台无法删除，保留由用户自行清理。
+    """
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        if not project:
+            return False
+        await session.execute(
+            delete(SkillChangeLog).where(SkillChangeLog.project_id == project_id)
+        )
+        await session.execute(
+            delete(UserSkillDeployment).where(
+                UserSkillDeployment.project_id == project_id
+            )
+        )
+        await session.execute(
+            delete(ProjectSkill).where(ProjectSkill.project_id == project_id)
+        )
+        await session.delete(project)
+        await session.commit()
+        return True
+
+
+async def list_projects(team_id: str) -> List[Dict[str, Any]]:
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(Project, func.count(ProjectSkill.id).label("cnt"))
+            .outerjoin(ProjectSkill, ProjectSkill.project_id == Project.id)
+            .where(Project.team_id == team_id)
+            .group_by(Project.id)
+            .order_by(Project.created_at.desc())
+        )
+        return [_project_to_dict(project, skill_count=cnt) for project, cnt in result.all()]
+
+
+# ------------------------------------------------------------------
+# Project skill refs
+# ------------------------------------------------------------------
+
+
+async def add_skill_to_project(
+    project_id: str, skill_id: str, user_id: str
+) -> Dict[str, Any]:
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        if not project:
+            return {"success": False, "error": "Project not found"}
+
+        pkg = await session.get(SkillPackage, skill_id)
+        if not pkg:
+            return {"success": False, "error": f"Skill '{skill_id}' not found"}
+        if pkg.team_id and pkg.team_id != project.team_id:
+            return {"success": False, "error": "Skill belongs to another team"}
+
+        existing = await session.execute(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == project_id,
+                ProjectSkill.skill_id == skill_id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            return {"success": False, "error": "Skill already added to project"}
+
+        latest_hash = _compute_content_hash(pkg.store_path) if pkg.store_path else ""
+        pkg.scope = "team"
+        pkg.team_id = project.team_id
+        pkg.project_id = None
+        pkg.content_hash = latest_hash
+
+        session.add(
+            ProjectSkill(
+                project_id=project_id,
+                skill_id=skill_id,
+                added_by=user_id,
+                last_modified_by=user_id,
+                version=1,
+                content_hash=latest_hash,
+            )
+        )
+        await session.commit()
+        return {"success": True}
+
+
+async def remove_skill_from_project(
+    project_id: str, skill_id: str
+) -> Dict[str, Any]:
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == project_id,
+                ProjectSkill.skill_id == skill_id,
+            )
+        )
+        ps = result.scalar_one_or_none()
+        if not ps:
+            return {"success": False, "error": "Project skill ref not found"}
+        await session.delete(ps)
+        await session.commit()
+        return {"success": True}
+
+
+async def list_project_skills(
+    project_id: str, user_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(ProjectSkill, SkillPackage)
+            .join(SkillPackage, SkillPackage.id == ProjectSkill.skill_id)
+            .where(ProjectSkill.project_id == project_id)
+            .order_by(ProjectSkill.created_at.desc())
+        )
+        rows = result.all()
+
+        deployment_map: Dict[str, UserSkillDeployment] = {}
+        if user_id:
+            dep_result = await session.execute(
+                select(UserSkillDeployment).where(
+                    UserSkillDeployment.project_id == project_id,
+                    UserSkillDeployment.user_id == user_id,
+                )
+            )
+            for dep in dep_result.scalars().all():
+                deployment_map[dep.team_skill_id] = dep
+
+        items = []
+        for ps, pkg in rows:
+            items.append(
+                {
+                    "skill_id": ps.skill_id,
+                    "display_name": pkg.display_name,
+                    "description": pkg.description,
+                    "version": ps.version,
+                    "content_hash": pkg.content_hash or ps.content_hash,
+                    "last_modified_by": ps.last_modified_by,
+                    "updated_at": ps.updated_at.isoformat() if ps.updated_at else None,
+                    "deployment": _deployment_to_dict(deployment_map.get(ps.skill_id)),
+                }
+            )
+        return items
+
+
+# ------------------------------------------------------------------
+# User deployments
+# ------------------------------------------------------------------
+
+
+async def deploy_project_skill(
+    project_id: str,
+    skill_id: str,
+    user_id: str,
+    tool_type: str,
+    deploy_path: str,
+    overwrite: bool = False,
+) -> Dict[str, Any]:
+    tool_type = tool_type.lower()
+    if tool_type not in SUPPORTED_TOOLS:
+        return {"success": False, "error": "tool_type must be cursor or codex"}
+    if not deploy_path:
+        return {"success": False, "error": "deploy_path is required"}
+    if not Path(deploy_path).is_dir():
+        return {"success": False, "error": "deploy_path must be an existing local directory"}
+
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        pkg = await session.get(SkillPackage, skill_id)
+        if not project or not pkg:
+            return {"success": False, "error": "Project or skill not found"}
+
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == project_id,
+                ProjectSkill.skill_id == skill_id,
+            )
+        )
+        if not ref:
+            return {"success": False, "error": "Skill is not added to this project"}
+
+        install_path = _install_root(deploy_path, tool_type) / skill_id
+        if install_path.exists() and not overwrite:
+            return {"success": False, "error": "Install path exists; pass overwrite=true"}
+
+        repo_hash = _compute_content_hash(pkg.store_path) if pkg.store_path else ""
+        pkg.content_hash = repo_hash
+        ref.content_hash = repo_hash
+
+    result = await NativeSkillStore.deploy(
+        skill_id,
+        tool_type,
+        dest_path=deploy_path,
+        notify=False,
+        allow_team=True,
+    )
+    if not result.get("success"):
+        return result
+
+    _ensure_gitignore(deploy_path)
+
+    installed_hash = _compute_content_hash(str(install_path))
+    now = datetime.now(timezone.utc)
+
+    try:
+        snapshot = parse_native_skill(str(install_path), tool_type)
+        snapshot_json = json.dumps(snapshot, ensure_ascii=False)
+    except Exception as e:
+        logger.warning(f"[deploy] 解析初始抽象包失败 skill='{skill_id}': {e}")
+        snapshot_json = ""
+
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == project_id,
+                ProjectSkill.skill_id == skill_id,
+            )
+        )
+        existing = await session.scalar(
+            select(UserSkillDeployment).where(
+                UserSkillDeployment.user_id == user_id,
+                UserSkillDeployment.project_id == project_id,
+                UserSkillDeployment.team_skill_id == skill_id,
+                UserSkillDeployment.tool_type == tool_type,
+                UserSkillDeployment.deploy_path == str(Path(deploy_path)),
+            )
+        )
+
+        deployment = existing or UserSkillDeployment(
+            user_id=user_id,
+            project_id=project_id,
+            team_skill_id=skill_id,
+            tool_type=tool_type,
+            deploy_path=str(Path(deploy_path)),
+        )
+        deployment.skill_name = skill_id
+        deployment.install_path = str(install_path)
+        deployment.repo_version = ref.version if ref else 1
+        deployment.repo_hash = ref.content_hash if ref else repo_hash
+        deployment.installed_hash = installed_hash
+        deployment.abstract_snapshot = snapshot_json
+        deployment.status = "synced"
+        deployment.tracking_enabled = True
+        deployment.local_dirty = False
+        deployment.last_seen_at = now
+        session.add(deployment)
+        await session.flush()
+
+        await _write_change_log(
+            session=session,
+            team_id=project.team_id if project else None,
+            project_id=project_id,
+            deployment_id=deployment.id,
+            skill_id=skill_id,
+            user_id=user_id,
+            action="deployed",
+            version=deployment.repo_version,
+            diff_summary=f"deployed to {tool_type}: {deployment.install_path}",
+            base_hash=deployment.repo_hash,
+            new_hash=installed_hash,
+        )
+        await session.commit()
+        await session.refresh(deployment)
+        return {
+            "success": True,
+            "deployment": _deployment_to_dict(deployment),
+            "deployed": result.get("deployed", []),
+        }
+
+
+async def stop_tracking_deployment(
+    deployment_id: str,
+    user_id: str,
+    delete_files: bool = False,
+) -> Dict[str, Any]:
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        if not deployment:
+            return {"success": False, "error": "Deployment not found"}
+        if deployment.user_id != user_id:
+            return {"success": False, "error": "Cannot stop another user's deployment"}
+
+        install_path = deployment.install_path
+        deployment.tracking_enabled = False
+        deployment.status = "untracked"
+        await session.commit()
+
+    if delete_files and install_path:
+        shutil.rmtree(install_path, ignore_errors=True)
+    return {"success": True}
+
+
+async def promote_deployment(
+    deployment_id: str,
+    user_id: str,
+    auto: bool = False,
+) -> Dict[str, Any]:
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        if not deployment:
+            return {"success": False, "error": "Deployment not found"}
+        if not auto and deployment.user_id != user_id:
+            return {"success": False, "error": "Cannot promote another user's deployment"}
+
+        project = await session.get(Project, deployment.project_id)
+        pkg = await session.get(SkillPackage, deployment.team_skill_id)
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == deployment.project_id,
+                ProjectSkill.skill_id == deployment.team_skill_id,
+            )
+        )
+        if not project or not pkg or not ref:
+            return {"success": False, "error": "Project skill relation missing"}
+
+        team_hash = _compute_content_hash(pkg.store_path) if pkg.store_path else ""
+        local_hash = _compute_content_hash(deployment.install_path)
+        if not local_hash:
+            deployment.status = "missing"
+            await session.commit()
+            return {"success": False, "error": "Deployment files missing"}
+        if deployment.repo_hash and deployment.repo_hash != team_hash:
+            deployment.status = "conflict"
+            deployment.installed_hash = local_hash
+            await session.commit()
+            return {"success": False, "error": "Conflict: team skill changed after deployment"}
+
+    await NativeSkillStore.import_from_external(
+        deployment.install_path,
+        deployment.tool_type,
+        allow_team_update=True,
+        target_skill_id=deployment.team_skill_id,
+    )
+
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        project = await session.get(Project, deployment.project_id)
+        pkg = await session.get(SkillPackage, deployment.team_skill_id)
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == deployment.project_id,
+                ProjectSkill.skill_id == deployment.team_skill_id,
+            )
+        )
+        promoted_hash = _compute_content_hash(pkg.store_path) if pkg and pkg.store_path else ""
+        if pkg:
+            pkg.scope = "team"
+            pkg.team_id = project.team_id if project else pkg.team_id
+            pkg.content_hash = promoted_hash
+        if ref:
+            ref.version += 1
+            ref.content_hash = promoted_hash
+            ref.last_modified_by = deployment.user_id
+
+        try:
+            promoted_snapshot = json.dumps(
+                parse_native_skill(deployment.install_path, deployment.tool_type),
+                ensure_ascii=False,
+            )
+        except Exception:
+            promoted_snapshot = deployment.abstract_snapshot
+
+        deployment.repo_version = ref.version if ref else deployment.repo_version + 1
+        deployment.repo_hash = promoted_hash
+        deployment.installed_hash = promoted_hash
+        deployment.abstract_snapshot = promoted_snapshot
+        deployment.status = "synced"
+        deployment.local_dirty = False
+        deployment.last_seen_at = datetime.now(timezone.utc)
+
+        await _write_change_log(
+            session=session,
+            team_id=project.team_id if project else None,
+            project_id=deployment.project_id,
+            deployment_id=deployment.id,
+            skill_id=deployment.team_skill_id,
+            user_id=deployment.user_id if auto else user_id,
+            action="auto_promoted" if auto else "promoted",
+            version=deployment.repo_version,
+            diff_summary="auto hot update from deployment" if auto else "promoted from deployment",
+            base_hash=deployment.repo_hash,
+            new_hash=promoted_hash,
+        )
+        await session.commit()
+        await session.refresh(deployment)
+        return {"success": True, "deployment": _deployment_to_dict(deployment)}
+
+
+async def refresh_deployment_dirty(deployment_id: str) -> None:
+    """
+    只读探测部署目录是否有未推送改动，仅更新 local_dirty / missing 标志。
+
+    不写动态、不广播、不自动提升。真正的同步由用户手动 push 触发。
+    """
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        if not deployment or not deployment.tracking_enabled:
+            return
+
+        now = datetime.now(timezone.utc)
+        current_hash = _compute_content_hash(deployment.install_path)
+
+        if not current_hash:
+            if deployment.status != "missing" or deployment.local_dirty:
+                deployment.status = "missing"
+                deployment.local_dirty = False
+                deployment.last_seen_at = now
+                await session.commit()
+            return
+
+        dirty = current_hash != deployment.installed_hash
+        new_status = deployment.status
+        if deployment.status == "missing":
+            new_status = "changed" if dirty else "synced"
+
+        if deployment.local_dirty != dirty or deployment.status != new_status:
+            deployment.local_dirty = dirty
+            deployment.status = new_status
+            deployment.last_seen_at = now
+            await session.commit()
+
+
+async def get_deployment_local_status(
+    deployment_id: str, user_id: str
+) -> Dict[str, Any]:
+    """只读检测本地部署目录是否有未推送改动，不写库、不进动态。"""
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        if not deployment:
+            return {"success": False, "error": "Deployment not found"}
+        if deployment.user_id != user_id:
+            return {"success": False, "error": "Cannot access another user's deployment"}
+
+        install_path = deployment.install_path
+
+    current_hash = _compute_content_hash(install_path)
+    exists = Path(install_path).exists()
+    has_local_changes = bool(current_hash) and current_hash != deployment.installed_hash
+    return {
+        "success": True,
+        "exists": exists,
+        "has_local_changes": has_local_changes,
+        "installed_hash": deployment.installed_hash,
+        "current_hash": current_hash,
+        "status": deployment.status,
+    }
+
+
+async def _broadcast_push_event(
+    *,
+    project_id: str,
+    skill_id: str,
+    user_id: str,
+    change_items: List[Dict[str, Any]],
+    summary: str,
+    status: str,
+    event_type: str = "skill.pushed",
+) -> None:
+    """复用 SkillSyncService 的项目通道广播 skill 同步事件（带改动点）。"""
+    from app.services.skill_sync_service import SkillSyncService
+
+    user_display_name = await SkillSyncService._get_user_display_name(user_id)
+    skill_display_name = await SkillSyncService._get_skill_display_name(skill_id)
+    event = {
+        "type": event_type,
+        "project_id": project_id,
+        "skill_id": skill_id,
+        "version": 0,
+        "content_hash": "",
+        "user_id": user_id,
+        "user_display_name": user_display_name,
+        "skill_display_name": skill_display_name,
+        "diff_summary": summary,
+        "change_items": change_items,
+        "status": status,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    await SkillSyncService._broadcast(project_id, event)
+
+
+async def _mark_other_deployments_outdated(
+    *,
+    session,
+    project_id: str,
+    skill_id: str,
+    exclude_user_id: str,
+    repo_version: int,
+    repo_hash: str,
+) -> None:
+    """
+    某用户推送写回团队仓库后，把同项目同 Skill 的其他用户部署实例标记为落后。
+
+    - 本地有未推送改动（local_dirty）→ conflict（拉取会覆盖本地改动，需确认）
+    - 否则 → outdated（可直接拉取团队最新）
+    其余用户的 repo_version/repo_hash 更新为团队最新，表示"团队已到该版本，你还没拉"。
+    """
+    result = await session.execute(
+        select(UserSkillDeployment).where(
+            UserSkillDeployment.project_id == project_id,
+            UserSkillDeployment.team_skill_id == skill_id,
+            UserSkillDeployment.user_id != exclude_user_id,
+            UserSkillDeployment.tracking_enabled.is_(True),
+        )
+    )
+    for dep in result.scalars().all():
+        if dep.status in ("untracked", "missing"):
+            continue
+        dep.repo_version = repo_version
+        dep.repo_hash = repo_hash
+        dep.status = "conflict" if dep.local_dirty else "outdated"
+
+
+async def mark_skill_deployments_outdated(skill_id: str, editor_user_id: str) -> None:
+    """团队（平台）仓库 Skill 被网页编辑器直接编辑保存后调用。
+
+    把该 Skill 的所有部署实例（跨项目、跨用户，含编辑者本人的本地部署）标记为
+    落后于团队仓库：本地有未推送改动则 conflict，否则 outdated；并把 repo_hash /
+    repo_version 推进到团队仓库最新，使各成员可在项目页点「更新本地」一键拉取。
+
+    版本递增 / 项目动态记录 / WebSocket 广播由 SkillSyncService.on_skill_changed 负责，
+    本函数只负责推进部署实例的同步状态。
+    """
+    async with async_session_factory() as session:
+        pkg = await session.get(SkillPackage, skill_id)
+        latest_hash = (
+            _compute_content_hash(pkg.store_path) if pkg and pkg.store_path else ""
+        )
+
+        refs = (
+            await session.execute(
+                select(ProjectSkill).where(ProjectSkill.skill_id == skill_id)
+            )
+        ).scalars().all()
+        version_by_project = {ref.project_id: ref.version for ref in refs}
+
+        deployments = (
+            await session.execute(
+                select(UserSkillDeployment).where(
+                    UserSkillDeployment.team_skill_id == skill_id,
+                    UserSkillDeployment.tracking_enabled.is_(True),
+                )
+            )
+        ).scalars().all()
+
+        for dep in deployments:
+            if dep.status in ("untracked", "missing"):
+                continue
+            dep.repo_hash = latest_hash
+            dep.repo_version = version_by_project.get(
+                dep.project_id, dep.repo_version
+            )
+            dep.status = "conflict" if dep.local_dirty else "outdated"
+
+        await session.commit()
+
+
+async def push_deployment(deployment_id: str, user_id: str) -> Dict[str, Any]:
+    """
+    用户手动推送本地部署实例改动：解析原生→抽象包，与上次推送快照对比，
+    生成抽象层改动点；无冲突则写回团队仓库（推送即同步到平台），
+    并把同 Skill 其他用户实例标记为可更新/冲突。
+    """
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        if not deployment:
+            return {"success": False, "error": "Deployment not found"}
+        if deployment.user_id != user_id:
+            return {"success": False, "error": "Cannot push another user's deployment"}
+        if not deployment.tracking_enabled:
+            return {"success": False, "error": "Deployment tracking is disabled"}
+
+        # 团队仓库已被他人推送到更新版本（outdated/conflict）→ 必须先更新本地再推送，
+        # 否则会用陈旧内容覆盖团队最新版本。
+        if deployment.status in ("outdated", "conflict"):
+            return {
+                "success": False,
+                "conflict": True,
+                "status": deployment.status,
+                "error": "团队仓库已更新，请先更新本地再推送",
+            }
+
+        project = await session.get(Project, deployment.project_id)
+        pkg = await session.get(SkillPackage, deployment.team_skill_id)
+        team = await session.get(Team, project.team_id) if project else None
+        if not project or not pkg:
+            return {"success": False, "error": "Project or skill not found"}
+
+        install_path = deployment.install_path
+        now = datetime.now(timezone.utc)
+        current_hash = _compute_content_hash(install_path)
+
+        if not current_hash:
+            deployment.status = "missing"
+            deployment.local_dirty = False
+            deployment.last_seen_at = now
+            await _write_change_log(
+                session=session,
+                team_id=project.team_id,
+                project_id=project.id,
+                deployment_id=deployment.id,
+                skill_id=deployment.team_skill_id,
+                user_id=user_id,
+                action="missing",
+                version=deployment.repo_version,
+                diff_summary="部署路径缺失",
+                base_hash=deployment.installed_hash,
+                new_hash="",
+            )
+            await session.commit()
+            return {
+                "success": False,
+                "error": "Deployment files missing",
+                "status": "missing",
+            }
+
+        if current_hash == deployment.installed_hash:
+            if deployment.local_dirty:
+                deployment.local_dirty = False
+                deployment.last_seen_at = now
+                await session.commit()
+            return {
+                "success": True,
+                "no_change": True,
+                "change_items": [],
+                "diff_summary": "无改动",
+                "deployment": _deployment_to_dict(deployment),
+            }
+
+        try:
+            current_pkg = parse_native_skill(install_path, deployment.tool_type)
+        except Exception as e:
+            return {"success": False, "error": f"解析本地 Skill 失败: {e}"}
+
+        base_pkg = None
+        if deployment.abstract_snapshot:
+            try:
+                base_pkg = json.loads(deployment.abstract_snapshot)
+            except Exception:
+                base_pkg = None
+
+        change_items = diff_abstract_packages(base_pkg, current_pkg)
+        summary = summarize_changes(change_items)
+
+        team_hash = _compute_content_hash(pkg.store_path) if pkg.store_path else ""
+        conflict = bool(deployment.repo_hash and deployment.repo_hash != team_hash)
+
+        # 冲突：团队仓库在本次部署后被他人推送过，拦截本次推送
+        if conflict:
+            old_hash = deployment.installed_hash
+            deployment.installed_hash = current_hash
+            deployment.abstract_snapshot = json.dumps(current_pkg, ensure_ascii=False)
+            deployment.status = "conflict"
+            deployment.local_dirty = False
+            deployment.last_seen_at = now
+            await _write_change_log(
+                session=session,
+                team_id=project.team_id,
+                project_id=project.id,
+                deployment_id=deployment.id,
+                skill_id=deployment.team_skill_id,
+                user_id=user_id,
+                action="conflict",
+                version=deployment.repo_version,
+                diff_summary="团队仓库已更新，推送被拦截",
+                base_hash=old_hash,
+                new_hash=current_hash,
+                change_items=change_items,
+            )
+            await session.commit()
+            await session.refresh(deployment)
+            return {
+                "success": False,
+                "conflict": True,
+                "status": "conflict",
+                "error": "团队仓库已更新，请先更新本地再推送",
+                "change_items": change_items,
+                "diff_summary": summary,
+                "deployment": _deployment_to_dict(deployment),
+            }
+
+        pre_push_hash = deployment.installed_hash
+        skill_id = deployment.team_skill_id
+        tool_type = deployment.tool_type
+        project_team_id = project.team_id
+        project_id_val = project.id
+
+    # 无冲突：解析后的本地内容写回团队仓库（推送即同步到平台）
+    await NativeSkillStore.import_from_external(
+        install_path,
+        tool_type,
+        allow_team_update=True,
+        target_skill_id=skill_id,
+    )
+
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        project = await session.get(Project, deployment.project_id)
+        pkg = await session.get(SkillPackage, skill_id)
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == deployment.project_id,
+                ProjectSkill.skill_id == skill_id,
+            )
+        )
+
+        promoted_hash = _compute_content_hash(pkg.store_path) if pkg and pkg.store_path else ""
+        if pkg:
+            pkg.scope = "team"
+            pkg.team_id = project.team_id if project else pkg.team_id
+            pkg.content_hash = promoted_hash
+        new_version = deployment.repo_version + 1
+        if ref:
+            ref.version += 1
+            ref.content_hash = promoted_hash
+            ref.last_modified_by = user_id
+            new_version = ref.version
+
+        try:
+            promoted_snapshot = json.dumps(
+                parse_native_skill(deployment.install_path, deployment.tool_type),
+                ensure_ascii=False,
+            )
+        except Exception:
+            promoted_snapshot = deployment.abstract_snapshot
+
+        installed_hash_after = _compute_content_hash(deployment.install_path)
+
+        deployment.repo_version = new_version
+        deployment.repo_hash = promoted_hash
+        deployment.installed_hash = installed_hash_after or current_hash
+        deployment.abstract_snapshot = promoted_snapshot
+        deployment.status = "synced"
+        deployment.local_dirty = False
+        deployment.last_seen_at = datetime.now(timezone.utc)
+
+        await _write_change_log(
+            session=session,
+            team_id=project.team_id if project else project_team_id,
+            project_id=deployment.project_id,
+            deployment_id=deployment.id,
+            skill_id=skill_id,
+            user_id=user_id,
+            action="pushed",
+            version=new_version,
+            diff_summary=summary,
+            base_hash=pre_push_hash,
+            new_hash=promoted_hash,
+            change_items=change_items,
+        )
+
+        await _mark_other_deployments_outdated(
+            session=session,
+            project_id=deployment.project_id,
+            skill_id=skill_id,
+            exclude_user_id=user_id,
+            repo_version=new_version,
+            repo_hash=promoted_hash,
+        )
+
+        await session.commit()
+        await session.refresh(deployment)
+        result_deployment = _deployment_to_dict(deployment)
+
+    await _broadcast_push_event(
+        project_id=project_id_val,
+        skill_id=skill_id,
+        user_id=user_id,
+        change_items=change_items,
+        summary=summary,
+        status="synced",
+    )
+
+    return {
+        "success": True,
+        "no_change": False,
+        "status": "synced",
+        "conflict": False,
+        "change_items": change_items,
+        "diff_summary": summary,
+        "deployment": result_deployment,
+    }
+
+
+async def pull_update_deployment(
+    deployment_id: str, user_id: str, overwrite: bool = False
+) -> Dict[str, Any]:
+    """
+    把团队仓库最新内容拉取并写回当前用户的本地部署目录。
+
+    本地有未推送改动时默认拦截（需 overwrite 才覆盖）。
+    """
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        if not deployment:
+            return {"success": False, "error": "Deployment not found"}
+        if deployment.user_id != user_id:
+            return {"success": False, "error": "Cannot pull another user's deployment"}
+        if not deployment.tracking_enabled:
+            return {"success": False, "error": "Deployment tracking is disabled"}
+
+        project = await session.get(Project, deployment.project_id)
+        pkg = await session.get(SkillPackage, deployment.team_skill_id)
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == deployment.project_id,
+                ProjectSkill.skill_id == deployment.team_skill_id,
+            )
+        )
+        if not project or not pkg or not ref:
+            return {"success": False, "error": "Project skill relation missing"}
+
+        skill_id = deployment.team_skill_id
+        tool_type = deployment.tool_type
+        deploy_path = deployment.deploy_path
+        install_path = deployment.install_path
+        prev_installed_hash = deployment.installed_hash
+
+    current_local_hash = _compute_content_hash(install_path)
+    has_local_changes = bool(current_local_hash) and current_local_hash != prev_installed_hash
+    if has_local_changes and not overwrite:
+        return {
+            "success": False,
+            "conflict": True,
+            "error": "本地有未推送改动，更新将覆盖本地，请确认",
+        }
+
+    result = await NativeSkillStore.deploy(
+        skill_id,
+        tool_type,
+        dest_path=deploy_path,
+        notify=False,
+        allow_team=True,
+    )
+    if not result.get("success"):
+        return result
+
+    installed_hash_after = _compute_content_hash(install_path)
+    try:
+        snapshot_json = json.dumps(
+            parse_native_skill(install_path, tool_type), ensure_ascii=False
+        )
+    except Exception as e:
+        logger.warning(f"[pull] 解析抽象包失败 skill='{skill_id}': {e}")
+        snapshot_json = ""
+
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        project = await session.get(Project, deployment.project_id)
+        pkg = await session.get(SkillPackage, skill_id)
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == deployment.project_id,
+                ProjectSkill.skill_id == skill_id,
+            )
+        )
+        team_hash = _compute_content_hash(pkg.store_path) if pkg and pkg.store_path else ""
+
+        deployment.repo_version = ref.version if ref else deployment.repo_version
+        deployment.repo_hash = team_hash
+        deployment.installed_hash = installed_hash_after or team_hash
+        deployment.abstract_snapshot = snapshot_json
+        deployment.status = "synced"
+        deployment.local_dirty = False
+        deployment.last_seen_at = datetime.now(timezone.utc)
+
+        await _write_change_log(
+            session=session,
+            team_id=project.team_id if project else None,
+            project_id=deployment.project_id,
+            deployment_id=deployment.id,
+            skill_id=skill_id,
+            user_id=user_id,
+            action="pulled",
+            version=deployment.repo_version,
+            diff_summary="更新本地到团队最新",
+            base_hash=prev_installed_hash,
+            new_hash=team_hash,
+            source="team_repo",
+        )
+        await session.commit()
+        await session.refresh(deployment)
+        result_deployment = _deployment_to_dict(deployment)
+        broadcast_project_id = deployment.project_id
+
+    await _broadcast_push_event(
+        project_id=broadcast_project_id,
+        skill_id=skill_id,
+        user_id=user_id,
+        change_items=[],
+        summary="更新本地到团队最新",
+        status="synced",
+        event_type="skill.pulled",
+    )
+
+    return {
+        "success": True,
+        "conflict": False,
+        "deployment": result_deployment,
+    }
+
+
+async def list_tracked_deployments() -> List[Dict[str, Any]]:
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(UserSkillDeployment).where(
+                UserSkillDeployment.tracking_enabled.is_(True)
+            )
+        )
+        return [_deployment_to_dict(row) for row in result.scalars().all()]
+
+
+# ==================================================================
+# 方案 B · M4 云端编排端点（薄代理：云端不读/写用户本地磁盘）
+#
+# 灰度并存：以上「一次性」端点（deploy_project_skill / push_deployment /
+# pull_update_deployment）原样保留，维持 local 形态。以下编排端点供 cloud/桌面
+# 形态使用，由前端串联「云端产物 → 本地代理落盘 → 本地代理算 hash → 云端登记」。
+# hash 一致性：云端涉及的 hash 仍用 _compute_content_hash（M1 收敛算法，与 M3
+# 本地代理位级一致）；install 目录 hash 一律由前端经本地代理上报，云端不读本地盘。
+# ==================================================================
+
+
+def _assemble_artifact(
+    skill_id: str,
+    tool: str,
+    repo_version: int,
+    store_path: str,
+    build_outputs: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """纯函数：把构建输出 + Store 资源组装为构建产物（不触 DB、不调 Node）。
+
+    - contents 取与 tool 匹配的构建输出文本；
+    - resources 从 Store 归集（含二进制，base64 inline）；
+    - abstract_snapshot 在临时目录重建「contents + 资源」后 parse_native_skill 直接
+      生成（M0 §3.1 / 分歧 D4 选项 A），临时目录用完即删；
+    - repo_hash = _compute_content_hash(store_path)（M1 收敛算法，与本地代理位级一致）。
+    """
+    contents: Dict[str, str] = {}
+    for out in build_outputs or []:
+        if out.get("target") == tool:
+            contents = out.get("contents", {}) or {}
+            break
+    else:
+        if build_outputs:
+            contents = build_outputs[0].get("contents", {}) or {}
+
+    resources = collect_store_resources(store_path)
+
+    abstract_snapshot: Dict[str, Any] = {}
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            install_dir = Path(td) / "install"
+            build_install_tree(install_dir, contents, resources)
+            abstract_snapshot = parse_native_skill(str(install_dir), tool)
+    except Exception as e:
+        logger.warning(f"[build-artifact] 生成抽象快照失败 skill='{skill_id}': {e}")
+        abstract_snapshot = {}
+
+    return {
+        "success": True,
+        "skill_id": skill_id,
+        "tool": tool,
+        "contents": contents,
+        "resources": resources,
+        "repo_hash": _compute_content_hash(store_path),
+        "repo_version": repo_version,
+        "abstract_snapshot": abstract_snapshot,
+    }
+
+
+async def _build_artifact_payload(
+    skill_id: str, tool: str, repo_version: int
+) -> Dict[str, Any]:
+    """云端构建产物：contents(文本) + resources(Store 资源) + repo_hash + 抽象快照。
+
+    构建留云端（call_bridge），**不写后端磁盘**；产物组装见 _assemble_artifact。
+    """
+    tool = (tool or "").lower()
+    if tool not in SUPPORTED_TOOLS:
+        return {"success": False, "error": "tool must be cursor or codex"}
+
+    async with async_session_factory() as session:
+        pkg = await session.get(SkillPackage, skill_id)
+        if not pkg or not pkg.store_path:
+            return {"success": False, "error": f"Skill '{skill_id}' not found"}
+        store_path = pkg.store_path
+
+    try:
+        build_result = await NativeSkillStore.build(skill_id, tool)
+    except FileNotFoundError as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.exception(f"[build-artifact] 构建失败 skill='{skill_id}'")
+        return {"success": False, "error": f"build failed: {e}"}
+
+    return _assemble_artifact(
+        skill_id, tool, repo_version, store_path, build_result.get("data", []) or []
+    )
+
+
+async def build_project_skill_artifact(
+    project_id: str, skill_id: str, user_id: str, tool: str
+) -> Dict[str, Any]:
+    """① 构建产物端点（deploy 用）：POST /projects/{pid}/skills/{sid}/build-artifact。
+
+    项目访问权由 API 层 _check_project_access 校验；此处校验 Skill 已关联项目。
+    """
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        pkg = await session.get(SkillPackage, skill_id)
+        if not project or not pkg:
+            return {"success": False, "error": "Project or skill not found"}
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == project_id,
+                ProjectSkill.skill_id == skill_id,
+            )
+        )
+        if not ref:
+            return {"success": False, "error": "Skill is not added to this project"}
+        repo_version = ref.version
+
+    return await _build_artifact_payload(skill_id, tool, repo_version)
+
+
+async def build_store_skill_artifact(
+    skill_id: str, user_id: str, tool: str
+) -> Dict[str, Any]:
+    """① 构建产物端点（store 级，个人/团队仓库部署用）。
+
+    对应前端 deployNativeSkillOrchestrated → POST /skill-forge/store/{sid}/build-artifact。
+    契约 §9 未单列 store 级 build-artifact，本端点补齐并与前端调用对齐：返回
+    contents+resources+repoHash+abstractSnapshot，**不写后端盘**。归属由调用方
+    （skill_store API 的 _assert_skill_accessible）校验。
+
+    repo_version 对个人/团队仓库 Skill 无项目版本语义，固定 0（前端该路径不登记
+    deployment，repoVersion 不被消费）。
+    """
+    return await _build_artifact_payload(skill_id, tool, 0)
+
+
+async def build_deployment_artifact(
+    deployment_id: str, user_id: str
+) -> Dict[str, Any]:
+    """① 构建产物端点（pull 用）：POST /skill-deployments/{id}/build-artifact。
+
+    返回团队仓库最新构建产物供前端覆盖落盘；归属由部署实例 user_id 校验。
+    """
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        if not deployment:
+            return {"success": False, "error": "Deployment not found"}
+        if deployment.user_id != user_id:
+            return {"success": False, "error": "Cannot access another user's deployment"}
+        if not deployment.tracking_enabled:
+            return {"success": False, "error": "Deployment tracking is disabled"}
+        skill_id = deployment.team_skill_id
+        tool = deployment.tool_type
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == deployment.project_id,
+                ProjectSkill.skill_id == skill_id,
+            )
+        )
+        repo_version = ref.version if ref else deployment.repo_version
+
+    return await _build_artifact_payload(skill_id, tool, repo_version)
+
+
+async def register_deployment(
+    project_id: str,
+    skill_id: str,
+    user_id: str,
+    tool: str,
+    deploy_path: str,
+    install_path: str,
+    installed_hash: str,
+    repo_hash: str = "",
+    repo_version: int = 1,
+    abstract_snapshot: Optional[Dict[str, Any]] = None,
+    overwrite: bool = False,
+) -> Dict[str, Any]:
+    """④ 登记部署元数据 + change log（对应 deploy_project_skill 的写库段）。
+
+    installed_hash 为本地代理对 installPath 实算（权威）；repo_hash/repo_version/
+    abstract_snapshot 来自先前 build-artifact，前端透传。**云端不读本地盘**。
+    """
+    tool = (tool or "").lower()
+    if tool not in SUPPORTED_TOOLS:
+        return {"success": False, "error": "tool must be cursor or codex"}
+    if not deploy_path:
+        return {"success": False, "error": "deploy_path is required"}
+    if not install_path:
+        return {"success": False, "error": "install_path is required"}
+
+    snapshot_json = (
+        json.dumps(abstract_snapshot, ensure_ascii=False) if abstract_snapshot else ""
+    )
+    deploy_path_norm = str(Path(deploy_path))
+    now = datetime.now(timezone.utc)
+
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        pkg = await session.get(SkillPackage, skill_id)
+        if not project or not pkg:
+            return {"success": False, "error": "Project or skill not found"}
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == project_id,
+                ProjectSkill.skill_id == skill_id,
+            )
+        )
+        if not ref:
+            return {"success": False, "error": "Skill is not added to this project"}
+
+        existing = await session.scalar(
+            select(UserSkillDeployment).where(
+                UserSkillDeployment.user_id == user_id,
+                UserSkillDeployment.project_id == project_id,
+                UserSkillDeployment.team_skill_id == skill_id,
+                UserSkillDeployment.tool_type == tool,
+                UserSkillDeployment.deploy_path == deploy_path_norm,
+            )
+        )
+        deployment = existing or UserSkillDeployment(
+            user_id=user_id,
+            project_id=project_id,
+            team_skill_id=skill_id,
+            tool_type=tool,
+            deploy_path=deploy_path_norm,
+        )
+        deployment.skill_name = skill_id
+        deployment.install_path = install_path
+        deployment.repo_version = repo_version or (ref.version if ref else 1)
+        deployment.repo_hash = repo_hash or (ref.content_hash if ref else "")
+        deployment.installed_hash = installed_hash
+        deployment.abstract_snapshot = snapshot_json
+        deployment.status = "synced"
+        deployment.tracking_enabled = True
+        deployment.local_dirty = False
+        deployment.last_seen_at = now
+        session.add(deployment)
+        await session.flush()
+
+        await _write_change_log(
+            session=session,
+            team_id=project.team_id,
+            project_id=project_id,
+            deployment_id=deployment.id,
+            skill_id=skill_id,
+            user_id=user_id,
+            action="deployed",
+            version=deployment.repo_version,
+            diff_summary=f"deployed to {tool}: {deployment.install_path}",
+            base_hash=deployment.repo_hash,
+            new_hash=installed_hash,
+        )
+        await session.commit()
+        await session.refresh(deployment)
+        return {"success": True, "deployment": _deployment_to_dict(deployment)}
+
+
+async def commit_pull(
+    deployment_id: str,
+    user_id: str,
+    installed_hash: str,
+    repo_hash: str = "",
+    repo_version: int = 1,
+    abstract_snapshot: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """拉取提交（对应 pull_update_deployment 的写库段）：覆盖落盘后登记同步状态。
+
+    installed_hash 为覆盖写后本地代理实算（权威）；其余字段来自团队最新 build-artifact。
+    写 change_log(action=pulled, source=team_repo) 并广播 skill.pulled。
+    """
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        if not deployment:
+            return {"success": False, "error": "Deployment not found"}
+        if deployment.user_id != user_id:
+            return {"success": False, "error": "Cannot pull another user's deployment"}
+        if not deployment.tracking_enabled:
+            return {"success": False, "error": "Deployment tracking is disabled"}
+
+        project = await session.get(Project, deployment.project_id)
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == deployment.project_id,
+                ProjectSkill.skill_id == deployment.team_skill_id,
+            )
+        )
+        skill_id = deployment.team_skill_id
+        prev_installed_hash = deployment.installed_hash
+
+        snapshot_json = (
+            json.dumps(abstract_snapshot, ensure_ascii=False)
+            if abstract_snapshot
+            else deployment.abstract_snapshot
+        )
+        new_repo_hash = repo_hash or deployment.repo_hash
+        new_repo_version = repo_version or (ref.version if ref else deployment.repo_version)
+
+        deployment.repo_version = new_repo_version
+        deployment.repo_hash = new_repo_hash
+        deployment.installed_hash = installed_hash or deployment.installed_hash
+        deployment.abstract_snapshot = snapshot_json
+        deployment.status = "synced"
+        deployment.local_dirty = False
+        deployment.last_seen_at = datetime.now(timezone.utc)
+
+        await _write_change_log(
+            session=session,
+            team_id=project.team_id if project else None,
+            project_id=deployment.project_id,
+            deployment_id=deployment.id,
+            skill_id=skill_id,
+            user_id=user_id,
+            action="pulled",
+            version=deployment.repo_version,
+            diff_summary="更新本地到团队最新",
+            base_hash=prev_installed_hash,
+            new_hash=new_repo_hash,
+            source="team_repo",
+        )
+        await session.commit()
+        await session.refresh(deployment)
+        result_deployment = _deployment_to_dict(deployment)
+        broadcast_project_id = deployment.project_id
+
+    await _broadcast_push_event(
+        project_id=broadcast_project_id,
+        skill_id=skill_id,
+        user_id=user_id,
+        change_items=[],
+        summary="更新本地到团队最新",
+        status="synced",
+        event_type="skill.pulled",
+    )
+
+    return {"success": True, "conflict": False, "deployment": result_deployment}
+
+
+async def push_deployment_content(
+    deployment_id: str,
+    user_id: str,
+    current_hash: str,
+    files: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """③ 推送（接收上传内容）：对应 push_deployment，但输入改为上传的 install 内容。
+
+    前端经本地代理 read-folder 把 install 目录全量文件上传，云端在临时目录重建后
+    复用既有 push 语义（解析→抽象包 diff→冲突判定→写回 Store→版本提升→标记其他
+    实例 outdated/conflict→广播）。**云端不读用户本地盘**；team_hash 仍取云端 Store。
+    """
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        if not deployment:
+            return {"success": False, "error": "Deployment not found"}
+        if deployment.user_id != user_id:
+            return {"success": False, "error": "Cannot push another user's deployment"}
+        if not deployment.tracking_enabled:
+            return {"success": False, "error": "Deployment tracking is disabled"}
+
+        # 团队仓库已被他人推送到更新版本（outdated/conflict）→ 必须先更新本地再推送。
+        if deployment.status in ("outdated", "conflict"):
+            return {
+                "success": False,
+                "conflict": True,
+                "status": deployment.status,
+                "error": "团队仓库已更新，请先更新本地再推送",
+            }
+
+        project = await session.get(Project, deployment.project_id)
+        pkg = await session.get(SkillPackage, deployment.team_skill_id)
+        if not project or not pkg:
+            return {"success": False, "error": "Project or skill not found"}
+
+        now = datetime.now(timezone.utc)
+        skill_id = deployment.team_skill_id
+        tool_type = deployment.tool_type
+        base_snapshot = deployment.abstract_snapshot
+        repo_hash_at_deploy = deployment.repo_hash
+        installed_hash_before = deployment.installed_hash
+        store_path = pkg.store_path
+        project_team_id = project.team_id
+        project_id_val = project.id
+
+        # install 目录缺失（前端经 local hash 得知 exists=false → 上报空 hash / 空 files）
+        if not current_hash or not files:
+            deployment.status = "missing"
+            deployment.local_dirty = False
+            deployment.last_seen_at = now
+            await _write_change_log(
+                session=session,
+                team_id=project_team_id,
+                project_id=project_id_val,
+                deployment_id=deployment.id,
+                skill_id=skill_id,
+                user_id=user_id,
+                action="missing",
+                version=deployment.repo_version,
+                diff_summary="部署路径缺失",
+                base_hash=installed_hash_before,
+                new_hash="",
+            )
+            await session.commit()
+            return {"success": False, "error": "Deployment files missing", "status": "missing"}
+
+        # 无改动（本地实时 hash == 上次部署/推送记录的 installed_hash）
+        if current_hash == installed_hash_before:
+            if deployment.local_dirty:
+                deployment.local_dirty = False
+                deployment.last_seen_at = now
+                await session.commit()
+            return {
+                "success": True,
+                "no_change": True,
+                "change_items": [],
+                "diff_summary": "无改动",
+                "deployment": _deployment_to_dict(deployment),
+            }
+
+    # 临时目录重建上传内容 → 解析抽象包 → diff
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "upload"
+        try:
+            write_files(src, files)
+        except ValueError as e:
+            return {"success": False, "error": f"上传内容非法: {e}"}
+
+        try:
+            current_pkg = parse_native_skill(str(src), tool_type)
+        except Exception as e:
+            return {"success": False, "error": f"解析上传 Skill 失败: {e}"}
+
+        base_pkg = None
+        if base_snapshot:
+            try:
+                base_pkg = json.loads(base_snapshot)
+            except Exception:
+                base_pkg = None
+
+        change_items = diff_abstract_packages(base_pkg, current_pkg)
+        summary = summarize_changes(change_items)
+
+        team_hash = _compute_content_hash(store_path) if store_path else ""
+        conflict = bool(repo_hash_at_deploy and repo_hash_at_deploy != team_hash)
+
+        # 冲突：团队仓库在本次部署后被他人推送过，拦截本次推送
+        if conflict:
+            async with async_session_factory() as session:
+                deployment = await session.get(UserSkillDeployment, deployment_id)
+                project = await session.get(Project, deployment.project_id)
+                old_hash = deployment.installed_hash
+                deployment.installed_hash = current_hash
+                deployment.abstract_snapshot = json.dumps(current_pkg, ensure_ascii=False)
+                deployment.status = "conflict"
+                deployment.local_dirty = False
+                deployment.last_seen_at = datetime.now(timezone.utc)
+                await _write_change_log(
+                    session=session,
+                    team_id=project.team_id if project else project_team_id,
+                    project_id=deployment.project_id,
+                    deployment_id=deployment.id,
+                    skill_id=skill_id,
+                    user_id=user_id,
+                    action="conflict",
+                    version=deployment.repo_version,
+                    diff_summary="团队仓库已更新，推送被拦截",
+                    base_hash=old_hash,
+                    new_hash=current_hash,
+                    change_items=change_items,
+                )
+                await session.commit()
+                await session.refresh(deployment)
+                conflict_deployment = _deployment_to_dict(deployment)
+            return {
+                "success": False,
+                "conflict": True,
+                "status": "conflict",
+                "error": "团队仓库已更新，请先更新本地再推送",
+                "change_items": change_items,
+                "diff_summary": summary,
+                "deployment": conflict_deployment,
+            }
+
+        # 无冲突：解析后的上传内容写回团队仓库（推送即同步到平台）
+        await NativeSkillStore.import_from_external(
+            str(src),
+            tool_type,
+            allow_team_update=True,
+            target_skill_id=skill_id,
+        )
+
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        project = await session.get(Project, deployment.project_id)
+        pkg = await session.get(SkillPackage, skill_id)
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == deployment.project_id,
+                ProjectSkill.skill_id == skill_id,
+            )
+        )
+
+        promoted_hash = _compute_content_hash(pkg.store_path) if pkg and pkg.store_path else ""
+        if pkg:
+            pkg.scope = "team"
+            pkg.team_id = project.team_id if project else pkg.team_id
+            pkg.content_hash = promoted_hash
+        new_version = deployment.repo_version + 1
+        if ref:
+            ref.version += 1
+            ref.content_hash = promoted_hash
+            ref.last_modified_by = user_id
+            new_version = ref.version
+
+        # 推送内容的抽象包即上传内容解析结果（current_pkg），无需再读本地盘
+        promoted_snapshot = json.dumps(current_pkg, ensure_ascii=False)
+
+        deployment.repo_version = new_version
+        deployment.repo_hash = promoted_hash
+        # push 不重写本地（本地已是最新），新 installed_hash 直接用 currentHash（M0 §3.2）
+        deployment.installed_hash = current_hash
+        deployment.abstract_snapshot = promoted_snapshot
+        deployment.status = "synced"
+        deployment.local_dirty = False
+        deployment.last_seen_at = datetime.now(timezone.utc)
+
+        await _write_change_log(
+            session=session,
+            team_id=project.team_id if project else project_team_id,
+            project_id=deployment.project_id,
+            deployment_id=deployment.id,
+            skill_id=skill_id,
+            user_id=user_id,
+            action="pushed",
+            version=new_version,
+            diff_summary=summary,
+            base_hash=installed_hash_before,
+            new_hash=promoted_hash,
+            change_items=change_items,
+        )
+
+        await _mark_other_deployments_outdated(
+            session=session,
+            project_id=deployment.project_id,
+            skill_id=skill_id,
+            exclude_user_id=user_id,
+            repo_version=new_version,
+            repo_hash=promoted_hash,
+        )
+
+        await session.commit()
+        await session.refresh(deployment)
+        result_deployment = _deployment_to_dict(deployment)
+
+    await _broadcast_push_event(
+        project_id=project_id_val,
+        skill_id=skill_id,
+        user_id=user_id,
+        change_items=change_items,
+        summary=summary,
+        status="synced",
+    )
+
+    return {
+        "success": True,
+        "no_change": False,
+        "status": "synced",
+        "conflict": False,
+        "change_items": change_items,
+        "diff_summary": summary,
+        "deployment": result_deployment,
+    }
+
+
+# ------------------------------------------------------------------
+# Sync metadata
+# ------------------------------------------------------------------
+
+
+async def get_sync_status(project_id: str) -> List[Dict[str, Any]]:
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(ProjectSkill).where(ProjectSkill.project_id == project_id)
+        )
+        return [
+            {
+                "skill_id": ps.skill_id,
+                "version": ps.version,
+                "content_hash": ps.content_hash,
+                "updated_at": ps.updated_at.isoformat() if ps.updated_at else None,
+            }
+            for ps in result.scalars().all()
+        ]
+
+
+async def get_changes_since(
+    project_id: str, since_version: int = 0
+) -> List[Dict[str, Any]]:
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(SkillChangeLog)
+            .where(
+                SkillChangeLog.project_id == project_id,
+                SkillChangeLog.version > since_version,
+            )
+            .order_by(SkillChangeLog.created_at.desc())
+            .limit(50)
+        )
+        rows = result.scalars().all()
+
+        user_ids = list({log.user_id for log in rows if log.user_id})
+        skill_ids = list({log.skill_id for log in rows})
+
+        user_map: Dict[str, str] = {"system": "System"}
+        if user_ids:
+            users_result = await session.execute(select(User).where(User.id.in_(user_ids)))
+            for user in users_result.scalars().all():
+                user_map[user.id] = user.display_name or user.username
+
+        skill_map: Dict[str, str] = {}
+        if skill_ids:
+            skills_result = await session.execute(
+                select(SkillPackage).where(SkillPackage.id.in_(skill_ids))
+            )
+            for skill in skills_result.scalars().all():
+                skill_map[skill.id] = skill.display_name or skill.id
+
+        return [
+            {
+                "id": log.id,
+                "skill_id": log.skill_id,
+                "user_id": log.user_id,
+                "user_display_name": user_map.get(log.user_id, log.user_id),
+                "skill_display_name": skill_map.get(log.skill_id, log.skill_id),
+                "action": log.action,
+                "version": log.version,
+                "diff_summary": log.diff_summary,
+                "change_items": _parse_change_items(log.change_items),
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in rows
+        ]
+
+
+def _parse_change_items(raw: Optional[str]) -> List[Dict[str, Any]]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+async def get_project_team_id(project_id: str) -> Optional[str]:
+    async with async_session_factory() as session:
+        project = await session.get(Project, project_id)
+        return project.team_id if project else None

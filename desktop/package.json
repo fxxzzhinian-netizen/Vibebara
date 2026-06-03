@@ -1,0 +1,32 @@
+{
+  "name": "@vibehub/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VibeHub 桌面客户端外壳（Electron / 方案 B M5-a）。主进程负责：拉起并守护本地代理 local-agent、生成并注入配对令牌、注入 window.__VIBEHUB_RUNTIME__ 运行时配置、用 safeStorage 安全存储登录 token、重做一键启动 launcher。渲染层复用 frontend/dist 构建产物。",
+  "author": "DAIL",
+  "license": "MIT",
+  "main": "dist-electron/main/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "electron .",
+    "dev": "tsc -p tsconfig.json && electron .",
+    "smoke:agent": "node scripts/smoke-agent.cjs",
+    "pack:win": "electron-builder --win --dir",
+    "dist:win": "electron-builder --win"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "vibehub",
+    "electron",
+    "desktop",
+    "local-agent"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^26.0.0",
+    "typescript": "^5.7.0"
+  }
+}

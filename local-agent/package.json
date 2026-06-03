@@ -1,0 +1,40 @@
+{
+  "name": "@vibehub/local-agent",
+  "version": "1.0.0",
+  "description": "VibeHub 桌面客户端本地代理 Local Agent — 纯 TS 薄代理，承接触达本地文件系统的能力（浏览/扫描/读文件夹/落盘/hash/监控）。仅监听 127.0.0.1，受配对令牌 + 可写根白名单约束。实现 local-agent/v1 契约。",
+  "license": "MIT",
+  "private": true,
+  "main": "dist/index.js",
+  "bin": {
+    "vibehub-local-agent": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "vibehub",
+    "local-agent",
+    "skill",
+    "cursor",
+    "codex"
+  ],
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

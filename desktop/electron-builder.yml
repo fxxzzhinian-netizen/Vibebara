@@ -1,0 +1,45 @@
+# VibeHub 桌面壳打包配置（方案 B M5-c 脚手架，Windows-first）。
+#
+# ⚠️ M5-a 阶段仅提供此配置骨架，打包/签名/自动更新的完整落地属 M5-c。
+# 使用前需在 devDependencies 安装 electron-builder，并将 local-agent/frontend 产物
+# 作为 extraResources 一并打入（与主进程 resolvePaths() 的 packaged 分支对齐）。
+
+appId: com.vibehub.desktop
+productName: VibeHub
+directories:
+  output: release
+  buildResources: build
+
+# 把本地代理与前端构建产物打进安装包（packaged 时主进程从 process.resourcesPath 解析）。
+extraResources:
+  - from: ../local-agent/dist
+    to: local-agent/dist
+    filter: ["**/*"]
+  - from: ../local-agent/node_modules
+    to: local-agent/node_modules
+    filter: ["**/*"]
+  - from: ../local-agent/package.json
+    to: local-agent/package.json
+  - from: ../frontend/dist
+    to: frontend/dist
+    filter: ["**/*"]
+
+files:
+  - dist-electron/**/*
+  - package.json
+
+win:
+  target:
+    - nsis
+  # 代码签名（M5-c）：证书到位后配置 certificateFile / certificatePassword 或
+  # 走 Azure Trusted Signing / EV 证书。证书申请为长周期项，需提前并行启动（见 M5 实施计划 §5）。
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
+# 自动更新（M5-c）：electron-updater + 发布通道（generic / github）。
+# publish:
+#   provider: generic
+#   url: https://updates.vibehub.example/desktop/

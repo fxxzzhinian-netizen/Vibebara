@@ -1,0 +1,22 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+websockets==14.1
+
+# Data validation & settings
+pydantic==2.10.3
+pydantic-settings==2.7.0
+
+# Database (MySQL async)
+sqlalchemy==2.0.36
+aiomysql==0.3.2
+alembic==1.14.0
+
+# YAML parsing (native_skill_store)
+PyYAML>=6.0
+
+# File watching (Native Skill Store sync)
+watchfiles>=0.24.0
+
+# LLM API client
+openai>=1.82.0

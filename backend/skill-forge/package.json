@@ -1,0 +1,38 @@
+{
+  "name": "skill-forge",
+  "version": "1.0.0",
+  "description": "Unified skill format with adapters for Cursor and Codex",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "skill-forge": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "tsc --watch",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "skill",
+    "cursor",
+    "codex",
+    "cli"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^5.4.0",
+    "commander": "^13.1.0",
+    "glob": "^11.0.0",
+    "js-yaml": "^4.1.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

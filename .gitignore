@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+.env
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
+*.log
+
+# Skill forge build output
+dist-skill/
+
+# 运行时数据 / 测试构建产生的 skill 仓库
+# 注：含 JWT_SECRET、DB 密码的 docker-compose .env 已被上方 ".env" 覆盖，不会上传
+backend/data/
+data/
+# 平台原生 Skill 集中存储（SKILL_STORE_DIR，本机默认 backend/.skill-store）—— 测试数据不上传
+.skill-store/

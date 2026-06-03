@@ -1,0 +1,90 @@
+/**
+ * 桌面壳专有桥访问（方案 B M5-a）。
+ *
+ * M5 Electron 桌面壳通过 preload/contextBridge 在渲染层注入 `window.__VIBEHUB_DESKTOP__`，
+ * 提供 web 形态没有的本机能力：
+ *   · token：登录 token 的安全存储（OS keychain / safeStorage，替代 localStorage）；
+ *   · launcher：一键启动本机 Cursor / Codex（替代 cloud 已下线的 /launcher 路由）；
+ *   · deviceId / mode：设备与形态标识。
+ *
+ * web 形态下该对象不存在（getDesktopBridge() 返回 null），调用方回退到旧行为
+ * （localStorage / 云端 /launcher）。前端据此「按形态选择」，保持 web 形态不变。
+ */
+
+export type DesktopToolId = 'cursor' | 'codex-cli' | 'codex-app'
+
+export interface DesktopToolInfo {
+  id: DesktopToolId
+  label: string
+  available: boolean
+  mode: 'app' | 'terminal'
+  description: string
+}
+
+export interface DesktopLaunchRequest {
+  tool: DesktopToolId
+  project_path?: string
+}
+
+export interface DesktopLaunchResponse {
+  status: string
+  tool: string
+  mode: 'app' | 'terminal'
+  message: string
+}
+
+/** 本地代理热更负载（端口漂移时主进程经 IPC 推送，M5-b 任务②）。 */
+export interface LocalAgentChangePayload {
+  localAgentBase: string
+  localAgentPort: number
+}
+
+export interface VibehubDesktopBridge {
+  mode: 'desktop'
+  /** 有效设备标识（M5-b）：registeredDeviceId ?? clientUuid。 */
+  deviceId: string
+  /** 本机持久 uuid（M5-b 设备注册幂等键，非鉴权凭证）。 */
+  clientUuid?: string
+  /**
+   * 回写云端铸造的规范 device_id（M5-b 任务①：登录注册后）。
+   * 主进程落 vibehub-device.json.registeredDeviceId + 热更运行时，返回有效 deviceId。
+   */
+  persistDeviceId?(deviceId: string): Promise<string>
+  /**
+   * 订阅本地代理端口漂移热更（M5-b 任务②）。返回取消订阅函数。
+   * web 形态下该方法不存在（调用方据此跳过）。
+   */
+  onLocalAgentChange?(cb: (payload: LocalAgentChangePayload) => void): () => void
+  token: {
+    /** 同步取当前登录 token（来自壳进程内缓存）。 */
+    getSync(): string
+    /** 写登录 token（safeStorage 加密落盘）。 */
+    set(token: string): void
+    /** 清除登录 token。 */
+    clear(): void
+  }
+  launcher: {
+    listTools(): Promise<{ tools: DesktopToolInfo[] }>
+    launchTool(req: DesktopLaunchRequest): Promise<DesktopLaunchResponse>
+  }
+}
+
+declare global {
+  interface Window {
+    /** M5 桌面壳注入的桌面专有桥（web 形态下为 undefined）。 */
+    __VIBEHUB_DESKTOP__?: VibehubDesktopBridge
+  }
+}
+
+/** 取桌面专有桥；web 形态返回 null。 */
+export function getDesktopBridge(): VibehubDesktopBridge | null {
+  if (typeof window !== 'undefined' && window.__VIBEHUB_DESKTOP__) {
+    return window.__VIBEHUB_DESKTOP__
+  }
+  return null
+}
+
+/** 是否运行在桌面壳形态（桥存在即认定为桌面）。 */
+export function isDesktop(): boolean {
+  return getDesktopBridge() !== null
+}

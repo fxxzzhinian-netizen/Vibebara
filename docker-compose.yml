@@ -1,0 +1,57 @@
+# VibeHub 后端联调编排（cloud 后端 + MySQL）
+#
+# 用法：
+#   1. 生成密钥并写入同目录 .env：
+#        echo "JWT_SECRET=$(python -c 'import secrets;print(secrets.token_urlsafe(48))')" >> .env
+#      （Windows PowerShell 见 README/对话说明）
+#   2. docker compose up -d --build
+#   3. 验证：curl http://localhost:8000/health
+#
+# 说明：WS 为进程内内存态，backend 固定单进程，请勿对 backend 做 scale/replicas。
+services:
+  mysql:
+    image: mysql:8.0
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-cowork}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_USER: ${DB_USER:-cowork}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-coworkpass}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD:-rootpass}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # 默认不对外暴露 3306（仅容器网络内访问）；需本机连库调试再放开：
+    # ports:
+    #   - "3306:3306"
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DEPLOYMENT_MODE: cloud
+      DEBUG: "false"
+      HOST: 0.0.0.0
+      PORT: "8000"
+      DATABASE_URL: mysql+aiomysql://${DB_USER:-cowork}:${DB_PASSWORD:-coworkpass}@mysql:3306/${DB_NAME:-cowork}?charset=utf8mb4
+      DB_AUTO_CREATE: "true"
+      # 必填：高熵签名密钥。未设置则启动失败（防止误用开发默认密钥）。
+      JWT_SECRET: ${JWT_SECRET:?请在同目录 .env 设置 JWT_SECRET}
+      # 联调期放开 CORS（含 Electron null Origin）。正式环境收紧为具体来源。
+      ALLOW_ORIGIN_REGEX: ".*"
+    ports:
+      - "8000:8000"
+    volumes:
+      # 平台原生 skill 集中存储持久化（默认 COWORK_DATA_DIR=/app/data）
+      - skill-store:/app/data
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  skill-store:
