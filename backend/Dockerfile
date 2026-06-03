@@ -4,9 +4,21 @@
 #   1. 后端在 cloud 模式下用子进程调 `node` 跑 skill-forge 桥，故镜像同时含 Python + Node 20。
 #   2. skill-forge 在镜像内 `npm ci && npm run build` 现构建 dist，再 prune 掉 dev 依赖，
 #      仓库无需提交任何构建产物（dist / node_modules 均可被 .gitignore 忽略）。
-#   3. 国内云服务器网络受限：Node 走 npmmirror、pip 走清华、npm 走 npmmirror。
+#   3. 国内云服务器网络受限：Debian apt 走腾讯云内网镜像、Node 走 npmmirror、
+#      pip 走清华、npm 走 npmmirror。非腾讯云环境构建时用 --build-arg APT_MIRROR= 覆盖
+#      （留空则保持官方 deb.debian.org）。
 #   4. WS 广播为进程内内存态 → 单进程启动（--workers 1），勿横向扩。
 FROM python:3.11-slim
+
+# ---- Debian apt 镜像（默认腾讯云内网；置空则用官方源）----
+ARG APT_MIRROR=mirrors.tencentyun.com
+RUN set -eux; \
+    if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s/deb.debian.org/$APT_MIRROR/g; s/security.debian.org/$APT_MIRROR/g" \
+        /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
+      sed -i "s/deb.debian.org/$APT_MIRROR/g; s/security.debian.org/$APT_MIRROR/g" \
+        /etc/apt/sources.list 2>/dev/null || true; \
+    fi
 
 # ---- Node 20（从 npmmirror 取官方二进制，规避 nodesource 国内不可达）----
 ARG NODE_VERSION=20.18.1
