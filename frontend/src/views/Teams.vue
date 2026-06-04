@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { useTeamStore } from '@/stores/teamStore'
 import { useProjectSyncStore } from '@/stores/projectSyncStore'
+import { useTeamSync } from '@/composables/useTeamSync'
 import {
   listNativeSkills,
   copySkillToTeam,
@@ -60,6 +61,25 @@ const canManageProjects = computed(() =>
   ['owner', 'admin'].includes(myRole.value),
 )
 
+// —— 团队级实时同步：其他成员的结构性变更自动刷新，无需手动刷新 ——
+const { connected: teamSyncConnected } = useTeamSync(
+  () => teamStore.currentTeamId,
+  async (evt) => {
+    const teamId = teamStore.currentTeamId
+    if (!teamId || evt.team_id !== teamId) return
+    // 自己触发的变更：对应操作已在本地刷新过，跳过以免重复请求与界面闪烁
+    if (evt.user_id && evt.user_id === authStore.user?.id) return
+
+    if (evt.type.startsWith('project.')) {
+      await projectStore.fetchProjects(teamId)
+    } else if (evt.type.startsWith('team_skill.')) {
+      await loadTeamSkills(teamId)
+    } else if (evt.type === 'team.member.joined') {
+      await teamStore.selectTeam(teamId)
+    }
+  },
+)
+
 onMounted(async () => {
   await teamStore.fetchTeams()
   // 回退/重新挂载后，teamSkills 等局部状态会丢失：若 store 中仍有选中团队，则重新加载其数据
@@ -76,6 +96,11 @@ async function createTeam() {
     showCreateTeam.value = false
     newTeamName.value = ''
     newTeamDesc.value = ''
+    // teamStore.create 仅加载团队信息+成员；这里补齐项目列表与团队 Skill 仓库，
+    // 避免新建后右侧项目/Skill 区残留上一个团队的数据、需手动点一下才刷新。
+    if (teamStore.currentTeamId) {
+      await selectTeam(teamStore.currentTeamId)
+    }
   } else {
     actionError.value = res.error || '创建失败'
   }
@@ -88,6 +113,11 @@ async function joinTeam() {
   if (res.success) {
     showJoinTeam.value = false
     joinCode.value = ''
+    // teamStore.join 内部只加载了团队信息+成员，没有拉项目列表和团队 Skill 仓库；
+    // 这里用组件级 selectTeam 全量加载，确保加入后项目/团队 Skill 立即显示，无需手动刷新。
+    if (teamStore.currentTeamId) {
+      await selectTeam(teamStore.currentTeamId)
+    }
   } else {
     actionError.value = res.error || '加入失败'
   }
@@ -340,7 +370,17 @@ function logout() {
         <template v-if="teamStore.currentTeam">
           <div class="content-header">
             <div>
-              <h3>{{ teamStore.currentTeam.name }}</h3>
+              <div class="team-title-row">
+                <h3>{{ teamStore.currentTeam.name }}</h3>
+                <span
+                  class="sync-badge"
+                  :class="{ on: teamSyncConnected }"
+                  :title="teamSyncConnected ? '团队动态实时同步中' : '实时同步已断开，正在重连…'"
+                >
+                  <span class="sync-dot"></span>
+                  {{ teamSyncConnected ? '实时同步中' : '同步断开' }}
+                </span>
+              </div>
               <p class="desc">{{ teamStore.currentTeam.description || '暂无描述' }}</p>
               <p class="invite-code">邀请码: <code>{{ teamStore.currentTeam.invite_code }}</code></p>
               <label class="setting-toggle">
@@ -783,6 +823,43 @@ function logout() {
 .content-header h3 {
   margin: 0 0 4px;
   font-size: 20px;
+}
+
+.team-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #2a2a3e;
+  color: #888;
+  border: 1px solid #33334a;
+  user-select: none;
+}
+
+.sync-badge.on {
+  background: #163024;
+  color: #4ade80;
+  border-color: #1f5138;
+}
+
+.sync-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #777;
+}
+
+.sync-badge.on .sync-dot {
+  background: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
 }
 
 .desc {

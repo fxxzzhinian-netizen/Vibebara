@@ -112,7 +112,7 @@ async def delete_project(
     role = await team_service.get_member_role(team_id, user_id)
     if role not in ("owner", "admin"):
         raise HTTPException(status_code=403, detail="仅管理员可删除项目")
-    success = await project_service.delete_project(project_id)
+    success = await project_service.delete_project(project_id, user_id)
     if not success:
         raise HTTPException(status_code=404, detail="项目不存在")
     return {"success": True}

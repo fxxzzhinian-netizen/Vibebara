@@ -27,6 +27,7 @@ from app.models.skill_package import SkillPackage
 from app.models.user import User
 from app.services.skill_forge_service import call_bridge
 from app.services.skill_sync_service import SkillSyncService
+from app.services.team_sync_service import TeamSyncService
 
 logger = logging.getLogger(__name__)
 
@@ -847,7 +848,11 @@ class NativeSkillStore:
             row.owner_id = None
             await session.commit()
             await session.refresh(row)
-            return cls._row_to_dict(row)
+            result = cls._row_to_dict(row)
+
+        # 团队级实时同步：通知在线成员刷新团队 Skill 仓库
+        await TeamSyncService.emit_team_skill_added(team_id, result, user_id)
+        return result
 
     # ------------------------------------------------------------------
     # Import a local folder directly into team repository
@@ -902,7 +907,11 @@ class NativeSkillStore:
             row.owner_id = None
             await session.commit()
             await session.refresh(row)
-            return cls._row_to_dict(row)
+            result = cls._row_to_dict(row)
+
+        # 团队级实时同步：通知在线成员刷新团队 Skill 仓库
+        await TeamSyncService.emit_team_skill_added(team_id, result, user_id)
+        return result
 
     # ------------------------------------------------------------------
     # LLM 补齐缺失字段

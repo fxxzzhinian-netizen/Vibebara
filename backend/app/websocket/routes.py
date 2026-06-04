@@ -4,7 +4,8 @@ from app.core.config import settings
 from app.services import project_service, team_service
 from app.services.auth_service import verify_token
 from app.services.skill_sync_service import SkillSyncService
-from app.websocket.hub import ws_manager, project_ws_manager
+from app.services.team_sync_service import TeamSyncService
+from app.websocket.hub import ws_manager, project_ws_manager, team_ws_manager
 
 ws_router = APIRouter()
 
@@ -87,4 +88,46 @@ async def project_websocket_endpoint(
         if not project_ws_manager.get_online_users(project_id):
             SkillSyncService.unsubscribe(
                 project_id, project_ws_manager.on_skill_event
+            )
+
+
+@ws_router.websocket("/ws/team/{team_id}")
+async def team_websocket_endpoint(
+    websocket: WebSocket,
+    team_id: str,
+    user_id: str = Query(...),
+    token: str = Query(default=""),
+):
+    """
+    团队级 WebSocket 通道（结构变更实时同步）。
+
+    连接后自动订阅 TeamSyncService 的事件广播，该团队下的项目增删、
+    团队 Skill 仓库增减、成员加入都会推送到此连接，前端据此刷新对应区块。
+
+    鉴权策略（与项目级通道一致，强制）：
+      1. token 缺失或无效 → 拒绝（close 4001）；
+      2. token 解析出的 user_id 必须与连接 user_id 一致（防伪冒）；
+      3. 必须是该团队成员，否则拒绝（close 4003），避免非成员订阅他人团队动态。
+    """
+    token_user_id = verify_token(token) if token else None
+    if not token_user_id or token_user_id != user_id:
+        await websocket.close(code=4001, reason="invalid token")
+        return
+
+    if not await team_service.is_team_member(team_id, token_user_id):
+        await websocket.close(code=4003, reason="forbidden")
+        return
+
+    await team_ws_manager.connect(websocket, team_id, token_user_id)
+
+    TeamSyncService.subscribe(team_id, team_ws_manager.on_team_event)
+
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        await team_ws_manager.disconnect(team_id, token_user_id)
+        if not team_ws_manager.get_online_users(team_id):
+            TeamSyncService.unsubscribe(
+                team_id, team_ws_manager.on_team_event
             )

@@ -26,6 +26,7 @@ from app.services.skill_diff_service import (
     parse_native_skill,
     summarize_changes,
 )
+from app.services.team_sync_service import TeamSyncService
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,11 @@ async def create_project(
         session.add(project)
         await session.commit()
         await session.refresh(project)
-        return _project_to_dict(project, skill_count=0)
+        result = _project_to_dict(project, skill_count=0)
+
+    # 团队级实时同步：通知在线成员刷新项目列表（无需手动刷新）
+    await TeamSyncService.emit_project_created(team_id, result, created_by)
+    return result
 
 
 async def get_project(project_id: str) -> Optional[Dict[str, Any]]:
@@ -213,7 +218,7 @@ async def update_project(
         return _project_to_dict(project, skill_count=count or 0)
 
 
-async def delete_project(project_id: str) -> bool:
+async def delete_project(project_id: str, user_id: str = "system") -> bool:
     """
     删除项目及其关联数据（动态日志、用户部署记录、Skill 关联）。
 
@@ -224,6 +229,7 @@ async def delete_project(project_id: str) -> bool:
         project = await session.get(Project, project_id)
         if not project:
             return False
+        team_id = project.team_id
         await session.execute(
             delete(SkillChangeLog).where(SkillChangeLog.project_id == project_id)
         )
@@ -237,7 +243,10 @@ async def delete_project(project_id: str) -> bool:
         )
         await session.delete(project)
         await session.commit()
-        return True
+
+    # 团队级实时同步：通知在线成员移除该项目卡片
+    await TeamSyncService.emit_project_deleted(team_id, project_id, user_id)
+    return True
 
 
 async def list_projects(team_id: str) -> List[Dict[str, Any]]:

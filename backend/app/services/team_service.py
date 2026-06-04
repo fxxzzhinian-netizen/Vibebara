@@ -11,6 +11,7 @@ from sqlalchemy import delete, func, select
 from app.core.database import async_session_factory
 from app.models.team import Team, TeamMember
 from app.models.user import User
+from app.services.team_sync_service import TeamSyncService
 
 logger = logging.getLogger(__name__)
 
@@ -191,10 +192,15 @@ async def join_by_invite_code(invite_code: str, user_id: str) -> Dict[str, Any]:
         session.add(member)
         await session.commit()
 
-        return {
+        result = {
             "success": True,
             "team": _team_to_dict(team, member_count=(count or 0) + 1),
         }
+        team_id = team.id
+
+    # 团队级实时同步：通知已在线成员刷新成员列表与人数
+    await TeamSyncService.emit_member_joined(team_id, user_id)
+    return result
 
 
 async def list_members(team_id: str) -> List[Dict[str, Any]]:

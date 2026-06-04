@@ -161,7 +161,8 @@ def create_app() -> FastAPI:
         app.include_router(adapters_router, prefix="/api/v1")
         app.include_router(launcher_router, prefix="/api/v1")
 
-    # WebSocket 路由（会话级 /ws/{session_id} + 项目级 /ws/project/{project_id}）
+    # WebSocket 路由（会话级 /ws/{session_id} + 项目级 /ws/project/{project_id}
+    # + 团队级 /ws/team/{team_id}）
     app.include_router(ws_router)
 
     @app.get("/")
