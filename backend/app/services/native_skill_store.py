@@ -112,12 +112,40 @@ def _compute_dir_hash(root: Path) -> str:
 
 
 def _detect_origin(src: Path, frontmatter: Dict[str, Any]) -> str:
-    """根据文件特征判断 skill 来源平台"""
+    """根据路径与 frontmatter 特征判断 skill 来源平台。
+
+    路径为强信号；frontmatter 为细分信号。注意 Cursor 与 Claude 都可能含
+    `disable-model-invocation`，故优先用 Claude 专有运行时字段区分，避免误判。
+    详见 docs/skill-forge-design.md §八。
+    """
+    src_str = str(src).replace("\\", "/").lower()
+
+    # 路径主信号（最可靠）
+    if "/.codeium/windsurf/skills/" in src_str or "/.windsurf/skills/" in src_str:
+        return "windsurf"
+    if "/.claude/skills/" in src_str:
+        return "claude"
     if (src / "agents" / "openai.yaml").exists():
         return "codex"
-    if frontmatter.get("disable-model-invocation") is not None:
-        return "cursor"
+
+    # frontmatter 细分信号：Claude 专有运行时字段
+    claude_fields = (
+        "allowed-tools",
+        "disallowed-tools",
+        "user-invocable",
+        "argument-hint",
+        "model",
+        "effort",
+        "context",
+        "agent",
+        "hooks",
+        "when_to_use",
+    )
+    if any(frontmatter.get(f) is not None for f in claude_fields):
+        return "claude"
     if frontmatter.get("metadata", {}).get("surfaces"):
+        return "cursor"
+    if frontmatter.get("disable-model-invocation") is not None:
         return "cursor"
     return "unknown"
 
@@ -178,6 +206,44 @@ def _config_to_ts_format(config: Dict[str, Any], vibeh_content: str = "") -> Dic
         ts_config["displayName"] = ui["display_name"]
     if ui.get("short_description"):
         ts_config["shortDescription"] = ui["short_description"]
+
+    # Claude Code 专有运行时字段（design-doc snake_case → unified.ts camelCase）。
+    # 仅在构建 Claude 目标时被消费；其余平台适配器整体丢弃。
+    claude = config.get("claude", {}) or {}
+    claude_ts = {
+        k: v
+        for k, v in {
+            "allowedTools": claude.get("allowed_tools"),
+            "disallowedTools": claude.get("disallowed_tools"),
+            "userInvocable": claude.get("user_invocable"),
+            "argumentHint": claude.get("argument_hint"),
+            "whenToUse": claude.get("when_to_use"),
+            "model": claude.get("model"),
+            "effort": claude.get("effort"),
+            "context": claude.get("context"),
+            "agent": claude.get("agent"),
+            "hooks": claude.get("hooks"),
+        }.items()
+        if v not in (None, "")
+    }
+    if claude_ts:
+        ts_config["claude"] = claude_ts
+
+    # Agent Skills 标准元数据（license/compatibility/author/version/surfaces）。
+    # 各平台适配器按支持情况选择性输出（详见 docs/skill-forge-design.md §2.4 矩阵）。
+    meta_ts = {
+        k: v
+        for k, v in {
+            "license": metadata.get("license"),
+            "compatibility": metadata.get("compatibility"),
+            "author": metadata.get("author"),
+            "version": metadata.get("version"),
+            "surfaces": metadata.get("surfaces"),
+        }.items()
+        if v not in (None, "")
+    }
+    if meta_ts:
+        ts_config["metadata"] = meta_ts
 
     return ts_config
 
@@ -668,6 +734,39 @@ class NativeSkillStore:
 
         if frontmatter.get("metadata", {}).get("surfaces"):
             config.setdefault("metadata", {})["surfaces"] = frontmatter["metadata"]["surfaces"]
+
+        # Claude Code 专有运行时 frontmatter → claude 块（反向导入 round-trip）。
+        # 按字段存在性捕获，不依赖 origin 判定，保证最大保真。
+        _fm_to_claude = {
+            "allowed-tools": "allowed_tools",
+            "disallowed-tools": "disallowed_tools",
+            "user-invocable": "user_invocable",
+            "argument-hint": "argument_hint",
+            "when_to_use": "when_to_use",
+            "model": "model",
+            "effort": "effort",
+            "context": "context",
+            "agent": "agent",
+            "hooks": "hooks",
+        }
+        claude_block: Dict[str, Any] = {}
+        for fm_key, cfg_key in _fm_to_claude.items():
+            if frontmatter.get(fm_key) is not None:
+                claude_block[cfg_key] = frontmatter[fm_key]
+        if claude_block:
+            config["claude"] = claude_block
+
+        # Claude 标准元数据 frontmatter → metadata 块
+        if frontmatter.get("license"):
+            config.setdefault("metadata", {})["license"] = frontmatter["license"]
+        if frontmatter.get("compatibility"):
+            config.setdefault("metadata", {})["compatibility"] = frontmatter["compatibility"]
+        fm_meta = frontmatter.get("metadata", {})
+        if isinstance(fm_meta, dict):
+            if fm_meta.get("author"):
+                config.setdefault("metadata", {})["author"] = fm_meta["author"]
+            if fm_meta.get("version"):
+                config.setdefault("metadata", {})["version"] = fm_meta["version"]
 
         openai_yaml_path = src / "agents" / "openai.yaml"
         if openai_yaml_path.exists():
