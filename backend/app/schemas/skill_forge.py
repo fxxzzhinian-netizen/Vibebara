@@ -31,6 +31,7 @@ class BrowseResponse(BaseModel):
 class InstalledAtStatus(BaseModel):
     cursor: bool = False
     codex: bool = False
+    windsurf: bool = False
 
 
 class UnifiedSkillPackage(BaseModel):
@@ -96,6 +97,7 @@ class NativeSkillItem(BaseModel):
     content_hash: str = ""
     deployed_cursor: bool = False
     deployed_codex: bool = False
+    deployed_windsurf: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

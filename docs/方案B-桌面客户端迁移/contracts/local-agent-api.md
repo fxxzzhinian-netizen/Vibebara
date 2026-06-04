@@ -19,8 +19,8 @@
 /** 本地代理 API 版本标识 */
 export type LocalAgentApiVersion = "local-agent/v1";
 
-/** 支持的工具平台（对应后端 SUPPORTED_TOOLS = {"cursor","codex"}） */
-export type ToolType = "cursor" | "codex";
+/** 支持的工具平台（对应后端 SUPPORTED_TOOLS = {"cursor","codex","windsurf"}） */
+export type ToolType = "cursor" | "codex" | "windsurf";
 
 /** 部署落点：项目目录 or 平台目录（~/.cursor/skills 等） */
 export type DeployScope = "project" | "platform";
@@ -39,7 +39,7 @@ export type LocalAgentErrorCode =
   | "NOT_A_DIRECTORY"       // 400 期望目录但不是目录
   | "INSTALL_EXISTS"        // 409 install 目录已存在且未 overwrite
   | "IO_ERROR"              // 500 读写失败
-  | "UNSUPPORTED_TOOL"      // 400 tool 非 cursor/codex
+  | "UNSUPPORTED_TOOL"      // 400 tool 非 cursor/codex/windsurf
   | "BAD_REQUEST";          // 400 参数缺失/非法
 
 export interface LocalAgentError {
@@ -94,10 +94,11 @@ export interface HealthResponse extends LocalAgentSuccessBase {
   apiVersion: LocalAgentApiVersion;
   platform: NodeJS.Platform | string; // "win32" | "darwin" | "linux" | ...
   paired: boolean;                 // 是否已完成配对（已注入 pairingSecret）
-  /** 本机平台 skill 目录（由代理解析用户 home，对应后端 CURSOR/CODEX_SKILLS_DIR） */
+  /** 本机平台 skill 目录（由代理解析用户 home，对应后端 CURSOR/CODEX/WINDSURF_SKILLS_DIR） */
   platformSkillDirs: {
     cursor: string;                // 如 "C:\\Users\\me\\.cursor\\skills"
     codex: string;                 // 如 "C:\\Users\\me\\.codex\\skills"
+    windsurf: string;              // 如 "C:\\Users\\me\\.codeium\\windsurf\\skills"
   };
 }
 ```
@@ -143,8 +144,9 @@ export type SkillOrigin = "cursor" | "codex" | "unknown";
 export type OriginConfidence = "high" | "medium" | "low";
 
 export interface InstalledAtStatus {
-  cursor: boolean; // 该 skill 是否已装到 ~/.cursor/skills/{id}
-  codex: boolean;  // 是否已装到 $CODEX_HOME|~/.codex/skills/{id}
+  cursor: boolean;   // 该 skill 是否已装到 ~/.cursor/skills/{id}
+  codex: boolean;    // 是否已装到 $CODEX_HOME|~/.codex/skills/{id}
+  windsurf: boolean; // 是否已装到 ~/.codeium/windsurf/skills/{id}
 }
 
 export interface UnifiedSkillPackage {
@@ -218,7 +220,7 @@ export interface WriteSkillRequest {
   /** scope=project 时必填：本地项目根目录绝对路径 */
   deployPath?: string;
   scope: DeployScope;           // "project" | "platform"
-  tool: ToolType;               // cursor | codex
+  tool: ToolType;               // cursor | codex | windsurf
   skillId: string;
   /** 构建产物文本：相对 install 根的 POSIX 路径 → UTF-8 文本（对应 bridge contents） */
   contents: Record<string, string>;

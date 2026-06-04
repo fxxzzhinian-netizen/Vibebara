@@ -60,6 +60,7 @@ export const UnifiedSkillSchema = z.object({
     .object({
       cursor: z.record(z.unknown()).optional(),
       codex: z.record(z.unknown()).optional(),
+      windsurf: z.record(z.unknown()).optional(),
     })
     .default({}),
 });
@@ -70,7 +71,7 @@ export type ToolDependency = z.infer<typeof ToolDependencySchema>;
 export const NativeSkillMetaSchema = z.object({
   createdAt: z.string().datetime().optional(),
   updatedAt: z.string().datetime().optional(),
-  importedFrom: z.enum(["cursor", "codex", "manual"]).optional(),
+  importedFrom: z.enum(["cursor", "codex", "windsurf", "manual"]).optional(),
   tags: z.array(z.string()).default([]),
   readme: z.string().optional(),
 });

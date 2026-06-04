@@ -54,6 +54,7 @@ describe("UnifiedSkillSchema", () => {
       targets: {
         cursor: { description: "Cursor override" },
         codex: { description: "Codex override" },
+        windsurf: { description: "Windsurf override" },
       },
     };
     const result = UnifiedSkillSchema.safeParse(full);

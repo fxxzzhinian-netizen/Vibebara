@@ -2,10 +2,11 @@ import path from "node:path";
 import type { BuildResult } from "../adapters/base.js";
 import { CursorAdapter } from "../adapters/cursor.js";
 import { CodexAdapter } from "../adapters/codex.js";
+import { WindsurfAdapter } from "../adapters/windsurf.js";
 import { loadAndValidate } from "./validate.js";
 import { ensureDir } from "../utils/fs.js";
 
-export type Target = "cursor" | "codex" | "all";
+export type Target = "cursor" | "codex" | "windsurf" | "all";
 
 export interface BuildOptions {
   target: Target;
@@ -16,7 +17,8 @@ export interface BuildOptions {
 function getAdapters(target: Target) {
   if (target === "cursor") return [new CursorAdapter()];
   if (target === "codex") return [new CodexAdapter()];
-  return [new CursorAdapter(), new CodexAdapter()];
+  if (target === "windsurf") return [new WindsurfAdapter()];
+  return [new CursorAdapter(), new CodexAdapter(), new WindsurfAdapter()];
 }
 
 export async function buildSkill(

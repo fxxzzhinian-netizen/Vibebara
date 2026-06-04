@@ -7,9 +7,10 @@ export {
   type NativeSkillMeta,
   type ToolDependency,
 } from "./schema/unified.js";
-export { type Adapter, type BuildResult } from "./adapters/base.js";
+export { type Adapter, type AdapterTarget, type BuildResult } from "./adapters/base.js";
 export { CursorAdapter } from "./adapters/cursor.js";
 export { CodexAdapter } from "./adapters/codex.js";
+export { WindsurfAdapter } from "./adapters/windsurf.js";
 export { detectOrigin, type SkillOrigin, type Confidence, type DetectResult } from "./adapters/detect.js";
 export { buildSkill, type BuildOptions, type Target } from "./commands/build.js";
 export { deploySkill, type DeployOptions } from "./commands/deploy.js";

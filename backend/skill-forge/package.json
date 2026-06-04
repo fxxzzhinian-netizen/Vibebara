@@ -1,7 +1,7 @@
 {
   "name": "skill-forge",
   "version": "1.0.0",
-  "description": "Unified skill format with adapters for Cursor and Codex",
+  "description": "Unified skill format with adapters for Cursor, Codex and Windsurf",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,6 +19,7 @@
     "skill",
     "cursor",
     "codex",
+    "windsurf",
     "cli"
   ],
   "license": "MIT",

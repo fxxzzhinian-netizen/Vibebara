@@ -30,11 +30,12 @@ from app.services.team_sync_service import TeamSyncService
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_TOOLS = {"cursor", "codex"}
+SUPPORTED_TOOLS = {"cursor", "codex", "windsurf"}
 GITIGNORE_BLOCK = [
     "# VibeHub local skill deployments",
     ".cursor/skills/",
     ".codex/skills/",
+    ".windsurf/skills/",
 ]
 
 
@@ -82,7 +83,9 @@ def _install_root(deploy_path: str, tool_type: str) -> Path:
         return root / ".cursor" / "skills"
     if tool_type == "codex":
         return root / ".codex" / "skills"
-    raise ValueError("tool_type must be cursor or codex")
+    if tool_type == "windsurf":
+        return root / ".windsurf" / "skills"
+    raise ValueError("tool_type must be cursor, codex or windsurf")
 
 
 def _ensure_gitignore(project_root: str) -> None:
@@ -382,7 +385,7 @@ async def deploy_project_skill(
 ) -> Dict[str, Any]:
     tool_type = tool_type.lower()
     if tool_type not in SUPPORTED_TOOLS:
-        return {"success": False, "error": "tool_type must be cursor or codex"}
+        return {"success": False, "error": "tool_type must be cursor, codex or windsurf"}
     if not deploy_path:
         return {"success": False, "error": "deploy_path is required"}
     if not Path(deploy_path).is_dir():
@@ -1202,7 +1205,7 @@ async def _build_artifact_payload(
     """
     tool = (tool or "").lower()
     if tool not in SUPPORTED_TOOLS:
-        return {"success": False, "error": "tool must be cursor or codex"}
+        return {"success": False, "error": "tool must be cursor, codex or windsurf"}
 
     async with async_session_factory() as session:
         pkg = await session.get(SkillPackage, skill_id)
@@ -1312,7 +1315,7 @@ async def register_deployment(
     """
     tool = (tool or "").lower()
     if tool not in SUPPORTED_TOOLS:
-        return {"success": False, "error": "tool must be cursor or codex"}
+        return {"success": False, "error": "tool must be cursor, codex or windsurf"}
     if not deploy_path:
         return {"success": False, "error": "deploy_path is required"}
     if not install_path:

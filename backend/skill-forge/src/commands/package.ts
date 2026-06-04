@@ -21,6 +21,7 @@ export interface PackageResult {
   installedAt: {
     cursor: boolean;
     codex: boolean;
+    windsurf: boolean;
   };
 }
 
@@ -62,6 +63,12 @@ function getCodexSkillsDir(): string {
   return path.join(home, ".codex", "skills");
 }
 
+function getWindsurfSkillsDir(): string {
+  const home =
+    process.env["HOME"] || process.env["USERPROFILE"] || "";
+  return path.join(home, ".codeium", "windsurf", "skills");
+}
+
 export async function packageSkill(
   skillDir: string,
 ): Promise<PackageResult> {
@@ -86,10 +93,12 @@ export async function packageSkill(
 
   const cursorDir = getCursorSkillsDir();
   const codexDir = getCodexSkillsDir();
+  const windsurfDir = getWindsurfSkillsDir();
 
   const installedAt = {
     cursor: await exists(path.join(cursorDir, id, "SKILL.md")),
     codex: await exists(path.join(codexDir, id, "SKILL.md")),
+    windsurf: await exists(path.join(windsurfDir, id, "SKILL.md")),
   };
 
   return {

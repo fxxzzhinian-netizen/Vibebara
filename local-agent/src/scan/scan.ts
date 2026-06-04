@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { cursorSkillsDir, codexSkillsDir } from "../platform";
+import { cursorSkillsDir, codexSkillsDir, windsurfSkillsDir } from "../platform";
 import type { UnifiedSkillPackage } from "../types";
 import { detectOrigin } from "./detect";
 import { parseFrontmatter, parseYaml } from "./frontmatter";
@@ -125,6 +125,7 @@ export function packageSkill(skillDir: string): UnifiedSkillPackage {
   const installedAt = {
     cursor: existsSync(path.join(cursorSkillsDir(), id, "SKILL.md")),
     codex: existsSync(path.join(codexSkillsDir(), id, "SKILL.md")),
+    windsurf: existsSync(path.join(windsurfSkillsDir(), id, "SKILL.md")),
   };
 
   return {

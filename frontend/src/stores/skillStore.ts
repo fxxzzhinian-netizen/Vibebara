@@ -42,11 +42,15 @@ export const useSkillStore = defineStore('skill-store', () => {
   const hasSkills = computed(() => skills.value.length > 0)
   const currentConfig = computed(() => currentDetail.value?.config ?? null)
 
-  /** 某 Skill 是否已装到本机 cursor/codex：编排形态优先本地代理 scan 结果，否则回退云端字段。 */
+  /** 某 Skill 是否已装到本机 cursor/codex/windsurf：编排形态优先本地代理 scan 结果，否则回退云端字段。 */
   function installedStatus(skill: NativeSkillItem): InstalledAtStatus {
     const local = platformInstalled.value[skill.id]
     if (isOrchestrationEnabled() && local) return local
-    return { cursor: skill.deployed_cursor, codex: skill.deployed_codex }
+    return {
+      cursor: skill.deployed_cursor,
+      codex: skill.deployed_codex,
+      windsurf: skill.deployed_windsurf,
+    }
   }
 
   /** 编排形态下刷新本机平台安装状态（本地代理探测）；非编排形态清空以回退云端字段。 */

@@ -57,6 +57,7 @@ export async function browseDirectory(path: string): Promise<BrowseResponse> {
 export interface InstalledAtStatus {
   cursor: boolean
   codex: boolean
+  windsurf: boolean
 }
 
 export interface UnifiedSkillPackage {

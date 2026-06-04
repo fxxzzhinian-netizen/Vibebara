@@ -110,9 +110,9 @@ const platformMeta = {
   },
   windsurf: {
     name: 'Windsurf',
-    color: '#f59e0b',
-    badge: '即将支持',
-    desc: 'Windsurf 适配器正在开发中，结构定义完成后将在此展示。',
+    color: '#06b6d4',
+    badge: 'SKILL.md frontmatter',
+    desc: 'Windsurf (Cascade) 与 Cursor 同构：含 SKILL.md（frontmatter: name + description）的文件夹。项目级落 .windsurf/skills/，全局级落 ~/.codeium/windsurf/skills/。不含 UI 元数据与 MCP 声明。',
   },
 }
 
@@ -200,7 +200,7 @@ const fieldsForPlatform = computed(() => {
                 <td class="field-name">{{ f.label }}</td>
                 <td class="support yes">✓</td>
                 <td class="support yes">✓</td>
-                <td class="support pending">—</td>
+                <td class="support yes">✓</td>
                 <td class="field-note">{{ f.editable ? '可在 Skill 编辑器中编辑' : '创建时确定' }}</td>
               </tr>
             </tbody>
@@ -225,49 +225,49 @@ const fieldsForPlatform = computed(() => {
                 <td class="field-name">ui.display_name</td>
                 <td class="support yes">✓</td>
                 <td class="support no">✗</td>
-                <td class="support pending">—</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml interface.display_name</td>
               </tr>
               <tr>
                 <td class="field-name">ui.short_description</td>
                 <td class="support yes">✓</td>
                 <td class="support no">✗</td>
-                <td class="support pending">—</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml interface.short_description</td>
               </tr>
               <tr>
                 <td class="field-name">ui.brand_color</td>
                 <td class="support yes">✓</td>
                 <td class="support no">✗</td>
-                <td class="support pending">—</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml interface.brand_color</td>
               </tr>
               <tr>
                 <td class="field-name">ui.default_prompt</td>
                 <td class="support yes">✓</td>
                 <td class="support no">✗</td>
-                <td class="support pending">—</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml interface.default_prompt</td>
               </tr>
               <tr>
                 <td class="field-name">ui.icon_small / icon_large</td>
                 <td class="support yes">✓</td>
                 <td class="support no">✗</td>
-                <td class="support pending">—</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml interface.icon_*</td>
               </tr>
               <tr>
                 <td class="field-name">dependencies.tools (MCP)</td>
                 <td class="support yes">✓</td>
                 <td class="support no">✗</td>
-                <td class="support pending">—</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml dependencies.tools</td>
               </tr>
               <tr>
                 <td class="field-name">metadata.surfaces</td>
                 <td class="support no">✗</td>
                 <td class="support yes">✓</td>
-                <td class="support pending">—</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ SKILL.md frontmatter metadata.surfaces</td>
               </tr>
             </tbody>
@@ -290,11 +290,14 @@ const fieldsForPlatform = computed(() => {
           请先在 Skill Forge 中选择一个 Skill，然后返回此页面编辑平台特有字段。
         </div>
 
-        <!-- Windsurf placeholder -->
-        <div v-else-if="activePlatform === 'windsurf'" class="coming-soon">
-          <div class="coming-icon">🚧</div>
-          <p>Windsurf 适配器正在开发中</p>
-          <p class="coming-sub">结构定义完成后将在此展示对应字段。</p>
+        <!-- Windsurf: build info (与 Cursor 同构，无平台特有可编辑字段) -->
+        <div v-else-if="activePlatform === 'windsurf'" class="build-info">
+          <h4>构建说明</h4>
+          <ul>
+            <li>与 Cursor 同构：输出含 <code>SKILL.md</code>（frontmatter: <code>name</code> + <code>description</code>）的文件夹</li>
+            <li>项目级落 <code>.windsurf/skills/{id}/</code>；全局级落 <code>~/.codeium/windsurf/skills/{id}/</code></li>
+            <li>不包含 UI 元数据、MCP 工具声明；无平台特有必填字段</li>
+          </ul>
         </div>
 
         <!-- Editable fields -->
@@ -461,7 +464,7 @@ const fieldsForPlatform = computed(() => {
 .seg-dot.overview { background: var(--text-muted); }
 .seg-dot.codex { background: #10b981; }
 .seg-dot.cursor { background: #6366f1; }
-.seg-dot.windsurf { background: #f59e0b; }
+.seg-dot.windsurf { background: #06b6d4; }
 
 /* Content */
 .page-content {

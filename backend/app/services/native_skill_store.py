@@ -35,6 +35,8 @@ CURSOR_SKILLS_DIR = Path.home() / ".cursor" / "skills"
 CODEX_SKILLS_DIR = Path(
     os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))
 ) / "skills"
+# Windsurf 全局 skill 目录在 ~/.codeium/windsurf/skills（不是 ~/.windsurf）。
+WINDSURF_SKILLS_DIR = Path.home() / ".codeium" / "windsurf" / "skills"
 
 
 def _now_iso() -> str:
@@ -310,11 +312,16 @@ class NativeSkillStore:
                 row.deployed_codex = (
                     CODEX_SKILLS_DIR / skill_id / "SKILL.md"
                 ).exists()
+                row.deployed_windsurf = (
+                    WINDSURF_SKILLS_DIR / skill_id / "SKILL.md"
+                ).exists()
             else:
                 if row.deployed_cursor is None:
                     row.deployed_cursor = False
                 if row.deployed_codex is None:
                     row.deployed_codex = False
+                if row.deployed_windsurf is None:
+                    row.deployed_windsurf = False
 
             await session.commit()
             await session.refresh(row)
@@ -1035,10 +1042,14 @@ class NativeSkillStore:
                 project_root = Path(dest_path)
                 if out_target == "cursor":
                     dest_root = project_root / ".cursor" / "skills"
+                elif out_target == "windsurf":
+                    dest_root = project_root / ".windsurf" / "skills"
                 else:
                     dest_root = project_root / ".codex" / "skills"
             elif out_target == "cursor":
                 dest_root = CURSOR_SKILLS_DIR
+            elif out_target == "windsurf":
+                dest_root = WINDSURF_SKILLS_DIR
             else:
                 dest_root = CODEX_SKILLS_DIR
 
@@ -1108,6 +1119,7 @@ class NativeSkillStore:
             "content_hash": row.content_hash,
             "deployed_cursor": row.deployed_cursor,
             "deployed_codex": row.deployed_codex,
+            "deployed_windsurf": row.deployed_windsurf,
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         }

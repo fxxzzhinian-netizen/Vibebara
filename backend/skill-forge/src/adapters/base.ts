@@ -5,15 +5,17 @@ export interface BuildResult {
   files: string[];
 }
 
+export type AdapterTarget = "cursor" | "codex" | "windsurf";
+
 export interface Adapter {
-  readonly target: "cursor" | "codex";
+  readonly target: AdapterTarget;
   build(config: UnifiedSkillConfig, outputDir: string): Promise<BuildResult>;
   getDeployDir(): string;
 }
 
 export function applyTargetOverrides(
   config: UnifiedSkillConfig,
-  target: "cursor" | "codex"
+  target: AdapterTarget
 ): UnifiedSkillConfig {
   const overrides = config.targets?.[target];
   if (!overrides) return config;

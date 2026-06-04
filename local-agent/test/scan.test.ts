@@ -100,6 +100,7 @@ describe("scanAndPackage", () => {
     // installedAt 形状存在
     expect(codex.installedAt).toHaveProperty("cursor");
     expect(codex.installedAt).toHaveProperty("codex");
+    expect(codex.installedAt).toHaveProperty("windsurf");
   });
 
   it("空目录 / 不存在目录 → 空数组", () => {

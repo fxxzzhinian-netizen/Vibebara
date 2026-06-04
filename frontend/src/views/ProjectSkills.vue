@@ -30,7 +30,7 @@ const showAddSkill = ref(false)
 const addError = ref('')
 const showDeployModal = ref(false)
 const deploySkillId = ref('')
-const deployTool = ref<'cursor' | 'codex'>('cursor')
+const deployTool = ref<'cursor' | 'codex' | 'windsurf'>('cursor')
 const deployPath = ref('')
 const deployOverwrite = ref(false)
 const deployError = ref('')
@@ -466,6 +466,7 @@ function goBack() {
             <select v-model="deployTool">
               <option value="cursor">Cursor</option>
               <option value="codex">Codex</option>
+              <option value="windsurf">Windsurf</option>
             </select>
           </div>
 

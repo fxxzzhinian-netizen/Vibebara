@@ -111,6 +111,29 @@ describe("handleWriteSkill", () => {
     expect(gi).toContain("# VibeHub local skill deployments");
     expect(gi).toContain(".cursor/skills/");
     expect(gi).toContain(".codex/skills/");
+    expect(gi).toContain(".windsurf/skills/");
+  });
+
+  it("Windsurf 项目部署：落盘到 .windsurf/skills/{id}", () => {
+    const deployPath = path.join(tmp, "project-ws");
+    fs.mkdirSync(deployPath, { recursive: true });
+    const ctx = makeCtx([deployPath]);
+
+    const res = handleWriteSkill(
+      {
+        deployPath,
+        scope: "project",
+        tool: "windsurf",
+        skillId: "ws-skill",
+        contents: { "SKILL.md": "---\nname: ws-skill\ndescription: d\n---\nbody\n" },
+        resources: [],
+        overwrite: true,
+      },
+      ctx,
+    );
+    const installPath = path.join(deployPath, ".windsurf", "skills", "ws-skill");
+    expect(res.installPath).toBe(installPath);
+    expect(fs.existsSync(path.join(installPath, "SKILL.md"))).toBe(true);
   });
 
   it("目录已存在且未 overwrite → INSTALL_EXISTS", () => {

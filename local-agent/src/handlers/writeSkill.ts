@@ -33,8 +33,8 @@ export function handleWriteSkill(
 ): WriteSkillResponse {
   // ---- 参数校验 ----
   const tool = input?.tool;
-  if (tool !== "cursor" && tool !== "codex") {
-    throw new AgentError("UNSUPPORTED_TOOL", "tool 必须为 cursor 或 codex");
+  if (tool !== "cursor" && tool !== "codex" && tool !== "windsurf") {
+    throw new AgentError("UNSUPPORTED_TOOL", "tool 必须为 cursor、codex 或 windsurf");
   }
   const scope = input?.scope;
   if (scope !== "project" && scope !== "platform") {

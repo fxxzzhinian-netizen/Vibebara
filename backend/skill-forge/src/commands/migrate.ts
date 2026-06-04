@@ -1,13 +1,21 @@
 import path from "node:path";
 import os from "node:os";
 import { packageSkill } from "./package.js";
+import type { Adapter } from "../adapters/base.js";
 import { CursorAdapter } from "../adapters/cursor.js";
 import { CodexAdapter } from "../adapters/codex.js";
+import { WindsurfAdapter } from "../adapters/windsurf.js";
 import { UnifiedSkillSchema } from "../schema/unified.js";
 import { ensureDir, copyDir, writeFile } from "../utils/fs.js";
 import { dumpYaml } from "../utils/yaml.js";
 
-export type MigrateTarget = "cursor" | "codex";
+export type MigrateTarget = "cursor" | "codex" | "windsurf";
+
+function adapterFor(target: MigrateTarget): Adapter {
+  if (target === "codex") return new CodexAdapter();
+  if (target === "windsurf") return new WindsurfAdapter();
+  return new CursorAdapter();
+}
 
 export interface MigrateOptions {
   sourcePath: string;
@@ -43,8 +51,7 @@ export async function migrateSkill(
 
   const validatedConfig = UnifiedSkillSchema.parse(pkg.config);
 
-  const adapter =
-    targetPlatform === "cursor" ? new CursorAdapter() : new CodexAdapter();
+  const adapter = adapterFor(targetPlatform);
   const deployRoot = outputDir ?? adapter.getDeployDir();
 
   const tmpDir = path.join(

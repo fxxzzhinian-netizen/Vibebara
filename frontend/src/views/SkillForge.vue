@@ -17,7 +17,7 @@ const newSkillDesc = ref('')
 const createError = ref('')
 
 const deployMode = ref<'platform' | 'project'>('platform')
-const deployTarget = ref<'cursor' | 'codex'>('cursor')
+const deployTarget = ref<'cursor' | 'codex' | 'windsurf'>('cursor')
 const deploying = ref(false)
 const deployMsg = ref('')
 
@@ -57,7 +57,14 @@ function confirmDirPick() {
   showDirPicker.value = false
 }
 
-const previewTarget = ref<'cursor' | 'codex'>('cursor')
+const previewTarget = ref<'cursor' | 'codex' | 'windsurf'>('cursor')
+
+/** 工具展示名（用于部署提示文案）。 */
+const TOOL_LABELS: Record<'cursor' | 'codex' | 'windsurf', string> = {
+  cursor: 'Cursor',
+  codex: 'Codex',
+  windsurf: 'Windsurf',
+}
 const previewData = ref<{ target: string; contents: Record<string, string> }[]>([])
 const showPreview = ref(false)
 const previewLoading = ref(false)
@@ -119,7 +126,7 @@ async function handleDelete() {
   await store.removeSkill(store.currentId)
 }
 
-function getPlatformSpecificMissing(target: 'cursor' | 'codex'): string[] {
+function getPlatformSpecificMissing(target: 'cursor' | 'codex' | 'windsurf'): string[] {
   if (!cfg.value) return []
   const missing: string[] = []
   if (target === 'codex') {
@@ -128,6 +135,8 @@ function getPlatformSpecificMissing(target: 'cursor' | 'codex'): string[] {
     if (!cfg.value.ui?.default_prompt) missing.push('ui.default_prompt')
   } else if (target === 'cursor') {
     // Cursor 特有字段目前无必填项（surfaces 可选）
+  } else if (target === 'windsurf') {
+    // Windsurf 与 Cursor 同构（SKILL.md: name+description），无平台特有必填项
   }
   return missing
 }
@@ -176,17 +185,23 @@ async function doDeploy() {
     const destPath = deployMode.value === 'project' ? projectDeployPath.value : undefined
     const res = await store.deploy(store.currentId, deployTarget.value, destPath)
     if (res.success) {
+      const toolLabel = TOOL_LABELS[deployTarget.value]
       if (deployMode.value === 'project') {
-        deployMsg.value = `已部署，正在打开 ${deployTarget.value === 'cursor' ? 'Cursor' : 'Codex'}...`
-        const tool = deployTarget.value === 'cursor' ? 'cursor' : 'codex-app'
-        try {
-          await launchTool({ tool, project_path: projectDeployPath.value })
-          deployMsg.value = `已部署并打开 ${deployTarget.value === 'cursor' ? 'Cursor' : 'Codex'}`
-        } catch {
-          deployMsg.value = '已部署，但打开平台失败，请手动打开'
+        // 启动器本轮仅支持 cursor/codex；windsurf 部署成功但不自动打开。
+        if (deployTarget.value === 'windsurf') {
+          deployMsg.value = `已部署到项目 .windsurf/skills（请在 Windsurf 中手动打开项目）`
+        } else {
+          deployMsg.value = `已部署，正在打开 ${toolLabel}...`
+          const tool = deployTarget.value === 'cursor' ? 'cursor' : 'codex-app'
+          try {
+            await launchTool({ tool, project_path: projectDeployPath.value })
+            deployMsg.value = `已部署并打开 ${toolLabel}`
+          } catch {
+            deployMsg.value = '已部署，但打开平台失败，请手动打开'
+          }
         }
       } else {
-        deployMsg.value = `已部署到 ${deployTarget.value === 'cursor' ? 'Cursor' : 'Codex'} 平台`
+        deployMsg.value = `已部署到 ${toolLabel} 平台`
       }
     } else {
       deployMsg.value = res.error || '部署失败'
@@ -329,6 +344,7 @@ onMounted(() => {
             <span v-if="s.imported_from" class="item-origin">{{ s.imported_from }}</span>
             <span :class="['deploy-dot', { on: store.installedStatus(s).cursor }]" title="Cursor"></span>
             <span :class="['deploy-dot codex', { on: store.installedStatus(s).codex }]" title="Codex"></span>
+            <span :class="['deploy-dot windsurf', { on: store.installedStatus(s).windsurf }]" title="Windsurf"></span>
           </div>
         </li>
       </ul>
@@ -366,6 +382,7 @@ onMounted(() => {
               <select v-model="previewTarget" class="sm-select">
                 <option value="cursor">Cursor</option>
                 <option value="codex">Codex</option>
+                <option value="windsurf">Windsurf</option>
               </select>
               <button class="btn tool-btn preview" @click="handlePreview">预览</button>
             </div>
@@ -378,6 +395,7 @@ onMounted(() => {
               <select v-model="deployTarget" class="sm-select target-select">
                 <option value="cursor">Cursor</option>
                 <option value="codex">Codex</option>
+                <option value="windsurf">Windsurf</option>
               </select>
               <button
                 v-if="deployMode === 'project'"
@@ -836,6 +854,7 @@ onMounted(() => {
 
 .deploy-dot.on { background: var(--success); }
 .deploy-dot.codex.on { background: #10b981; }
+.deploy-dot.windsurf.on { background: #06b6d4; }
 
 /* ===== Editor main ===== */
 .editor-main {

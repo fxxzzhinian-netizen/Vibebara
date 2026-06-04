@@ -186,6 +186,7 @@ class SkillRegistry:
                 "installed_at": {
                     "cursor": installed.get("cursor", False),
                     "codex": installed.get("codex", False),
+                    "windsurf": installed.get("windsurf", False),
                 },
             })
         return result

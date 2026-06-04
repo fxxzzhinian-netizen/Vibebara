@@ -1,6 +1,6 @@
 # skill-forge
 
-Unified skill authoring tool for **Cursor** and **Codex**. Define your skill once, build and deploy to both platforms.
+Unified skill authoring tool for **Cursor**, **Codex** and **Windsurf**. Define your skill once, build and deploy to all platforms.
 
 ## Install
 
@@ -31,6 +31,7 @@ skill-forge validate
 ```bash
 skill-forge build --target cursor
 skill-forge build --target codex
+skill-forge build --target windsurf
 skill-forge build --target all
 ```
 
@@ -39,8 +40,9 @@ Output goes to `dist-skill/<target>/`.
 ### Deploy to platform
 
 ```bash
-skill-forge deploy --target cursor   # -> ~/.cursor/skills/
-skill-forge deploy --target codex    # -> ~/.codex/skills/
+skill-forge deploy --target cursor     # -> ~/.cursor/skills/
+skill-forge deploy --target codex      # -> ~/.codex/skills/
+skill-forge deploy --target windsurf   # -> ~/.codeium/windsurf/skills/
 ```
 
 ### Import an existing skill
@@ -82,7 +84,19 @@ targets:
     description: "Override for Cursor"
   codex:
     description: "Override for Codex"
+  windsurf:
+    description: "Override for Windsurf"
 ```
+
+## Windsurf notes
+
+Windsurf (Cascade, Wave 8+) skills use the same `SKILL.md` folder format as Cursor
+(frontmatter: `name` + `description`). Deploy directories:
+
+- workspace/project: `{project}/.windsurf/skills/{id}/`
+- global: `~/.codeium/windsurf/skills/{id}/` (note: under `~/.codeium`, not `~/.windsurf`)
+
+`migrate --target windsurf` is also supported.
 
 ## Development
 

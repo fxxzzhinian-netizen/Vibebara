@@ -207,7 +207,9 @@ function toWriteResources(items: CloudResourceItem[] | undefined): ResourcePaylo
 }
 
 function asTool(t: string): ToolType {
-  return t === 'codex' ? 'codex' : 'cursor'
+  if (t === 'codex') return 'codex'
+  if (t === 'windsurf') return 'windsurf'
+  return 'cursor'
 }
 
 // ===================== 编排：项目 Skill 部署（M0 §3.1）=====================
@@ -485,32 +487,36 @@ export async function migrateSkillOrchestrated(
 // ===================== 平台安装状态（决定①：deployed_* 降级为 scan.installedAt）=====================
 
 /**
- * 经本地代理实时探测「某 Skill 是否已装到本机 cursor/codex」（决定①）。
+ * 经本地代理实时探测「某 Skill 是否已装到本机 cursor/codex/windsurf」（决定①）。
  *
- * 薄代理形态下 `SkillPackage.deployed_cursor/codex` 由后端探测后端机器 home 得来，cloud 下
- * 无意义；改由本地代理扫描**用户机器**的平台 skill 目录（health.platformSkillDirs），按
- * `scan.installedAt` 汇总每个 skillId 的安装状态。前端展示点据此覆盖 deployed_* 展示。
+ * 薄代理形态下 `SkillPackage.deployed_cursor/codex/windsurf` 由后端探测后端机器 home 得来，
+ * cloud 下无意义；改由本地代理扫描**用户机器**的平台 skill 目录（health.platformSkillDirs），
+ * 按 `scan.installedAt` 汇总每个 skillId 的安装状态。前端展示点据此覆盖 deployed_* 展示。
  *
- * 返回 `{ [skillId]: { cursor, codex } }`；本地代理不可达/目录为空时返回空表（调用方回退）。
+ * 返回 `{ [skillId]: { cursor, codex, windsurf } }`；本地代理不可达/目录为空时返回空表（调用方回退）。
  */
 export async function getPlatformInstalledStatus(): Promise<
   Record<string, InstalledAtStatus>
 > {
   const map: Record<string, InstalledAtStatus> = {}
-  let dirs: { cursor: string; codex: string }
+  let dirs: { cursor: string; codex: string; windsurf: string }
   try {
     const h = await localAgent.health()
     dirs = h.platformSkillDirs
   } catch {
     return map
   }
-  // 扫描两个平台目录；每个包的 installedAt 已对两个平台目录各自探测，直接汇总即可。
-  for (const dir of [dirs.cursor, dirs.codex]) {
+  // 扫描三个平台目录；每个包的 installedAt 已对三个平台目录各自探测，直接汇总即可。
+  for (const dir of [dirs.cursor, dirs.codex, dirs.windsurf]) {
     if (!dir) continue
     try {
       const res = await localAgent.scan({ rootDir: dir })
       for (const p of res.packages) {
-        map[p.id] = { cursor: p.installedAt.cursor, codex: p.installedAt.codex }
+        map[p.id] = {
+          cursor: p.installedAt.cursor,
+          codex: p.installedAt.codex,
+          windsurf: p.installedAt.windsurf,
+        }
       }
     } catch {
       // 平台目录可能不存在/为空 → 忽略，对应 skill 视为未安装

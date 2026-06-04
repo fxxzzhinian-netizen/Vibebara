@@ -249,6 +249,7 @@ async function importToPlatform(pkg: UnifiedSkillPackage) {
 function originLabel(o: string): string {
   if (o === 'cursor') return 'Cursor'
   if (o === 'codex') return 'Codex'
+  if (o === 'windsurf') return 'Windsurf'
   return '未知'
 }
 
@@ -335,6 +336,8 @@ function pathSegments(p: string) {
                 <span class="dot-label">C</span>
                 <span :class="['dot', { active: pkg.installed_at.codex }]" title="Codex"></span>
                 <span class="dot-label">X</span>
+                <span :class="['dot', { active: pkg.installed_at.windsurf }]" title="Windsurf"></span>
+                <span class="dot-label">W</span>
               </div>
               <div class="import-action">
                 <button

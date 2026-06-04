@@ -24,7 +24,8 @@
     "local-agent",
     "skill",
     "cursor",
-    "codex"
+    "codex",
+    "windsurf"
   ],
   "dependencies": {
     "js-yaml": "^4.1.0",
