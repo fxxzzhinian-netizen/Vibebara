@@ -42,6 +42,23 @@ export const UnifiedSkillSchema = z.object({
     })
     .default({}),
 
+  // Claude Code 专有运行时 frontmatter 字段（与 Codex 专有的 `ui` 块平行）。
+  // 构建到 Cursor/Codex/Windsurf 时整体丢弃；详见 docs/skill-forge-design.md §五。
+  claude: z
+    .object({
+      allowedTools: z.union([z.string(), z.array(z.string())]).optional(),
+      disallowedTools: z.union([z.string(), z.array(z.string())]).optional(),
+      userInvocable: z.boolean().optional(),
+      argumentHint: z.string().optional(),
+      model: z.string().optional(),
+      effort: z.string().optional(),
+      context: z.enum(["inline", "fork"]).optional(),
+      agent: z.string().optional(),
+      whenToUse: z.string().optional(),
+      hooks: z.record(z.unknown()).optional(),
+    })
+    .default({}),
+
   dependencies: z
     .object({
       tools: z.array(ToolDependencySchema).default([]),
@@ -53,6 +70,17 @@ export const UnifiedSkillSchema = z.object({
       scripts: z.array(z.string()).default([]),
       references: z.array(z.string()).default([]),
       assets: z.array(z.string()).default([]),
+    })
+    .default({}),
+
+  // Agent Skills 标准元数据（跨平台）。各平台按支持情况选择性输出，详见设计文档矩阵。
+  metadata: z
+    .object({
+      license: z.string().optional(),
+      compatibility: z.string().optional(),
+      author: z.string().optional(),
+      version: z.string().optional(),
+      surfaces: z.array(z.string()).optional(),
     })
     .default({}),
 

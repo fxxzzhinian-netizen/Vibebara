@@ -1,8 +1,12 @@
 # AI 编程助手 Skill / 指令系统跨平台调研
 
-> 调研时间：2026-05-26  
+> 调研时间：2026-05-26（2026-06-04 增补更正）  
 > 覆盖平台：Cursor、OpenAI Codex CLI、Claude Code、GitHub Copilot、Windsurf、Cline、Aider、Continue.dev  
 > 背景：2025-12 Anthropic 发布 **Agent Skills 开放标准**（SKILL.md 格式），已被 30+ 工具采纳，正在成为 AI Agent 插件事实标准
+
+> **2026-06-04 更正**：本文原结论「Windsurf 无正式 Skill 系统」已**过时**。Windsurf Cascade 现已**原生支持 Agent Skills 标准的 skill 系统**——
+> 工作区 `.windsurf/skills/<name>/SKILL.md`、全局 `~/.codeium/windsurf/skills/<name>/SKILL.md`、企业系统级只读路径，frontmatter 仅需 `name`+`description`，渐进式披露，附带文件随技能加载。
+> 下文 §2.5 与总览表中关于 Windsurf 的「无 Skill 系统」表述请以本更正为准。
 
 ---
 
@@ -13,12 +17,12 @@
 | **运行环境** | IDE（桌面） | 终端 | 终端 | VS Code / GitHub | IDE（桌面） | VS Code 扩展 | 终端 | VS Code / JetBrains |
 | **核心指令文件** | `SKILL.md` | `AGENTS.md` + `SKILL.md` | `CLAUDE.md` | `copilot-instructions.md` | `.windsurfrules` | `.clinerules` | `CONVENTIONS.md` | `.continuerules` |
 | **指令格式** | Markdown + YAML frontmatter | 纯 MD（AGENTS）/ YAML frontmatter（SKILL） | 纯 Markdown | 纯 Markdown / YAML frontmatter | Markdown + YAML frontmatter | Markdown + YAML frontmatter | 纯 Markdown | Markdown + YAML frontmatter |
-| **正式 Skill 系统** | 有 | 有（与 Cursor 共享 + openai.yaml 扩展） | 有（rules/ + hooks + sub-agents） | 有（SKILL.md + .agent.md + plugin.json） | 无 | 无（有 skills/ 目录但非正式体系） | 无 | 无（有 Context Provider） |
+| **正式 Skill 系统** | 有 | 有（与 Cursor 共享 + openai.yaml 扩展） | 有（rules/ + hooks + sub-agents） | 有（SKILL.md + .agent.md + plugin.json） | 有（`.windsurf/skills/` SKILL.md，2026 起，详见更正） | 无（有 skills/ 目录但非正式体系） | 无 | 无（有 Context Provider） |
 | **脚本/资源捆绑** | 有 | 有（+ LICENSE + 依赖声明） | 无 | 无 | 无 | 无 | 无 | 无 |
 | **UI 元数据** | 无独立文件 | `agents/openai.yaml` | 无 | `plugin.json` | 无 | 无 | 无 | 无 |
 | **触发机制** | Agent 自动判断 | `$skill-name` 显式 / description 隐式 | 自动加载 + 路径过滤 | 自动加载 | always / glob / model_decision / manual | always / glob / manual | 需显式 `--read` | always / glob / manual |
-| **项目级配置** | `.cursor/skills/` | `.codex/skills/` | `.claude/` | `.github/copilot/` | `.windsurf/rules/` | `.clinerules/` | `.aider.conf.yml` | `.continue/` |
-| **全局配置** | `~/.cursor/skills/` | `~/.codex/skills/` | `~/.claude/` | VS Code settings | `~/.codeium/windsurf/` | `~/.cline/rules/` | `~/.aider.conf.yml` | `~/.continue/` |
+| **项目级配置** | `.cursor/skills/` | `.codex/skills/` | `.claude/` | `.github/copilot/` | `.windsurf/skills/` + `.windsurf/rules/` | `.clinerules/` | `.aider.conf.yml` | `.continue/` |
+| **全局配置** | `~/.cursor/skills/` | `~/.codex/skills/` | `~/.claude/` | VS Code settings | `~/.codeium/windsurf/skills/` | `~/.cline/rules/` | `~/.aider.conf.yml` | `~/.continue/` |
 | **MCP 支持** | 原生 | 是（stdio + HTTP） | 是（stdio + HTTP + SSE） | 通过 Extensions | 是 | 是（一等公民） | 无原生支持 | 是 |
 | **级联/继承** | 目录扫描 | 就近覆盖 | 合并（不覆盖） | 无级联 | Git root 向上搜索 | 工作区优先合并 | 配置文件层叠 | 无级联 |
 | **跨工具兼容** | — | 支持 AGENTS.md | 支持 SKILL.md | 支持 SKILL.md / AGENTS.md | 支持 AGENTS.md | 检测 .cursorrules / .windsurfrules / AGENTS.md | — | — |
@@ -410,20 +414,33 @@ GitHub Copilot 现已支持读取 `SKILL.md` 和 `AGENTS.md`，这意味着为 C
 
 ---
 
-### 2.5 Windsurf (Codeium) — 规则 + 记忆系统
+### 2.5 Windsurf (Codeium) — Skill + 规则 + 记忆系统
+
+> **2026-06-04 更正**：Windsurf Cascade 现已原生支持 **Agent Skills 标准的 skill 系统**（与 Cursor/Codex/Claude 同源的 `SKILL.md` 文件夹格式）。
+> Skill 与 rules 是**两套独立机制**：skill 是带 `scripts/`/`references/`/`assets/` 的可复用技能包，rules 是带触发器（`always_on`/`glob`/`model_decision`/`manual`）的行为规则。
+> Skill 目录：工作区 `.windsurf/skills/<name>/SKILL.md`、全局 `~/.codeium/windsurf/skills/<name>/SKILL.md`、企业系统级只读路径（macOS `/Library/Application Support/Windsurf/skills/`、Windows `C:\ProgramData\Windsurf\skills\`、Linux/WSL `/etc/windsurf/skills/`）。
+> Skill frontmatter 官方仅要求 `name`+`description`，渐进式披露，附带文件随技能调用（或 `@mention`）加载。
 
 #### 目录结构
 
 ```
 project/
-├── .windsurfrules              # 旧格式（向后兼容，无触发器）
+├── .windsurfrules              # 旧格式规则（向后兼容，无触发器）
 ├── AGENTS.md                   # 跨工具兼容（根级 = always-on）
 └── .windsurf/
+    ├── skills/                 # 【2026 起】Skill 系统（Agent Skills 标准）
+    │   └── deploy-to-production/
+    │       ├── SKILL.md        # 仅需 name + description frontmatter
+    │       ├── deployment-checklist.md
+    │       └── config-template.yaml
     └── rules/                  # 目录规则（支持触发器，限 12K 字符/文件）
         ├── general.md
         └── react.md
 
-~/.codeium/windsurf/memories/
+~/.codeium/windsurf/
+├── skills/                     # 【2026 起】全局 Skill（所有工作区可用，不随仓库提交）
+│   └── my-skill/SKILL.md
+└── memories/
     └── global_rules.md         # 全局规则（限 6K 字符）
 ```
 
@@ -682,7 +699,7 @@ Windsurf、Cline、Continue.dev 均采用类似的条件激活模式，但字段
 
 | 文件 | 支持的平台 |
 |------|-----------|
-| `SKILL.md` | Cursor、Codex CLI、Claude Code、GitHub Copilot |
+| `SKILL.md` | Cursor、Codex CLI、Claude Code、GitHub Copilot、Windsurf（2026 起） |
 | `AGENTS.md` | Codex CLI、Windsurf、Cline、GitHub Copilot |
 
 这两个文件正在成为 AI Agent 插件生态的**事实标准**。

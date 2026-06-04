@@ -39,6 +39,12 @@ export class CursorAdapter implements Adapter {
       await copyResourceDirs(sourceRoot, skillDir, config.resources.references);
       files.push(...config.resources.references.map((r: string) => r + "*"));
     }
+    // 复制通用资源（图标等平台特有资源在 assets 列表里时也会复制，由抽象包负责不声明
+    // Cursor 不需要的图标；与 Codex/Claude/Windsurf 资源复制约定对齐）。
+    if (config.resources.assets.length > 0) {
+      await copyResourceDirs(sourceRoot, skillDir, config.resources.assets);
+      files.push(...config.resources.assets.map((a: string) => a + "*"));
+    }
 
     return { outputDir: skillDir, files };
   }

@@ -68,4 +68,31 @@ describe("WindsurfAdapter", () => {
       path.join(os.homedir(), ".codeium", "windsurf", "skills")
     );
   });
+
+  it("emits only name + description, leaking no other platform fields", async () => {
+    const rich = UnifiedSkillSchema.parse({
+      name: "test-skill",
+      description: "A test skill for Windsurf",
+      instructions: "# Test Skill\n\nDo the thing.",
+      triggers: { disableModelInvocation: true },
+      metadata: { license: "MIT", surfaces: ["ide"], author: "vibehub" },
+      ui: { brandColor: "#3B82F6", defaultPrompt: "Use $test-skill" },
+      claude: { allowedTools: "Read", model: "opus", context: "fork" },
+    });
+    const result = await adapter.build(rich, tmpDir);
+    const skillMd = await fs.readFile(
+      path.join(result.outputDir, "SKILL.md"),
+      "utf-8"
+    );
+    const { frontmatter } = parseFrontmatter(skillMd);
+
+    expect(Object.keys(frontmatter).sort()).toEqual(["description", "name"]);
+
+    await expect(
+      fs.access(path.join(result.outputDir, "agents", "openai.yaml"))
+    ).rejects.toThrow();
+    await expect(
+      fs.access(path.join(result.outputDir, "LICENSE.txt"))
+    ).rejects.toThrow();
+  });
 });

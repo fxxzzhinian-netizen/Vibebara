@@ -80,10 +80,13 @@ export async function packageSkill(
   skillDir: string,
 ): Promise<PackageResult> {
   const id = path.basename(skillDir);
+  // detectOrigin 直接基于 skillDir 路径做主信号判定（无需额外路径上下文）。
   const detection = await detectOrigin(skillDir);
 
+  // unknown 用中性的 windsurf 解析（纯 name + description + body），
+  // 不再假设为 codex，避免误套 Codex 专有解析逻辑。
   const importFrom =
-    detection.origin === "unknown" ? "codex" : detection.origin;
+    detection.origin === "unknown" ? "windsurf" : detection.origin;
 
   const { config: rawConfig } = await importSkill({
     from: importFrom,

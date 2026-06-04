@@ -9,13 +9,17 @@ import { writeFile, copyResourceDirs } from "../utils/fs.js";
 /**
  * Windsurf (Cascade) skill adapter.
  *
- * Windsurf Wave 8+ supports skills in the same SKILL.md folder format as
- * Cursor: a directory containing SKILL.md (YAML frontmatter: name + description)
- * plus any supporting files. Cascade loads the full content only when the skill
- * is invoked or @mentioned (progressive disclosure).
+ * Windsurf Cascade 现已原生支持 Agent Skills 标准的 skill 系统，与 Cursor 同源的
+ * SKILL.md 文件夹格式：目录含 SKILL.md（YAML frontmatter）+ 任意附带文件。Cascade
+ * 采用渐进式披露：默认只读取 name + description，技能被调用或 @mention 时才加载全文。
+ *
+ * 严格约束（docs/skill-forge-design.md §六）：Windsurf 官方 frontmatter 仅文档化
+ * `name` + `description`。本适配器**只输出这两个字段**，不泄漏 Cursor 的
+ * disable-model-invocation、Codex 的 openai.yaml、Claude 的运行时字段或任何
+ * metadata，忠于官方规范。附带 scripts/references/assets 全部复制。
  *
  * Deploy dirs:
- *   - workspace: {project}/.windsurf/skills/  (handled by callers, mirrors .cursor/.codex)
+ *   - workspace: {project}/.windsurf/skills/  (handled by callers)
  *   - global:    ~/.codeium/windsurf/skills/  (note: under ~/.codeium, not ~/.windsurf)
  */
 export class WindsurfAdapter implements Adapter {
@@ -29,6 +33,7 @@ export class WindsurfAdapter implements Adapter {
     const skillDir = path.join(outputDir, config.name);
     const files: string[] = [];
 
+    // 严格只输出 name + description，其余字段精确丢弃。
     const frontmatter: Record<string, unknown> = {
       name: config.name,
       description: config.description,
@@ -39,17 +44,11 @@ export class WindsurfAdapter implements Adapter {
     files.push("SKILL.md");
 
     const sourceRoot = process.cwd();
-    if (config.resources.scripts.length > 0) {
-      await copyResourceDirs(sourceRoot, skillDir, config.resources.scripts);
-      files.push(...config.resources.scripts.map((s: string) => s + "*"));
-    }
-    if (config.resources.references.length > 0) {
-      await copyResourceDirs(sourceRoot, skillDir, config.resources.references);
-      files.push(...config.resources.references.map((r: string) => r + "*"));
-    }
-    if (config.resources.assets.length > 0) {
-      await copyResourceDirs(sourceRoot, skillDir, config.resources.assets);
-      files.push(...config.resources.assets.map((a: string) => a + "*"));
+    for (const key of ["scripts", "references", "assets"] as const) {
+      if (config.resources[key].length > 0) {
+        await copyResourceDirs(sourceRoot, skillDir, config.resources[key]);
+        files.push(...config.resources[key].map((d: string) => `${d}*`));
+      }
     }
 
     return { outputDir: skillDir, files };

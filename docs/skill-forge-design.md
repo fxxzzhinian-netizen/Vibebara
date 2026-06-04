@@ -1,7 +1,7 @@
 # Skill Forge — 抽象 Skill 包 & 多平台构建设计
 
-> 版本：v0.2 (Confirmed)  
-> 目标平台：Cursor、Codex CLI（后续可扩展）
+> 版本：v0.3 (Confirmed)  
+> 目标平台：Cursor、Codex CLI、Claude Code、Windsurf Cascade
 
 ---
 
@@ -10,8 +10,18 @@
 1. 定义一个**平台无关的抽象 Skill 包**格式（`skill.config.yaml` + `VibeH.md`），作为所有平台信息的**超集**
 2. 针对每个目标平台，定义**严格的构建规则**——生成的产物必须 100% 符合该平台规范，不含任何其他平台的文件或字段
 3. 构建过程是**有损转换**——目标平台不支持的字段和文件会被精确丢弃
-4. 支持**反向导入**——从任意已支持平台（Codex/Cursor）的原生 skill 解析为抽象包，这是平台核心能力
+4. 支持**反向导入**——从任意已支持平台（Cursor / Codex / Claude / Windsurf）的原生 skill 解析为抽象包，这是平台核心能力
 5. 明确区分**仓库快照**、**项目 Skill 列表**与**用户部署实例**——导入仓库后不再监听原始来源目录；用户部署后才监听其本地部署目录
+6. **CC（Claude Code）与 Windsurf 必须按各自平台真实的 skill 结构构建/导入**，不再退化为 Cursor 的「最小公分母」克隆——Claude 完整 round-trip 其专有 frontmatter，Windsurf 忠于其官方 `name`+`description` 规范
+
+### 四平台概览
+
+| 平台 | 全局 skill 目录 | 项目 skill 目录 | frontmatter 复杂度 | 平台特有产物 |
+|------|----------------|----------------|--------------------|--------------|
+| Cursor | `~/.cursor/skills/` | `{ws}/.cursor/skills/` | 低（name/description/`disable-model-invocation`） | — |
+| Codex CLI | `~/.codex/skills/`（或 `$CODEX_HOME/skills/`） | `{ws}/.codex/skills/` | 低（SKILL.md 仅 name/description） | `agents/openai.yaml`、`LICENSE.txt` |
+| Claude Code | `~/.claude/skills/` | `{ws}/.claude/skills/` | **高**（标准超集 + 运行时扩展 15+ 字段） | 无独立文件，全部写入 frontmatter |
+| Windsurf | `~/.codeium/windsurf/skills/` | `{ws}/.windsurf/skills/` | 低（官方仅 name/description） | — |
 
 ---
 
@@ -31,10 +41,10 @@ my-skill/
 ├── references/                 # 可选
 │   └── api-spec.md
 ├── assets/                     # 可选
-│   ├── icon-small.svg          # 小图标（Codex 用，Cursor 构建时丢弃）
-│   ├── icon-large.svg          # 大图标（Codex 用，Cursor 构建时丢弃）
+│   ├── icon-small.svg          # 小图标（Codex 用，Cursor/Claude/Windsurf 构建时丢弃）
+│   ├── icon-large.svg          # 大图标（Codex 用，Cursor/Claude/Windsurf 构建时丢弃）
 │   └── template.png            # 通用资源（所有平台保留）
-└── LICENSE                     # 可选（仅 Codex 构建时输出）
+└── LICENSE                     # 可选（仅 Codex 构建时输出为 LICENSE.txt）
 ```
 
 ### 2.2 `skill.config.yaml` Schema
@@ -49,7 +59,7 @@ description: >-                       # 必需 | 最长 1024 字符
   Agent 据此判断是否激活该技能。
 
 # ============================================================
-# UI / 展示元数据
+# UI / 展示元数据（Codex 专有，构建到其他平台时丢弃）
 # ============================================================
 ui:
   display_name: "My Skill"            # 可选 | UI 显示名（人类可读）
@@ -66,6 +76,31 @@ ui:
 policy:
   auto_invoke: true                   # 可选 | 是否允许 Agent 自动激活（默认 true）
                                       # false = 仅显式调用时加载
+                                      # 映射：Cursor / Claude → disable-model-invocation
+                                      #       Codex          → policy.allow_implicit_invocation
+
+# ============================================================
+# Claude Code 专有运行时字段（构建到其他平台时丢弃）
+# 与 Codex 专有的 `ui:` 块平行，承载 Claude SKILL.md 的扩展 frontmatter
+# ============================================================
+claude:
+  allowed_tools: "Read, Grep, Glob"   # 可选 | 技能激活时免确认的工具（空格/逗号分隔或 YAML 列表）
+                                      #        支持 Bash(git *) 等模式；属 Agent Skills 标准但实验性，
+                                      #        当前仅 Claude 输出
+  disallowed_tools: "AskUserQuestion" # 可选 | 技能激活时从工具池移除（Claude 专有）
+  user_invocable: true                # 可选 | false 则隐藏于 / 菜单（背景知识，默认 true）
+  argument_hint: "<environment>"      # 可选 | 调用时的参数自动补全提示
+  model: "sonnet"                     # 可选 | 模型覆盖（haiku/sonnet/opus 或完整模型 ID）
+  effort: "high"                      # 可选 | 推理努力级别（low/medium/high/max）
+  context: "fork"                     # 可选 | inline（默认）| fork（在隔离子代理中运行）
+  agent: "Explore"                    # 可选 | context: fork 时的子代理类型（Explore/Plan/general-purpose）
+  when_to_use: "Use when user asks to deploy."  # 可选 | 自然语言触发提示（与 description 合并计入列表预算）
+  hooks:                              # 可选 | 技能范围内的 Hooks（与 settings.json hooks 同 schema）
+    PreToolUse:
+      - matcher: "Bash(git commit)"
+        hooks:
+          - type: command
+            command: "./scripts/validate.sh"
 
 # ============================================================
 # 依赖声明
@@ -73,7 +108,7 @@ policy:
 dependencies:
   skills:                             # 可选 | 依赖的其他技能
     - "$imagegen"
-  tools:                              # 可选 | 依赖的外部工具
+  tools:                              # 可选 | 依赖的外部工具（Codex openai.yaml 用）
     - type: "mcp"
       name: "github"
       transport: "streamable_http"
@@ -99,30 +134,69 @@ resources:
 # 元数据
 # ============================================================
 metadata:
-  license: "MIT"                      # 可选
-  author: "your-name"                 # 可选
-  version: "1.0.0"                    # 可选
+  license: "MIT"                      # 可选 | Codex → LICENSE.txt；Claude → frontmatter license
+  compatibility: "Requires Node 20+"  # 可选 | Agent Skills 标准；Claude → frontmatter compatibility
+  author: "your-name"                 # 可选 | Claude → frontmatter metadata.author
+  version: "1.0.0"                    # 可选 | Claude → frontmatter metadata.version
   tags: ["coding", "review"]          # 可选
   surfaces: ["ide"]                   # 可选 | Cursor 特有：限定适用界面
 ```
+
+> **Schema 字段归属约定**
+>
+> - **共用字段**：`name`、`description`、`policy.auto_invoke`、`dependencies`、`resources`、`metadata`。
+> - **`ui:` 块**：Codex 专有（品牌、图标、默认提示词），构建到 Cursor/Claude/Windsurf 时整体丢弃。
+> - **`claude:` 块**：Claude Code 专有运行时字段，构建到 Cursor/Codex/Windsurf 时整体丢弃。
+> - **`policy.auto_invoke` 跨平台复用**：Cursor 与 Claude 共用同一语义（`auto_invoke: false` → `disable-model-invocation: true`）；Codex 映射为 `policy.allow_implicit_invocation`；Windsurf 无对应字段（忽略）。
+> - `allowed_tools` / `disallowed_tools` 虽属 Agent Skills 标准（experimental），但当前仅 Claude 实际消费，故归入 `claude:` 块，避免暗示 Cursor/Codex/Windsurf 也会输出。
+>
+> **与代码 schema（`unified.ts`）的对应**：现有 `unified.ts` 用 `triggers.disableModelInvocation`（对应本文 `policy.auto_invoke` 取反）与 `triggers.allowImplicitInvocation`，并已有 `ui`、`dependencies`、`resources`、`targets` 块。本设计新增 `claude` 块与 `metadata` 标准字段（`license`/`compatibility`/`author`/`version`）需在 `unified.ts` 落地，详见第十二章「后续实现触点」。
 
 ### 2.3 资源分类：通用 vs 平台特有
 
 抽象包中的每个文件在构建时会被判定为"通用"或"平台特有"：
 
-| 文件 | 分类 | Cursor 构建 | Codex 构建 |
-|------|------|-------------|-----------|
-| `VibeH.md` | 通用（合并入 SKILL.md） | 合并 | 合并 |
-| `skill.config.yaml` | 仅抽象包 | 丢弃 | 丢弃 |
-| `scripts/*` | 通用 | 复制 | 复制 |
-| `references/*` | 通用 | 复制 | 复制 |
-| `assets/*`（非图标） | 通用 | 复制 | 复制 |
-| `assets/icon-*.svg` | 平台特有（Codex UI） | **丢弃** | 复制 |
-| `LICENSE` | 平台特有（Codex） | **丢弃** | 复制为 `LICENSE.txt` |
+| 文件 | 分类 | Cursor | Codex | Claude | Windsurf |
+|------|------|--------|-------|--------|----------|
+| `VibeH.md` | 通用（合并入 SKILL.md） | 合并 | 合并 | 合并 | 合并 |
+| `skill.config.yaml` | 仅抽象包 | 丢弃 | 丢弃 | 丢弃 | 丢弃 |
+| `scripts/*` | 通用 | 复制 | 复制 | 复制 | 复制 |
+| `references/*` | 通用 | 复制 | 复制 | 复制 | 复制 |
+| `assets/*`（非图标） | 通用 | 复制 | 复制 | 复制 | 复制 |
+| `assets/icon-*.svg` | 平台特有（Codex UI） | **丢弃** | 复制 | **丢弃** | **丢弃** |
+| `LICENSE` | 平台特有（Codex） | **丢弃** | 复制为 `LICENSE.txt` | **丢弃**（许可证写入 frontmatter `license`） | **丢弃** |
+| `agents/openai.yaml` | 平台特有（Codex） | **丢弃** | 生成 | **丢弃** | **丢弃** |
+
+> Cursor 历史实现仅复制 `scripts/` 与 `references/`（不复制 `assets/`）。本设计统一约定：**四平台均复制 `assets/` 中的通用资源**（仅 Codex 额外保留图标文件）；该差异在 Cursor 适配器落地时一并对齐。
 
 判定规则：一个文件是否"平台特有"取决于它是否被 `skill.config.yaml` 中的**平台特有字段**（如 `ui.icon_small`）引用。被 `VibeH.md` 正文引用的文件始终视为通用。
 
-### 2.4 `VibeH.md` — 技能正文
+### 2.4 跨平台 frontmatter 字段兼容矩阵
+
+构建时各平台对抽象字段的处理（✅ 输出 / ❌ 丢弃 / — 不适用）：
+
+| 抽象字段 | Cursor | Codex | Claude | Windsurf |
+|----------|--------|-------|--------|----------|
+| `name` | ✅ | ✅ | ✅ | ✅ |
+| `description` | ✅ | ✅ | ✅ | ✅ |
+| `policy.auto_invoke: false` | ✅ `disable-model-invocation` | ✅ `allow_implicit_invocation:false`（openai.yaml） | ✅ `disable-model-invocation` | ❌ |
+| `metadata.surfaces` | ✅ `metadata.surfaces` | ❌ | ❌ | ❌ |
+| `metadata.license` | ❌ | ✅ `LICENSE.txt` | ✅ frontmatter `license` | ❌ |
+| `metadata.compatibility` | ❌ | ❌ | ✅ frontmatter `compatibility` | ❌ |
+| `metadata.author/version` | ❌ | ❌ | ✅ frontmatter `metadata` | ❌ |
+| `ui.*`（图标/品牌/display/default_prompt） | ❌ | ✅ `agents/openai.yaml` | ❌ | ❌ |
+| `dependencies.tools` | ❌ | ✅ `agents/openai.yaml` | ❌（Claude 在 `.mcp.json`/`settings.json`，超出 skill 范围） | ❌ |
+| `claude.allowed_tools` / `disallowed_tools` | ❌ | ❌ | ✅ frontmatter | ❌ |
+| `claude.user_invocable` | ❌ | ❌ | ✅ frontmatter | ❌ |
+| `claude.argument_hint` | ❌ | ❌ | ✅ frontmatter | ❌ |
+| `claude.model` / `effort` | ❌ | ❌ | ✅ frontmatter | ❌ |
+| `claude.context` / `agent` | ❌ | ❌ | ✅ frontmatter | ❌ |
+| `claude.when_to_use` | ❌ | ❌ | ✅ frontmatter | ❌ |
+| `claude.hooks` | ❌ | ❌ | ✅ frontmatter | ❌ |
+
+> 设计原则：抽象包是超集，**写到任一平台只保留该平台支持的字段，其余精确丢弃**；导入时反向把平台原生字段还原到抽象层。
+
+### 2.5 `VibeH.md` — 技能正文
 
 纯 Markdown，**不含 YAML frontmatter**。这是技能的核心指令内容，构建时会被嵌入到各平台的 `SKILL.md` 中。
 
@@ -180,6 +254,7 @@ metadata:                             # 仅当 metadata.surfaces 有值时输出
 | `policy.auto_invoke: true` | **不输出该字段** | Cursor 默认允许 |
 | `metadata.surfaces` | `metadata.surfaces` | 仅 Cursor 支持，直接映射 |
 | `ui.*` | **全部丢弃** | Cursor 无 UI 元数据文件 |
+| `claude.*` | **全部丢弃** | Claude 专有运行时字段 |
 | `dependencies.tools` | **丢弃** | Cursor 无独立依赖声明 |
 | `dependencies.skills` | **构建时校验**是否已安装，但不输出到产物 | 正文中的 `$skill` 引用已足够 |
 | `metadata.license` | **丢弃** | Cursor 不需要 LICENSE |
@@ -198,6 +273,7 @@ metadata:                             # 仅当 metadata.surfaces 有值时输出
 | `VibeH.md` | 已合并入 SKILL.md |
 | `ui.icon_small` 引用的图标文件 | Cursor 无 UI 元数据 |
 | `ui.icon_large` 引用的图标文件 | Cursor 无 UI 元数据 |
+| `claude.*` 引用的字段 | Claude 专有 |
 
 ### 3.5 部署目标
 
@@ -275,6 +351,7 @@ policy:                                            # 仅当 auto_invoke != true 
 | `dependencies.tools` | openai.yaml `dependencies.tools` | 直接映射 |
 | `metadata.license` | `LICENSE.txt` 文件 | 生成标准 License 文本 |
 | `metadata.surfaces` | **丢弃** | Codex 无此概念 |
+| `claude.*` | **丢弃** | Claude 专有运行时字段 |
 
 ### 4.5 严格删除清单
 
@@ -282,8 +359,9 @@ policy:                                            # 仅当 auto_invoke != true 
 
 | 禁止内容 | 原因 |
 |----------|------|
-| SKILL.md 中的 `disable-model-invocation` | Cursor 特有字段 |
+| SKILL.md 中的 `disable-model-invocation` | Cursor/Claude 特有字段 |
 | SKILL.md 中的 `metadata.surfaces` | Cursor 特有字段 |
+| SKILL.md 中的 `allowed-tools` / `model` / `context` / `hooks` 等 | Claude 特有字段 |
 | `skill.config.yaml` | 抽象包配置，非平台文件 |
 | `VibeH.md` | 已合并入 SKILL.md |
 
@@ -291,14 +369,198 @@ policy:                                            # 仅当 auto_invoke != true 
 
 | 范围 | 目标路径 |
 |------|----------|
-| 用户全局 | `~/.codex/skills/{name}/` |
+| 用户全局 | `~/.codex/skills/{name}/`（或 `$CODEX_HOME/skills/{name}/`） |
 | 项目级 | `{workspace}/.codex/skills/{name}/` |
 
 ---
 
-## 五、构建流程
+## 五、Claude 构建规则
 
-### 5.1 正向构建（Build）
+> Claude Code 的 skill 采用 Agent Skills 开放标准，并在其上扩展了一组**运行时 frontmatter 字段**（`model`、`effort`、`context: fork`、`agent`、`hooks`、`allowed-tools`、`user-invocable`、`argument-hint`、`when_to_use` 等）。这些字段全部写入 **同一个 `SKILL.md` 的 frontmatter**——Claude **没有** 类似 Codex `agents/openai.yaml` 的独立元数据文件。
+>
+> 因此，「按 Claude 平台特有结构构建」= **把抽象包里的标准字段与 `claude:` 块完整映射进 `SKILL.md` frontmatter**，而非退化为只写 `name`+`description`（现状实现的缺陷）。
+
+### 5.1 产物目录
+
+```
+<output>/
+├── SKILL.md                    # 合成：完整 frontmatter（标准 + Claude 扩展） + VibeH.md
+├── scripts/                    # 原样复制
+├── references/                 # 原样复制
+└── assets/                     # 仅复制通用资源（图标文件丢弃）
+```
+
+> 目录名（`{name}`）即 Claude 的 `/command` 名。Claude 在技能激活时可读取目录内任意文件（`scripts/`、`references/`、`assets/` 等）。
+
+### 5.2 生成 `SKILL.md`
+
+```yaml
+---
+name: "{name}"
+description: "{description}"
+disable-model-invocation: true        # 仅当 policy.auto_invoke == false 时输出
+license: "{metadata.license}"          # 仅当有值时输出
+compatibility: "{metadata.compatibility}"  # 仅当有值时输出
+metadata:                             # 仅当 author/version 有值时输出
+  author: "{metadata.author}"
+  version: "{metadata.version}"
+allowed-tools: "{claude.allowed_tools}"        # 仅当有值时输出
+disallowed-tools: "{claude.disallowed_tools}"  # 仅当有值时输出
+user-invocable: false                 # 仅当 claude.user_invocable == false 时输出
+argument-hint: "{claude.argument_hint}"        # 仅当有值时输出
+when_to_use: "{claude.when_to_use}"            # 仅当有值时输出
+model: "{claude.model}"                # 仅当有值时输出
+effort: "{claude.effort}"              # 仅当有值时输出
+context: "fork"                       # 仅当 claude.context == "fork" 时输出
+agent: "{claude.agent}"                # 仅当 context: fork 且有值时输出
+hooks:                                # 仅当 claude.hooks 有值时输出（原样透传）
+  PreToolUse:
+    - matcher: "Bash(git commit)"
+      hooks:
+        - type: command
+          command: "./scripts/validate.sh"
+---
+
+{VibeH.md 原文}
+```
+
+> 所有字段都是「有值才输出」，最小产物退化为 `name` + `description`（与 Agent Skills 标准一致，Claude 也接受）。
+
+### 5.3 字段映射
+
+| 抽象字段 | Claude frontmatter | 说明 |
+|----------|--------------------|------|
+| `name` | `name` | 直接映射；同时是目录名 / `/command` 名 |
+| `description` | `description` | 直接映射（与 `when_to_use` 合并后在列表中截断至 ~1536 字符） |
+| `policy.auto_invoke: false` | `disable-model-invocation: true` | 反转布尔值；与 Cursor 同义复用 |
+| `policy.auto_invoke: true` | **不输出该字段** | Claude 默认允许自动调用 |
+| `metadata.license` | `license` | 直接映射（Claude 接受 license 名或文件引用） |
+| `metadata.compatibility` | `compatibility` | 直接映射（环境要求） |
+| `metadata.author` / `metadata.version` | `metadata: { author, version }` | 映射为 Claude 的任意键值 `metadata` |
+| `metadata.surfaces` | **丢弃** | Cursor 特有 |
+| `claude.allowed_tools` | `allowed-tools` | 直接映射（空格/逗号串或 YAML 列表；支持 `Bash(git *)`） |
+| `claude.disallowed_tools` | `disallowed-tools` | 直接映射 |
+| `claude.user_invocable` | `user-invocable` | 仅 `false` 时输出（默认 true） |
+| `claude.argument_hint` | `argument-hint` | 直接映射 |
+| `claude.when_to_use` | `when_to_use` | 直接映射 |
+| `claude.model` | `model` | 直接映射 |
+| `claude.effort` | `effort` | 直接映射 |
+| `claude.context` | `context` | 仅 `fork` 时输出 |
+| `claude.agent` | `agent` | 仅 `context: fork` 且有值时输出 |
+| `claude.hooks` | `hooks` | 原样透传（同 settings.json hooks schema） |
+| `ui.*` | **全部丢弃** | Codex 专有 UI 元数据 |
+| `dependencies.tools` | **丢弃** | Claude 的 MCP 在 `.mcp.json` / `settings.json`，超出 skill 范围 |
+| `dependencies.skills` | **构建时校验**是否已安装，但不输出到产物 | 正文中的引用已足够 |
+| `resources.*` | 按路径复制通用文件 | 排除平台特有资源（图标） |
+
+### 5.4 严格删除清单
+
+构建 Claude 产物时，以下文件/目录**绝对不能存在**：
+
+| 禁止内容 | 原因 |
+|----------|------|
+| `agents/` 目录 / `openai.yaml` | Codex 特有（Claude 全部写入 frontmatter） |
+| SKILL.md 中的 `metadata.surfaces` | Cursor 特有字段 |
+| `LICENSE` / `LICENSE.txt` 文件 | Claude 用 frontmatter `license`，不落 LICENSE 文件 |
+| `ui.icon_*` 引用的图标文件 | Claude 无 UI 元数据 |
+| `skill.config.yaml` | 抽象包配置，非平台文件 |
+| `VibeH.md` | 已合并入 SKILL.md |
+
+### 5.5 部署目标
+
+| 范围 | 目标路径 |
+|------|----------|
+| 用户全局 | `~/.claude/skills/{name}/` |
+| 项目级 | `{workspace}/.claude/skills/{name}/` |
+
+### 5.6 字段回退策略（Claude 专项）
+
+| 字段 | 回退规则 |
+|------|----------|
+| `disable-model-invocation` | `policy.auto_invoke` 缺省视为 `true` → 不输出该字段（允许自动调用） |
+| `user-invocable` | 缺省视为 `true` → 不输出 |
+| `context` | 缺省 `inline` → 不输出；`agent` 仅在 `context: fork` 下才有意义 |
+| `allowed-tools` / `disallowed-tools` | 无值不输出 → Claude 继承默认工具集 |
+| `model` / `effort` | 无值不输出 → 继承会话默认 |
+| `license` / `compatibility` / `metadata` | 无值不输出 |
+
+---
+
+## 六、Windsurf 构建规则
+
+> **结论更正**：早期调研（`docs/research-ai-coding-skills.md`，2026-05-26）记载 Windsurf「无正式 Skill 系统」。该结论已**过时**。Windsurf Cascade 现已**原生支持 Agent Skills 标准的 skill 系统**：
+>
+> - 工作区：`.windsurf/skills/<name>/SKILL.md`
+> - 全局：`~/.codeium/windsurf/skills/<name>/SKILL.md`
+> - 企业系统级（只读，IT 部署）：macOS `/Library/Application Support/Windsurf/skills/`、Windows `C:\ProgramData\Windsurf\skills\`、Linux/WSL `/etc/windsurf/skills/`
+>
+> Windsurf 与 Cascade 的 **rules**（`.windsurf/rules/`，带 `always_on`/`glob`/`model_decision`/`manual` 触发器）是**另一套机制**，与 skill 不同；Skill Forge 只处理 skill，不生成 rules。
+
+### 6.1 产物目录
+
+```
+<output>/
+├── SKILL.md                    # 合成：极简 frontmatter（仅 name + description） + VibeH.md
+├── scripts/                    # 原样复制（随技能激活加载）
+├── references/                 # 原样复制
+└── assets/                     # 仅复制通用资源（图标文件丢弃）
+```
+
+> Windsurf 同样采用渐进式披露：默认只读取 `name` + `description`，技能被调用或 `@mention` 时才加载 `SKILL.md` 全文与附带文件。
+
+### 6.2 生成 `SKILL.md`
+
+Windsurf 官方 frontmatter **仅要求 `name` + `description`**，不文档化其他字段。为忠于规范，构建产物**只输出这两个字段**：
+
+```yaml
+---
+name: "{name}"
+description: "{description}"
+---
+
+{VibeH.md 原文}
+```
+
+### 6.3 字段映射
+
+| 抽象字段 | Windsurf 映射 | 说明 |
+|----------|---------------|------|
+| `name` | frontmatter `name` | 直接映射；同时是目录名 |
+| `description` | frontmatter `description` | 直接映射（自动调用与 `@mention` 的触发依据） |
+| `policy.*` | **丢弃** | Windsurf skill 无 invocation policy 字段 |
+| `ui.*` | **全部丢弃** | Codex 专有 |
+| `claude.*` | **全部丢弃** | Claude 专有 |
+| `metadata.*`（license/surfaces/...） | **全部丢弃** | Windsurf 未文档化 |
+| `dependencies.*` | **丢弃** | 无对应声明 |
+| `resources.*` | 按路径复制通用文件 | 随技能加载 |
+
+### 6.4 严格删除清单
+
+构建 Windsurf 产物时，以下**绝对不能存在**：
+
+| 禁止内容 | 原因 |
+|----------|------|
+| `agents/` 目录 / `openai.yaml` | Codex 特有 |
+| `disable-model-invocation` | Cursor/Claude 特有字段 |
+| `allowed-tools` / `model` / `context` / `hooks` 等 Claude 字段 | Claude 特有 |
+| `license` / `compatibility` / `metadata` frontmatter | Windsurf 未文档化字段 |
+| `LICENSE` / `LICENSE.txt` | Codex 特有 |
+| `skill.config.yaml` / `VibeH.md` | 抽象包文件 |
+| `ui.icon_*` 引用的图标文件 | Windsurf 无 UI 元数据 |
+
+### 6.5 部署目标
+
+| 范围 | 目标路径 | 说明 |
+|------|----------|------|
+| 用户全局 | `~/.codeium/windsurf/skills/{name}/` | 注意在 `~/.codeium` 下，**不是** `~/.windsurf` |
+| 项目级 | `{workspace}/.windsurf/skills/{name}/` | 随仓库提交 |
+| 企业系统级 | OS 相关只读路径 | **只读，非 Skill Forge 部署目标**，仅供识别 |
+
+---
+
+## 七、构建流程
+
+### 7.1 正向构建（Build）
 
 ```
 skill.config.yaml + VibeH.md + resources/
@@ -308,30 +570,29 @@ skill.config.yaml + VibeH.md + resources/
     │   Validate    │   Zod Schema 校验 + 依赖 skill 校验
     └──────┬───────┘
            │
-     ┌─────┴─────┐
-     ▼           ▼
-┌─────────┐ ┌─────────┐
-│ Cursor  │ │  Codex  │
-│ Builder │ │ Builder │
-└────┬────┘ └────┬────┘
-     │           │
-     ▼           ▼
-┌─────────┐ ┌──────────────┐
-│SKILL.md │ │ SKILL.md     │
-│(含策略) │ │ (纯指令)     │
-│         │ │ openai.yaml  │
-│scripts/ │ │ LICENSE.txt  │
-│refs/    │ │ scripts/     │
-│assets/  │ │ refs/        │
-│(无图标) │ │ assets/      │
-└─────────┘ └──────────────┘
-     │           │
-     ▼           ▼
-~/.cursor/   ~/.codex/
-  skills/      skills/
+   ┌───────┼───────┬───────────┐
+   ▼       ▼       ▼           ▼
+┌──────┐┌──────┐┌────────┐┌──────────┐
+│Cursor││Codex ││ Claude ││ Windsurf │
+│Build ││Build ││ Build  ││  Build   │
+└──┬───┘└──┬───┘└───┬────┘└────┬─────┘
+   │       │        │          │
+   ▼       ▼        ▼          ▼
+┌──────┐┌──────────┐┌────────────┐┌──────────┐
+│SKILL ││ SKILL.md ││ SKILL.md   ││ SKILL.md │
+│.md   ││ openai   ││ 完整 fm     ││ name +   │
+│(策略)││ .yaml    ││ (标准+claude)││ desc 仅  │
+│refs/ ││ LICENSE  ││ scripts/    ││ scripts/ │
+│scr/  ││ scripts/ ││ refs/       ││ refs/    │
+│assets││ refs/    ││ assets/     ││ assets/  │
+│(无图)││ assets/  ││ (无图标)    ││ (无图标) │
+└──┬───┘└──┬───────┘└─────┬──────┘└────┬─────┘
+   ▼       ▼              ▼            ▼
+~/.cursor ~/.codex   ~/.claude  ~/.codeium/windsurf
+ /skills/  /skills/   /skills/      /skills/
 ```
 
-### 5.2 构建时校验
+### 7.2 构建时校验
 
 | 校验项 | 说明 | 失败行为 |
 |--------|------|----------|
@@ -342,14 +603,16 @@ skill.config.yaml + VibeH.md + resources/
 | `name` 格式 | 小写 + 连字符，≤64 字符 | 阻断构建，报错 |
 | `description` 长度 | ≤1024 字符 | 阻断构建，报错 |
 | `ui.short_description` 长度 | 25-64 字符（有值时） | 警告 |
+| `claude.context` 取值 | 仅 `inline` / `fork` | 阻断构建，报错（仅构建 Claude 时） |
+| `claude.agent` 依赖 | 仅在 `claude.context == fork` 时有意义 | 警告（仅构建 Claude 时） |
 
 ---
 
-## 六、反向导入（Import）— 平台核心能力
+## 八、反向导入（Import）— 平台核心能力
 
-从已有的 Cursor / Codex 原生 skill 目录，反向解析为抽象包（`skill.config.yaml` + `VibeH.md`）。
+从已有的 Cursor / Codex / Claude / Windsurf 原生 skill 目录，反向解析为抽象包（`skill.config.yaml` + `VibeH.md`）。
 
-### 6.1 用户操作流程
+### 8.1 用户操作流程
 
 ```
 用户在主界面选择文件路径
@@ -377,14 +640,14 @@ skill.config.yaml + VibeH.md + resources/
 
 导入是一次性快照。`_import_meta.source_path` 只用于溯源和展示，不作为持续同步源；原项目中的 Skill 后续变化不会自动写回个人仓库或团队仓库。
 
-### 6.2 导入时的解析流程
+### 8.2 导入时的解析流程
 
 ```
-原生 Skill 目录（Cursor 或 Codex）
+原生 Skill 目录（Cursor / Codex / Claude / Windsurf）
           │
           ▼
     ┌──────────────┐
-    │ detectOrigin │   识别来源平台（Cursor / Codex / 未知）
+    │ detectOrigin │   识别来源平台（路径主信号 + frontmatter 辅信号）
     └──────┬───────┘
            │
            ▼
@@ -394,7 +657,7 @@ skill.config.yaml + VibeH.md + resources/
            │
            ▼
     ┌──────────────┐
-    │ parseExtras  │   解析平台特有文件（openai.yaml 等）
+    │ parseExtras  │   解析平台特有文件 / 字段（openai.yaml、Claude 运行时字段等）
     └──────┬───────┘
            │
            ▼
@@ -404,16 +667,46 @@ skill.config.yaml + VibeH.md + resources/
     └──────────────┘
 ```
 
-### 6.2 来源检测规则
+### 8.3 来源检测规则
 
-| 特征 | 判定为 |
-|------|--------|
-| 有 `agents/openai.yaml` | **Codex** |
-| SKILL.md 中有 `disable-model-invocation` | **Cursor** |
-| SKILL.md 中有 `metadata.surfaces` | **Cursor** |
-| 仅有 `SKILL.md` + scripts/references/assets | **未知**（按通用处理） |
+**核心难点**：最小化的 Cursor / Windsurf / Claude skill 在结构上**无法区分**（都只有 `name` + `description` 的 SKILL.md + 可选 scripts/references/assets）。因此采用**「来源路径主信号 + frontmatter 专有字段辅信号」的双层判定**。
 
-### 6.3 Cursor → 抽象包 映射
+```mermaid
+flowchart TD
+    src[原生 skill 目录] --> pathCheck{来源路径已知?}
+    pathCheck -->|".claude/skills/"| claude[判定 Claude]
+    pathCheck -->|".windsurf 或 .codeium/windsurf"| windsurf[判定 Windsurf]
+    pathCheck -->|".codex 或 agents/openai.yaml"| codex[判定 Codex]
+    pathCheck -->|".cursor/skills/"| cursor[判定 Cursor]
+    pathCheck -->|未知| fm{frontmatter 专有字段?}
+    fm -->|"allowed-tools/model/context/hooks/user-invocable 等"| claude
+    fm -->|"openai.yaml 存在 / metadata.short-description"| codex
+    fm -->|"metadata.surfaces"| cursor
+    fm -->|"仅 disable-model-invocation"| amb1["Cursor 或 Claude（打分裁决）"]
+    fm -->|"仅 name+description"| unknownNode["unknown（按通用处理）"]
+```
+
+**信号打分表**（`detect.ts` 扩展后）：
+
+| 信号 | 加分 |
+|------|------|
+| 来源路径含 `.claude/skills/` | Claude +5 |
+| 来源路径含 `.windsurf/skills/` 或 `.codeium/windsurf/` | Windsurf +5 |
+| 来源路径含 `.codex/skills/` | Codex +5 |
+| 来源路径含 `.cursor/skills/` | Cursor +5 |
+| 存在 `agents/openai.yaml` | Codex +3 |
+| frontmatter 含 `allowed-tools` / `disallowed-tools` / `user-invocable` / `argument-hint` / `model` / `effort` / `context` / `agent` / `hooks` / `when_to_use` | Claude +3（任一） |
+| frontmatter 含 `metadata.short-description` | Codex +1 |
+| 正文含 `$skill-name` 引用 | Codex +2 |
+| frontmatter 含 `metadata.surfaces` | Cursor +3 |
+| frontmatter 含 `disable-model-invocation`（且无 Claude/Cursor 其他强信号） | Cursor +2，Claude +2（仍需路径裁决） |
+| 扁平文件 `reference.md` / `examples.md`（Cursor 习惯） | Cursor +2 |
+
+判定：取最高分平台；分差不足或全 0 → `unknown`（按通用 `name`+`description` 处理）。置信度：最高分 ≥5（路径命中）记 high，≥3 记 medium，否则 low。
+
+> **实现建议**：`detectOrigin(skillDir)` 当前不接收来源路径上下文，仅看目录内文件。为支持路径主信号，需把「用户选择的来源根 + skill 相对路径」一并传入 `detect.ts`，详见第十二章。
+
+### 8.4 Cursor → 抽象包 映射
 
 | Cursor 文件/字段 | 抽象包映射 |
 |------------------|-----------|
@@ -427,7 +720,7 @@ skill.config.yaml + VibeH.md + resources/
 | `assets/` 目录 | `resources.assets` + 复制文件 |
 | `ui.*` | **全部留空**（Cursor 无 UI 元数据，导入后需手动补充） |
 
-### 6.4 Codex → 抽象包 映射
+### 8.5 Codex → 抽象包 映射
 
 | Codex 文件/字段 | 抽象包映射 |
 |-----------------|-----------|
@@ -445,9 +738,51 @@ skill.config.yaml + VibeH.md + resources/
 | `scripts/` 目录 | `resources.scripts` + 复制文件 |
 | `references/` 目录 | `resources.references` + 复制文件 |
 | `assets/` 目录 | `resources.assets` + 复制文件 |
-| `LICENSE.txt` | `LICENSE` + `metadata.license`（尝试检测 license 类型） |
+| `LICENSE.txt` | `metadata.license`（尝试检测 license 类型） |
 
-### 6.5 导入后的信息损失标记与来源语义
+### 8.6 Claude → 抽象包 映射
+
+| Claude 文件/字段 | 抽象包映射 |
+|------------------|-----------|
+| SKILL.md frontmatter `name` | `name`（缺省时回退为目录名） |
+| SKILL.md frontmatter `description` | `description`（缺省时回退为正文首段） |
+| SKILL.md body（frontmatter 之后） | `VibeH.md` |
+| frontmatter `disable-model-invocation: true` | `policy.auto_invoke: false` |
+| frontmatter `license` | `metadata.license` |
+| frontmatter `compatibility` | `metadata.compatibility` |
+| frontmatter `metadata.author` / `metadata.version` | `metadata.author` / `metadata.version` |
+| frontmatter `allowed-tools` | `claude.allowed_tools` |
+| frontmatter `disallowed-tools` | `claude.disallowed_tools` |
+| frontmatter `user-invocable` | `claude.user_invocable` |
+| frontmatter `argument-hint` | `claude.argument_hint` |
+| frontmatter `when_to_use` | `claude.when_to_use` |
+| frontmatter `model` | `claude.model` |
+| frontmatter `effort` | `claude.effort` |
+| frontmatter `context` | `claude.context` |
+| frontmatter `agent` | `claude.agent` |
+| frontmatter `hooks` | `claude.hooks`（原样保留） |
+| `scripts/` 目录 | `resources.scripts` + 复制文件 |
+| `references/` 目录 | `resources.references` + 复制文件 |
+| `assets/` 目录 | `resources.assets` + 复制文件 |
+| `ui.*` | **全部留空**（Claude 无 UI 元数据） |
+
+> Claude 信息较完整时通常无 incomplete 字段；若 `ui.*` 需在跨平台（如导出到 Codex）时使用，则标记为待补齐。
+
+### 8.7 Windsurf → 抽象包 映射
+
+| Windsurf 文件/字段 | 抽象包映射 |
+|--------------------|-----------|
+| SKILL.md frontmatter `name` | `name` |
+| SKILL.md frontmatter `description` | `description` |
+| SKILL.md body（frontmatter 之后） | `VibeH.md` |
+| `scripts/` 目录 | `resources.scripts` + 复制文件 |
+| `references/` 目录 | `resources.references` + 复制文件 |
+| `assets/` 目录 | `resources.assets` + 复制文件 |
+| `ui.*` / `claude.*` / `policy.*` / `metadata.*` | **全部留空**（Windsurf 仅 name+description） |
+
+> Windsurf 是信息最稀疏的来源；导入后若要部署到 Codex/Claude，`incomplete_fields` 会包含 `ui.*` / `claude.*` 等，待部署时由 LLM 补齐。
+
+### 8.8 导入后的信息损失标记与来源语义
 
 导入时**不补齐缺失字段**，仅标记哪些字段缺失：
 
@@ -465,13 +800,28 @@ _import_meta:
 ```
 
 ```yaml
-# skill.config.yaml — 从 Codex 导入后
+# skill.config.yaml — 从 Claude 导入后
 _import_meta:
-  source: "codex"
-  source_path: "~/.codex/skills/test-helper"
-  imported_at: "2026-05-26T16:00:00Z"
-  tracking: false                 # 导入后不监听 source_path
-  incomplete_fields: []          # Codex 信息较完整，通常无缺失
+  source: "claude"
+  source_path: "~/.claude/skills/test-helper"
+  imported_at: "2026-06-04T16:00:00Z"
+  tracking: false
+  incomplete_fields:             # Claude 无 UI 元数据，导出到 Codex 时需补齐
+    - "ui.display_name"
+    - "ui.short_description"
+```
+
+```yaml
+# skill.config.yaml — 从 Windsurf 导入后
+_import_meta:
+  source: "windsurf"
+  source_path: "~/.codeium/windsurf/skills/test-helper"
+  imported_at: "2026-06-04T16:00:00Z"
+  tracking: false
+  incomplete_fields:             # Windsurf 仅 name+description，缺失最多
+    - "ui.display_name"
+    - "ui.short_description"
+    - "claude.allowed_tools"
 ```
 
 仓库层级：
@@ -483,13 +833,13 @@ _import_meta:
 | 项目 Skill 列表 | 项目声明可用哪些团队 Skill，不绑定本地路径或工具 | 否 |
 | 用户部署实例 | 用户点击"部署"后，将项目 Skill 部署到个人本地项目目录 | 是，监听该用户选择的部署目录 |
 
-### 6.6 项目部署与监听规则
+### 8.9 项目部署与监听规则
 
 将团队仓库 Skill 添加到项目时，只进入项目 Skill 列表，不自动部署。因为团队成员可能使用不同 Vibe Coding 工具，也可能有不同的本地项目路径。
 
 只有用户在项目 Skill 列表中点击**部署**时，才需要选择部署参数：
 
-- Vibe Coding 工具：`cursor` 或 `codex`
+- Vibe Coding 工具：`cursor`、`codex`、`claude` 或 `windsurf`
 - 本地项目路径或部署根路径
 - 是否覆盖已存在同名 Skill
 
@@ -499,6 +849,8 @@ _import_meta:
 |------|----------------|
 | Cursor | `{deploy_path}/.cursor/skills/{name}/` |
 | Codex | `{deploy_path}/.codex/skills/{name}/` |
+| Claude | `{deploy_path}/.claude/skills/{name}/` |
+| Windsurf | `{deploy_path}/.windsurf/skills/{name}/` |
 
 部署流程：
 
@@ -515,7 +867,7 @@ _import_meta:
 选择工具 + 本地部署路径
       │
       ▼
-按目标工具构建 Cursor/Codex 原生产物
+按目标工具构建 Cursor/Codex/Claude/Windsurf 原生产物
       │
       ▼
 写入用户指定的项目级 skills 目录
@@ -530,19 +882,21 @@ _import_meta:
 监听该用户部署实例目录的后续变更
 ```
 
-部署时必须维护 `.gitignore`：
+部署时必须维护 `.gitignore`（与 `local-agent/src/gitignore.ts` 现状一致）：
 
 ```gitignore
 # VibeHub local skill deployments
 .cursor/skills/
 .codex/skills/
+.windsurf/skills/
+.claude/skills/
 ```
 
 写入规则：
 
 - 如果项目根目录没有 `.gitignore`，则创建。
 - 如果 `.gitignore` 已存在，则幂等追加上述块，避免重复写入。
-- 不忽略整个 `.cursor/` 或 `.codex/`，只忽略项目级 skills 目录，避免误伤其他可提交配置。
+- 不忽略整个 `.cursor/` / `.codex/` / `.windsurf/` / `.claude/`，只忽略项目级 skills 目录，避免误伤其他可提交配置（如 `.claude/settings.json`、`.windsurf/rules/`）。
 - 如果相关目录此前已经被 Git 跟踪，`.gitignore` 不能自动取消跟踪，前端应提示用户需要手动从 Git 索引移除。
 
 变更回写规则：
@@ -554,19 +908,19 @@ _import_meta:
 - 个人仓库复制到团队仓库后是独立快照，当前阶段不保留两者的版本关联。
 - 项目原本已有的 Skill 可以在用户选择本地路径后被扫描/上传到团队仓库；进入团队仓库后也成为快照，后续要通过用户部署实例触发同步。
 
-### 6.7 部署时 LLM 补齐流程
+### 8.10 部署时 LLM 补齐流程
 
 当用户点击**【部署】**按钮时，如果存在缺失字段，触发以下流程：
 
 ```
-用户点击【部署到 Cursor / Codex】
+用户点击【部署到 Cursor / Codex / Claude / Windsurf】
           │
           ▼
     ┌──────────────┐
     │  检测缺失字段 │   读取 _import_meta.incomplete_fields 或动态检测
     └──────┬───────┘
            │
-     有缺失字段？
+     有缺失字段（且目标平台需要）？
      ┌─────┴─────┐
      │ 否        │ 是
      ▼           ▼
@@ -600,12 +954,14 @@ _import_meta:
                        └──────────────┘
 ```
 
-### 6.8 LLM 补齐 API
+> **平台相关性**：补齐只针对「目标平台需要、但当前缺失」的字段。例如部署到 **Windsurf** 只需 `name`+`description`，几乎不触发补齐；部署到 **Codex** 需要 `ui.*`；部署到 **Claude** 通常已足够（标准字段直接可用），仅当用户希望填充运行时字段（`model`/`allowed-tools` 等）时才补齐。
+
+### 8.11 LLM 补齐 API
 
 ```
 POST /api/v1/skill-forge/store/{id}/complete
 
-Request: { "target": "cursor" }
+Request: { "target": "cursor" }   // cursor | codex | claude | windsurf
 
 Response: {
   "success": true,
@@ -622,7 +978,7 @@ Response: {
 
 ---
 
-## 七、字段回退策略
+## 九、字段回退策略
 
 当抽象包中某些可选字段未填写时，构建过程使用以下回退逻辑：
 
@@ -633,15 +989,16 @@ Response: {
 | `ui.default_prompt` | `"Use ${{name}} to {{description 前 30 字符}}."` | `"Use $my-skill to validate output format."` |
 | `ui.brand_color` | 不输出该字段 | — |
 | `ui.icon_*` | 不输出该字段 | — |
-| `policy.auto_invoke` | 默认 `true` | 两个平台均默认允许 |
-| `metadata.license` | 不生成 `LICENSE` / `LICENSE.txt` | — |
+| `policy.auto_invoke` | 默认 `true` | 各平台均默认允许（Windsurf 无此字段） |
+| `claude.*` | 无值不输出对应 frontmatter | — |
+| `metadata.license` | 不生成 `LICENSE` / `LICENSE.txt`，Claude 不输出 `license` | — |
 | `metadata.version` | `"0.0.0"` | — |
 
 ---
 
-## 八、完整示例
+## 十、完整示例
 
-### 8.1 抽象包
+### 10.1 抽象包
 
 **`skill.config.yaml`：**
 
@@ -659,6 +1016,18 @@ ui:
 
 policy:
   auto_invoke: false
+
+claude:
+  allowed_tools: "Read, Grep, Glob"
+  model: "sonnet"
+  context: "fork"
+  agent: "Explore"
+
+metadata:
+  license: "MIT"
+  compatibility: "Requires Python 3.11+"
+  author: "vibehub"
+  version: "1.0.0"
 
 resources:
   scripts:
@@ -683,7 +1052,7 @@ Use this skill to confirm that a local skill loads correctly...
 ...
 ```
 
-### 8.2 Cursor 构建产物
+### 10.2 Cursor 构建产物
 
 ```
 test-helper/
@@ -715,13 +1084,82 @@ Use this skill to confirm that a local skill loads correctly...
 ...
 ```
 
-### 8.3 Codex 构建产物
+### 10.3 Codex 构建产物
 
 ```
 test-helper/
 ├── SKILL.md                    ← frontmatter(name + description 仅两字段) + VibeH.md
 ├── agents/
 │   └── openai.yaml             ← 从 ui + policy 生成
+├── scripts/
+│   └── self_check.py           ← 原样复制
+├── references/
+│   └── test-cases.md           ← 原样复制
+├── assets/
+│   └── sample-output.txt       ← 原样复制
+└── LICENSE.txt                 ← 从 metadata.license 生成
+```
+
+生成的 `agents/openai.yaml`：
+
+```yaml
+interface:
+  display_name: "Test Helper"
+  short_description: "Full test skill for validating scripts, references, assets, and invocation."
+  default_prompt: "Use $test-helper to run a full bundled-resource skill validation."
+
+policy:
+  allow_implicit_invocation: false
+```
+
+### 10.4 Claude 构建产物
+
+```
+test-helper/
+├── SKILL.md                    ← 完整 frontmatter（标准 + claude 运行时字段） + VibeH.md
+├── scripts/
+│   └── self_check.py           ← 原样复制
+├── references/
+│   └── test-cases.md           ← 原样复制
+└── assets/
+    └── sample-output.txt       ← 原样复制
+```
+
+生成的 `SKILL.md`：
+
+```yaml
+---
+name: test-helper
+description: >-
+  Full test skill for validating that agents can discover, load,
+  and follow a local skill with scripts, references, assets, and
+  UI metadata.
+disable-model-invocation: true
+license: MIT
+compatibility: "Requires Python 3.11+"
+metadata:
+  author: vibehub
+  version: "1.0.0"
+allowed-tools: Read, Grep, Glob
+model: sonnet
+context: fork
+agent: Explore
+---
+
+# Test Helper
+
+## Overview
+Use this skill to confirm that a local skill loads correctly...
+...
+```
+
+> 注意：`ui.*` 被丢弃（Codex 专有），`metadata.surfaces` 不存在；Claude 不生成 `LICENSE.txt`（许可证写入 frontmatter `license`），不生成 `agents/openai.yaml`。
+
+### 10.5 Windsurf 构建产物
+
+```
+test-helper/
+├── SKILL.md                    ← frontmatter(name + description 仅两字段) + VibeH.md
 ├── scripts/
 │   └── self_check.py           ← 原样复制
 ├── references/
@@ -748,21 +1186,11 @@ Use this skill to confirm that a local skill loads correctly...
 ...
 ```
 
-生成的 `agents/openai.yaml`：
+> 注意：`policy`、`ui.*`、`claude.*`、`metadata.*` 全部丢弃；产物只有 `name`+`description` 与附带资源，忠于 Windsurf 官方规范。
 
-```yaml
-interface:
-  display_name: "Test Helper"
-  short_description: "Full test skill for validating scripts, references, assets, and invocation."
-  default_prompt: "Use $test-helper to run a full bundled-resource skill validation."
+### 10.6 反向导入示例：Claude → 抽象包
 
-policy:
-  allow_implicit_invocation: false
-```
-
-### 8.4 反向导入示例：Codex → 抽象包
-
-**输入**：`~/.codex/skills/test-helper/` 目录
+**输入**：`~/.claude/skills/test-helper/`（含运行时 frontmatter 的 SKILL.md）
 
 **输出**：
 
@@ -770,7 +1198,7 @@ policy:
 ~/.cowork/personal-skills/{uuid}/        # 加入个人仓库时
 # 或
 ~/.cowork/teams/{team_id}/skills/{uuid}/ # 加入团队仓库时
-├── skill.config.yaml           ← 合并 SKILL.md frontmatter + openai.yaml 生成
+├── skill.config.yaml           ← SKILL.md frontmatter（标准 + 运行时）→ metadata + claude 块
 ├── VibeH.md                    ← SKILL.md body 部分提取
 ├── scripts/
 │   └── self_check.py           ← 原样复制
@@ -782,15 +1210,40 @@ policy:
 
 ---
 
-## 九、设计决策记录
+## 十一、设计决策记录
 
 | # | 决策 | 理由 |
 |---|------|------|
 | 1 | 正文文件名固定为 `VibeH.md` | 平台品牌标识，无需支持自定义 |
-| 2 | 抽象包是所有平台信息的超集 | 抽象包包含图标、LICENSE 等所有平台可能用到的文件；构建时按目标平台严格过滤 |
-| 3 | 平台特有字段保留在抽象层 | 如 `metadata.surfaces`（Cursor 特有），构建到不支持的平台时丢弃 |
+| 2 | 抽象包是所有平台信息的超集 | 抽象包包含图标、LICENSE、Claude 运行时字段等所有平台可能用到的内容；构建时按目标平台严格过滤 |
+| 3 | 平台特有字段保留在抽象层 | 如 `metadata.surfaces`（Cursor）、`ui.*`（Codex）、`claude.*`（Claude），构建到不支持的平台时丢弃 |
 | 4 | 构建时校验依赖 skill 是否已安装 | 以警告形式提示，不阻断构建 |
-| 5 | LICENSE 为可选项 | 抽象包中可包含 `LICENSE` 文件；仅 Codex 构建时输出为 `LICENSE.txt` |
-| 6 | 反向导入是平台核心能力 | 从 Cursor/Codex 原生 skill 解析为抽象包，并标记导入后的信息缺失字段 |
+| 5 | LICENSE 为可选项 | 抽象包中可含 `LICENSE`；仅 Codex 输出 `LICENSE.txt`，Claude 写入 frontmatter `license` |
+| 6 | 反向导入是平台核心能力 | 从 Cursor / Codex / Claude / Windsurf 原生 skill 解析为抽象包，并标记导入后的信息缺失字段 |
 | 7 | 导入时不补齐，部署时 LLM 补齐 | 导入阶段保持原始信息不变；部署前调用 LLM 生成建议值，用户手动确认后才写入 |
 | 8 | LLM API 使用 GPTs API Gateway | Base URL: `api.gptsapi.net`，兼容 OpenAI / Claude / Gemini 接口 |
+| 9 | **Claude 用独立 `claude:` 块承载运行时字段** | Claude 把全部扩展字段写入 **同一个 SKILL.md frontmatter**（无 openai.yaml 式独立文件）；`claude:` 块与 Codex 的 `ui:` 块平行，互不干扰 |
+| 10 | **`policy.auto_invoke` 在 Cursor 与 Claude 间复用** | 二者 `disable-model-invocation` 语义一致，避免重复字段；Codex 映射为 `allow_implicit_invocation` |
+| 11 | **Windsurf 忠于官方 `name`+`description` 规范** | 官方仅文档化这两个字段；多写未文档化字段无收益且可能在未来版本报错 |
+| 12 | **更正 Windsurf「无 skill 系统」的过时结论** | Windsurf Cascade 已原生支持 `.windsurf/skills/` 与 `~/.codeium/windsurf/skills/`；`research-ai-coding-skills.md` 同步更新 |
+| 13 | **来源检测以路径为主信号、frontmatter 为辅** | 最小化的 Cursor/Windsurf/Claude skill 结构无法区分，仅靠 frontmatter 会误判 |
+
+---
+
+## 十二、后续实现触点（附录）
+
+> 本次仅产出设计文档，不改代码。以下列出未来落地时需改动的文件，便于追溯。
+
+| 文件 | 需要的改动 |
+|------|-----------|
+| `backend/skill-forge/src/schema/unified.ts` | 新增 `claude` 块（`allowedTools`/`disallowedTools`/`userInvocable`/`argumentHint`/`model`/`effort`/`context`/`agent`/`whenToUse`/`hooks`）；扩展 `metadata` 标准字段（`license`/`compatibility`/`author`/`version`）；保持 `triggers.disableModelInvocation` 与本文 `policy.auto_invoke` 的对应 |
+| `backend/skill-forge/src/adapters/claude.ts` | `build()` 按第五章映射写出完整 frontmatter（不再只写 name+description）；复制 `assets/`；保持 `getDeployDir()` = `~/.claude/skills` |
+| `backend/skill-forge/src/adapters/windsurf.ts` | 保持只写 `name`+`description`（已符合）；与第六章删除清单对齐，确保不泄漏其他平台字段 |
+| `backend/skill-forge/src/adapters/detect.ts` | `SkillOrigin` 扩展为 `cursor`/`codex`/`claude`/`windsurf`/`unknown`；接收来源路径上下文做路径主信号；按第 8.3 打分表加入 Claude/Windsurf 信号 |
+| `backend/skill-forge/src/commands/import.ts` | `ImportSource` 扩展为四平台；新增 `importFromClaude`（解析全部运行时字段）与 `importFromWindsurf`（name+description+resources） |
+| `backend/skill-forge/src/commands/package.ts` | unknown 回退策略调整（不再一律按 codex 解析）；把来源路径传给 `detectOrigin` |
+| `backend/skill-forge/src/adapters/cursor.ts` | 对齐资源复制约定：补充复制 `assets/` 中的通用资源 |
+| `backend/skill-forge/tests/adapters/claude.test.ts` | 增加运行时字段映射、删除清单、回退策略用例 |
+| `backend/skill-forge/tests/adapters/windsurf.test.ts` | 增加「仅输出 name+description、不泄漏其他字段」断言 |
+| `local-agent/src/gitignore.ts` | 现已忽略 `.windsurf/skills/`、`.claude/skills/`，与第 8.9 一致，无需改动 |
+| `docs/research-ai-coding-skills.md` | 更正 Windsurf「无正式 Skill 系统」的结论 |

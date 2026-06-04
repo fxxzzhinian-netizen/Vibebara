@@ -2,7 +2,7 @@ import path from "node:path";
 import { readFile, exists, writeFile } from "../utils/fs.js";
 import { parseFrontmatter, parseYaml, dumpYaml } from "../utils/yaml.js";
 
-export type ImportSource = "cursor" | "codex";
+export type ImportSource = "cursor" | "codex" | "claude" | "windsurf";
 
 export interface ImportOptions {
   from: ImportSource;
@@ -25,6 +25,10 @@ export async function importSkill(options: ImportOptions) {
 
   if (from === "cursor") {
     config = importFromCursor(frontmatter, body);
+  } else if (from === "claude") {
+    config = importFromClaude(frontmatter, body);
+  } else if (from === "windsurf") {
+    config = importFromWindsurf(frontmatter, body);
   } else {
     config = await importFromCodex(frontmatter, body, sourcePath);
   }
@@ -52,6 +56,75 @@ function importFromCursor(
       allowImplicitInvocation: true,
     },
   };
+}
+
+/**
+ * Windsurf 原生 skill 信息最稀疏，frontmatter 仅 name + description。
+ * 也用作 unknown / 通用来源的中性解析路径（纯 name + description + body）。
+ */
+function importFromWindsurf(
+  frontmatter: Record<string, unknown>,
+  body: string
+): Record<string, unknown> {
+  return {
+    name: frontmatter["name"],
+    description: frontmatter["description"],
+    version: "1.0.0",
+    instructions: body,
+  };
+}
+
+/**
+ * Claude Code 原生 skill：解析标准字段 + 全部 Claude 专有运行时 frontmatter，
+ * 还原到抽象包的 metadata 与 claude 块（docs/skill-forge-design.md §8.6）。
+ */
+function importFromClaude(
+  frontmatter: Record<string, unknown>,
+  body: string
+): Record<string, unknown> {
+  const config: Record<string, unknown> = {
+    name: frontmatter["name"],
+    description: frontmatter["description"],
+    version: "1.0.0",
+    instructions: body,
+  };
+
+  if (frontmatter["disable-model-invocation"] !== undefined) {
+    config.triggers = {
+      disableModelInvocation: frontmatter["disable-model-invocation"] as boolean,
+      allowImplicitInvocation: true,
+    };
+  }
+
+  // 标准 Agent Skills 元数据
+  const metadata: Record<string, unknown> = {};
+  if (frontmatter["license"]) metadata.license = frontmatter["license"];
+  if (frontmatter["compatibility"])
+    metadata.compatibility = frontmatter["compatibility"];
+  const fmMeta = frontmatter["metadata"] as Record<string, unknown> | undefined;
+  if (fmMeta?.["author"]) metadata.author = fmMeta["author"];
+  if (fmMeta?.["version"]) metadata.version = fmMeta["version"];
+  if (Object.keys(metadata).length > 0) config.metadata = metadata;
+
+  // Claude 专有运行时字段
+  const claude: Record<string, unknown> = {};
+  if (frontmatter["allowed-tools"] !== undefined)
+    claude.allowedTools = frontmatter["allowed-tools"];
+  if (frontmatter["disallowed-tools"] !== undefined)
+    claude.disallowedTools = frontmatter["disallowed-tools"];
+  if (frontmatter["user-invocable"] !== undefined)
+    claude.userInvocable = frontmatter["user-invocable"];
+  if (frontmatter["argument-hint"])
+    claude.argumentHint = frontmatter["argument-hint"];
+  if (frontmatter["when_to_use"]) claude.whenToUse = frontmatter["when_to_use"];
+  if (frontmatter["model"]) claude.model = frontmatter["model"];
+  if (frontmatter["effort"]) claude.effort = frontmatter["effort"];
+  if (frontmatter["context"]) claude.context = frontmatter["context"];
+  if (frontmatter["agent"]) claude.agent = frontmatter["agent"];
+  if (frontmatter["hooks"]) claude.hooks = frontmatter["hooks"];
+  if (Object.keys(claude).length > 0) config.claude = claude;
+
+  return config;
 }
 
 async function importFromCodex(
