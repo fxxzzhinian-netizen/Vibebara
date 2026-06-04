@@ -94,6 +94,16 @@ class TeamSyncService:
     async def emit_member_joined(cls, team_id: str, user_id: str) -> None:
         await cls._emit(team_id, "team.member.joined", user_id, {})
 
+    @classmethod
+    async def emit_team_deleted(cls, team_id: str, user_id: str) -> None:
+        # 团队被 owner 删除：在线成员据此清空当前团队视图并刷新团队列表。
+        await cls._emit(team_id, "team.deleted", user_id, {})
+
+    @classmethod
+    def clear_team(cls, team_id: str) -> None:
+        # 团队删除后丢弃其监听器，避免内存泄漏（WebSocket 侧重连会被鉴权拒绝）。
+        cls._listeners.pop(team_id, None)
+
     # ------------------------------------------------------------------
     # 内部
     # ------------------------------------------------------------------

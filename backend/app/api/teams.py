@@ -88,7 +88,7 @@ async def delete_team(team_id: str, user_id: str = Depends(get_current_user_id))
     role = await team_service.get_member_role(team_id, user_id)
     if role != "owner":
         raise HTTPException(status_code=403, detail="仅 owner 可删除团队")
-    success = await team_service.delete_team(team_id)
+    success = await team_service.delete_team(team_id, user_id)
     if not success:
         raise HTTPException(status_code=404, detail="团队不存在")
     return {"success": True}
