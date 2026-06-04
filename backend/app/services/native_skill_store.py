@@ -37,6 +37,8 @@ CODEX_SKILLS_DIR = Path(
 ) / "skills"
 # Windsurf 全局 skill 目录在 ~/.codeium/windsurf/skills（不是 ~/.windsurf）。
 WINDSURF_SKILLS_DIR = Path.home() / ".codeium" / "windsurf" / "skills"
+# Claude Code 全局 skill 目录在 ~/.claude/skills。
+CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
 
 
 def _now_iso() -> str:
@@ -315,6 +317,9 @@ class NativeSkillStore:
                 row.deployed_windsurf = (
                     WINDSURF_SKILLS_DIR / skill_id / "SKILL.md"
                 ).exists()
+                row.deployed_claude = (
+                    CLAUDE_SKILLS_DIR / skill_id / "SKILL.md"
+                ).exists()
             else:
                 if row.deployed_cursor is None:
                     row.deployed_cursor = False
@@ -322,6 +327,8 @@ class NativeSkillStore:
                     row.deployed_codex = False
                 if row.deployed_windsurf is None:
                     row.deployed_windsurf = False
+                if row.deployed_claude is None:
+                    row.deployed_claude = False
 
             await session.commit()
             await session.refresh(row)
@@ -1044,12 +1051,16 @@ class NativeSkillStore:
                     dest_root = project_root / ".cursor" / "skills"
                 elif out_target == "windsurf":
                     dest_root = project_root / ".windsurf" / "skills"
+                elif out_target == "claude":
+                    dest_root = project_root / ".claude" / "skills"
                 else:
                     dest_root = project_root / ".codex" / "skills"
             elif out_target == "cursor":
                 dest_root = CURSOR_SKILLS_DIR
             elif out_target == "windsurf":
                 dest_root = WINDSURF_SKILLS_DIR
+            elif out_target == "claude":
+                dest_root = CLAUDE_SKILLS_DIR
             else:
                 dest_root = CODEX_SKILLS_DIR
 
@@ -1120,6 +1131,7 @@ class NativeSkillStore:
             "deployed_cursor": row.deployed_cursor,
             "deployed_codex": row.deployed_codex,
             "deployed_windsurf": row.deployed_windsurf,
+            "deployed_claude": row.deployed_claude,
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         }

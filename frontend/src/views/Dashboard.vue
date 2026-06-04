@@ -28,7 +28,7 @@ const browseError = ref('')
 
 // --- Migration flow modal (local UI state) ---
 const migrationOpen = ref(false)
-const migrationTarget = ref<'cursor' | 'codex'>('cursor')
+const migrationTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude'>('cursor')
 const migrationTool = ref<string>('cursor')
 const migrationSteps = ref<{
   id: string
@@ -116,8 +116,16 @@ function closeProject() {
 
 // ========== Open in Platform (Migration Flow) ==========
 
-function toolForPlatform(platform: 'cursor' | 'codex'): string {
+function toolForPlatform(platform: 'cursor' | 'codex' | 'windsurf' | 'claude'): string {
   if (platform === 'cursor') return 'cursor'
+  if (platform === 'windsurf') return 'windsurf'
+  if (platform === 'claude') {
+    const claudeApp = tools.value.find((t) => t.id === 'claude-app' && t.available)
+    if (claudeApp) return 'claude-app'
+    const claudeCode = tools.value.find((t) => t.id === 'claude-code' && t.available)
+    if (claudeCode) return 'claude-code'
+    return 'claude-code'
+  }
   const codexApp = tools.value.find((t) => t.id === 'codex-app' && t.available)
   if (codexApp) return 'codex-app'
   const codexCli = tools.value.find((t) => t.id === 'codex-cli' && t.available)
@@ -125,16 +133,24 @@ function toolForPlatform(platform: 'cursor' | 'codex'): string {
   return 'codex-cli'
 }
 
-function isToolAvailable(platform: 'cursor' | 'codex'): boolean {
+function isToolAvailable(platform: 'cursor' | 'codex' | 'windsurf' | 'claude'): boolean {
   if (platform === 'cursor') {
     return tools.value.some((t) => t.id === 'cursor' && t.available)
+  }
+  if (platform === 'windsurf') {
+    return tools.value.some((t) => t.id === 'windsurf' && t.available)
+  }
+  if (platform === 'claude') {
+    return tools.value.some(
+      (t) => (t.id === 'claude-code' || t.id === 'claude-app') && t.available,
+    )
   }
   return tools.value.some(
     (t) => (t.id === 'codex-cli' || t.id === 'codex-app') && t.available,
   )
 }
 
-async function openInPlatform(platform: 'cursor' | 'codex') {
+async function openInPlatform(platform: 'cursor' | 'codex' | 'windsurf' | 'claude') {
   migrationTarget.value = platform
   migrationTool.value = toolForPlatform(platform)
   migrationPhase.value = 'adapting'
@@ -250,6 +266,7 @@ function originLabel(o: string): string {
   if (o === 'cursor') return 'Cursor'
   if (o === 'codex') return 'Codex'
   if (o === 'windsurf') return 'Windsurf'
+  if (o === 'claude') return 'Claude Code'
   return '未知'
 }
 
@@ -338,6 +355,8 @@ function pathSegments(p: string) {
                 <span class="dot-label">X</span>
                 <span :class="['dot', { active: pkg.installed_at.windsurf }]" title="Windsurf"></span>
                 <span class="dot-label">W</span>
+                <span :class="['dot', { active: pkg.installed_at.claude }]" title="Claude Code"></span>
+                <span class="dot-label">A</span>
               </div>
               <div class="import-action">
                 <button
@@ -370,6 +389,20 @@ function pathSegments(p: string) {
               @click="openInPlatform('codex')"
             >
               Codex 中打开
+            </button>
+            <button
+              class="btn-open windsurf-open"
+              :disabled="!isToolAvailable('windsurf')"
+              @click="openInPlatform('windsurf')"
+            >
+              Windsurf 中打开
+            </button>
+            <button
+              class="btn-open claude-open"
+              :disabled="!isToolAvailable('claude')"
+              @click="openInPlatform('claude')"
+            >
+              Claude Code 中打开
             </button>
           </div>
         </div>
@@ -706,6 +739,20 @@ function pathSegments(p: string) {
   color: var(--success);
 }
 .btn-open.codex-open:hover:not(:disabled) { background: rgba(16, 185, 129, 0.2); }
+
+.btn-open.windsurf-open {
+  background: rgba(6, 182, 212, 0.1);
+  border-color: rgba(6, 182, 212, 0.3);
+  color: #06b6d4;
+}
+.btn-open.windsurf-open:hover:not(:disabled) { background: rgba(6, 182, 212, 0.2); }
+
+.btn-open.claude-open {
+  background: rgba(217, 119, 87, 0.1);
+  border-color: rgba(217, 119, 87, 0.3);
+  color: #d97757;
+}
+.btn-open.claude-open:hover:not(:disabled) { background: rgba(217, 119, 87, 0.2); }
 .btn-open:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ========== Folder Browser Modal ========== */

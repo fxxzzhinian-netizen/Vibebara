@@ -30,7 +30,7 @@ const showAddSkill = ref(false)
 const addError = ref('')
 const showDeployModal = ref(false)
 const deploySkillId = ref('')
-const deployTool = ref<'cursor' | 'codex' | 'windsurf'>('cursor')
+const deployTool = ref<'cursor' | 'codex' | 'windsurf' | 'claude'>('cursor')
 const deployPath = ref('')
 const deployOverwrite = ref(false)
 const deployError = ref('')
@@ -467,6 +467,7 @@ function goBack() {
               <option value="cursor">Cursor</option>
               <option value="codex">Codex</option>
               <option value="windsurf">Windsurf</option>
+              <option value="claude">Claude Code</option>
             </select>
           </div>
 

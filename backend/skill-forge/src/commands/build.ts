@@ -3,10 +3,11 @@ import type { BuildResult } from "../adapters/base.js";
 import { CursorAdapter } from "../adapters/cursor.js";
 import { CodexAdapter } from "../adapters/codex.js";
 import { WindsurfAdapter } from "../adapters/windsurf.js";
+import { ClaudeAdapter } from "../adapters/claude.js";
 import { loadAndValidate } from "./validate.js";
 import { ensureDir } from "../utils/fs.js";
 
-export type Target = "cursor" | "codex" | "windsurf" | "all";
+export type Target = "cursor" | "codex" | "windsurf" | "claude" | "all";
 
 export interface BuildOptions {
   target: Target;
@@ -18,7 +19,13 @@ function getAdapters(target: Target) {
   if (target === "cursor") return [new CursorAdapter()];
   if (target === "codex") return [new CodexAdapter()];
   if (target === "windsurf") return [new WindsurfAdapter()];
-  return [new CursorAdapter(), new CodexAdapter(), new WindsurfAdapter()];
+  if (target === "claude") return [new ClaudeAdapter()];
+  return [
+    new CursorAdapter(),
+    new CodexAdapter(),
+    new WindsurfAdapter(),
+    new ClaudeAdapter(),
+  ];
 }
 
 export async function buildSkill(

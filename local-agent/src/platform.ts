@@ -7,6 +7,7 @@ import path from "node:path";
  *   CURSOR_SKILLS_DIR   = ~/.cursor/skills
  *   CODEX_SKILLS_DIR    = $CODEX_HOME/skills（未设则 ~/.codex/skills）
  *   WINDSURF_SKILLS_DIR = ~/.codeium/windsurf/skills（注意在 ~/.codeium 下，不是 ~/.windsurf）
+ *   CLAUDE_SKILLS_DIR   = ~/.claude/skills
  *
  * 注：skill-forge 的 package.ts 用 HOME||USERPROFILE 解析 home，
  * os.homedir() 在 Windows 上返回 USERPROFILE，二者口径一致。
@@ -30,8 +31,13 @@ export function windsurfSkillsDir(): string {
   return path.join(os.homedir(), ".codeium", "windsurf", "skills");
 }
 
+export function claudeSkillsDir(): string {
+  return path.join(os.homedir(), ".claude", "skills");
+}
+
 export function platformSkillsDir(tool: ToolType): string {
   if (tool === "cursor") return cursorSkillsDir();
   if (tool === "windsurf") return windsurfSkillsDir();
+  if (tool === "claude") return claudeSkillsDir();
   return codexSkillsDir();
 }

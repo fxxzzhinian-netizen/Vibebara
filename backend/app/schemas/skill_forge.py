@@ -32,6 +32,7 @@ class InstalledAtStatus(BaseModel):
     cursor: bool = False
     codex: bool = False
     windsurf: bool = False
+    claude: bool = False
 
 
 class UnifiedSkillPackage(BaseModel):
@@ -98,6 +99,7 @@ class NativeSkillItem(BaseModel):
     deployed_cursor: bool = False
     deployed_codex: bool = False
     deployed_windsurf: bool = False
+    deployed_claude: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

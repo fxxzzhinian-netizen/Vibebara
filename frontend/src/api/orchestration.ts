@@ -209,6 +209,7 @@ function toWriteResources(items: CloudResourceItem[] | undefined): ResourcePaylo
 function asTool(t: string): ToolType {
   if (t === 'codex') return 'codex'
   if (t === 'windsurf') return 'windsurf'
+  if (t === 'claude') return 'claude'
   return 'cursor'
 }
 
@@ -499,15 +500,15 @@ export async function getPlatformInstalledStatus(): Promise<
   Record<string, InstalledAtStatus>
 > {
   const map: Record<string, InstalledAtStatus> = {}
-  let dirs: { cursor: string; codex: string; windsurf: string }
+  let dirs: { cursor: string; codex: string; windsurf: string; claude: string }
   try {
     const h = await localAgent.health()
     dirs = h.platformSkillDirs
   } catch {
     return map
   }
-  // 扫描三个平台目录；每个包的 installedAt 已对三个平台目录各自探测，直接汇总即可。
-  for (const dir of [dirs.cursor, dirs.codex, dirs.windsurf]) {
+  // 扫描四个平台目录；每个包的 installedAt 已对各平台目录各自探测，直接汇总即可。
+  for (const dir of [dirs.cursor, dirs.codex, dirs.windsurf, dirs.claude]) {
     if (!dir) continue
     try {
       const res = await localAgent.scan({ rootDir: dir })
@@ -516,6 +517,7 @@ export async function getPlatformInstalledStatus(): Promise<
           cursor: p.installedAt.cursor,
           codex: p.installedAt.codex,
           windsurf: p.installedAt.windsurf,
+          claude: p.installedAt.claude,
         }
       }
     } catch {

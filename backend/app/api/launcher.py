@@ -18,14 +18,27 @@ api_router = APIRouter(prefix="/launcher", tags=["launcher"])
 # 登录鉴权，杜绝未授权用户触发服务器进程执行。前端经 apiClient 自动附带 Bearer。
 # 进一步建议：cloud 模式应整体禁用本路由（见 M2 文档「残留风险」）。
 
-SUPPORTED_TOOLS = ("cursor", "codex-cli", "codex-app")
+SUPPORTED_TOOLS = (
+    "cursor",
+    "codex-cli",
+    "codex-app",
+    "windsurf",
+    "claude-code",
+    "claude-app",
+)
 IS_WINDOWS = platform.system() == "Windows"
 
 TOOL_LABELS = {
     "cursor": "Cursor",
     "codex-cli": "Codex CLI",
     "codex-app": "Codex App",
+    "windsurf": "Windsurf",
+    "claude-code": "Claude Code",
+    "claude-app": "Claude",
 }
+
+# 交互式 CLI 工具（新终端窗口启动）；其余按 GUI 应用后台启动。
+TERMINAL_TOOLS = ("codex-cli", "claude-code")
 
 
 class LaunchRequest(BaseModel):
@@ -116,6 +129,46 @@ def _resolve_command(tool: str) -> list[str]:
             "Codex App 未找到，请确认 Codex 桌面应用已安装"
         )
 
+    if tool == "windsurf":
+        if IS_WINDOWS:
+            exe = _find_executable("windsurf.cmd", "windsurf", "Windsurf.exe")
+            if exe:
+                return [exe]
+            appx_uri = _find_appx_app("Windsurf")
+            if appx_uri:
+                return ["explorer.exe", appx_uri]
+        else:
+            exe = _find_executable("windsurf", "Windsurf")
+            if exe:
+                return [exe]
+        raise FileNotFoundError(
+            "windsurf 命令未找到，请确认 Windsurf 已安装且在 PATH 中"
+        )
+
+    if tool == "claude-code":
+        exe = _find_executable("claude.cmd", "claude") if IS_WINDOWS else _find_executable("claude")
+        if exe:
+            return [exe]
+        raise FileNotFoundError(
+            "claude 命令未找到，请确认 Claude Code 已安装 (npm i -g @anthropic-ai/claude-code)"
+        )
+
+    if tool == "claude-app":
+        if IS_WINDOWS:
+            exe = _find_executable("claude-app.cmd", "claude-app", "Claude.exe")
+            if exe:
+                return [exe]
+            appx_uri = _find_appx_app("Claude")
+            if appx_uri:
+                return ["explorer.exe", appx_uri]
+        else:
+            exe = _find_executable("claude-app", "Claude")
+            if exe:
+                return [exe]
+        raise FileNotFoundError(
+            "Claude App 未找到，请确认 Claude 桌面应用已安装"
+        )
+
     raise ValueError(f"不支持的工具: {tool}")
 
 
@@ -166,6 +219,12 @@ async def list_tools(user_id: str = Depends(get_current_user_id)):
             mode, desc = "terminal", "在终端中启动 Codex CLI 交互式对话"
         elif tool_id == "codex-app":
             mode, desc = "app", "启动 Codex 桌面应用"
+        elif tool_id == "windsurf":
+            mode, desc = "app", "启动 Windsurf IDE"
+        elif tool_id == "claude-code":
+            mode, desc = "terminal", "在终端中启动 Claude Code 交互式对话"
+        elif tool_id == "claude-app":
+            mode, desc = "app", "启动 Claude 桌面应用"
         else:
             mode, desc = "app", "启动 Cursor IDE"
 
@@ -183,7 +242,7 @@ async def list_tools(user_id: str = Depends(get_current_user_id)):
 async def launch_tool(
     data: LaunchRequest, user_id: str = Depends(get_current_user_id)
 ):
-    """启动工具 (Cursor / Codex CLI / Codex App)"""
+    """启动工具 (Cursor / Codex CLI / Codex App / Windsurf)"""
     if data.tool not in SUPPORTED_TOOLS:
         raise HTTPException(
             status_code=400,
@@ -199,8 +258,9 @@ async def launch_tool(
         cmd.append(data.project_path)
 
     label = TOOL_LABELS[data.tool]
+    is_terminal = data.tool in TERMINAL_TOOLS
     try:
-        if data.tool == "codex-cli":
+        if is_terminal:
             _launch_terminal(cmd)
         else:
             _launch_background(cmd)
@@ -214,6 +274,6 @@ async def launch_tool(
     return {
         "status": "launched",
         "tool": data.tool,
-        "mode": "terminal" if data.tool == "codex-cli" else "app",
+        "mode": "terminal" if is_terminal else "app",
         "message": f"{label} 已成功启动{suffix}",
     }

@@ -61,7 +61,13 @@ export const IPC = {
   LOCAL_AGENT_CHANGED: "vibehub:local-agent-changed",
 } as const;
 
-export type LauncherToolId = "cursor" | "codex-cli" | "codex-app";
+export type LauncherToolId =
+  | "cursor"
+  | "codex-cli"
+  | "codex-app"
+  | "windsurf"
+  | "claude-code"
+  | "claude-app";
 
 export interface LauncherToolInfo {
   id: LauncherToolId;

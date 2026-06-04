@@ -32,6 +32,7 @@ const toolIcons: Record<string, string> = {
   cursor: '⌨️',
   copilot: '🤖',
   windsurf: '🏄',
+  claude: '🧠',
   bolt: '⚡',
 }
 </script>

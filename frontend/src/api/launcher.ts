@@ -1,7 +1,13 @@
 import apiClient from './client'
 import { getDesktopBridge } from '@/runtime/desktopBridge'
 
-export type ToolId = 'cursor' | 'codex-cli' | 'codex-app'
+export type ToolId =
+  | 'cursor'
+  | 'codex-cli'
+  | 'codex-app'
+  | 'windsurf'
+  | 'claude-code'
+  | 'claude-app'
 
 export interface LaunchRequest {
   tool: ToolId

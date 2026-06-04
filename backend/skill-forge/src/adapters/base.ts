@@ -5,7 +5,7 @@ export interface BuildResult {
   files: string[];
 }
 
-export type AdapterTarget = "cursor" | "codex" | "windsurf";
+export type AdapterTarget = "cursor" | "codex" | "windsurf" | "claude";
 
 export interface Adapter {
   readonly target: AdapterTarget;

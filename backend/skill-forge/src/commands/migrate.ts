@@ -5,15 +5,17 @@ import type { Adapter } from "../adapters/base.js";
 import { CursorAdapter } from "../adapters/cursor.js";
 import { CodexAdapter } from "../adapters/codex.js";
 import { WindsurfAdapter } from "../adapters/windsurf.js";
+import { ClaudeAdapter } from "../adapters/claude.js";
 import { UnifiedSkillSchema } from "../schema/unified.js";
 import { ensureDir, copyDir, writeFile } from "../utils/fs.js";
 import { dumpYaml } from "../utils/yaml.js";
 
-export type MigrateTarget = "cursor" | "codex" | "windsurf";
+export type MigrateTarget = "cursor" | "codex" | "windsurf" | "claude";
 
 function adapterFor(target: MigrateTarget): Adapter {
   if (target === "codex") return new CodexAdapter();
   if (target === "windsurf") return new WindsurfAdapter();
+  if (target === "claude") return new ClaudeAdapter();
   return new CursorAdapter();
 }
 

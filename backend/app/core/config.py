@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     # 示例：^(app|vibehub|file)://.*$
     ALLOW_ORIGIN_REGEX: str = ""
 
-    ENABLED_ADAPTERS: List[str] = ["cursor", "copilot", "windsurf"]
+    ENABLED_ADAPTERS: List[str] = ["cursor", "copilot", "windsurf", "claude"]
 
     # ------------------------------------------------------------------
     # 安全 / 鉴权（方案 B M2）

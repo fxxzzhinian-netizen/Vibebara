@@ -12,7 +12,7 @@ import { localAgentClient } from './client'
 // ===================== 通用类型（契约 §1）=====================
 
 export type LocalAgentApiVersion = 'local-agent/v1'
-export type ToolType = 'cursor' | 'codex' | 'windsurf'
+export type ToolType = 'cursor' | 'codex' | 'windsurf' | 'claude'
 export type DeployScope = 'project' | 'platform'
 export type ContentEncoding = 'utf8' | 'base64'
 export type ResourceTransfer = 'inline' | 'url'
@@ -67,6 +67,7 @@ export interface HealthResponse extends LocalAgentSuccessBase {
     cursor: string
     codex: string
     windsurf: string
+    claude: string
   }
 }
 
@@ -98,6 +99,7 @@ export interface InstalledAtStatus {
   cursor: boolean
   codex: boolean
   windsurf: boolean
+  claude: boolean
 }
 
 export interface UnifiedSkillPackage {

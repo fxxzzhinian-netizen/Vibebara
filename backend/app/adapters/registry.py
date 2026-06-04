@@ -3,6 +3,7 @@ from app.adapters.base import BaseAdapter
 from app.adapters.cursor_adapter import CursorAdapter
 from app.adapters.copilot_adapter import CopilotAdapter
 from app.adapters.windsurf_adapter import WindsurfAdapter
+from app.adapters.claude_adapter import ClaudeAdapter
 
 
 class AdapterRegistry:
@@ -16,6 +17,7 @@ class AdapterRegistry:
         "cursor": CursorAdapter,
         "copilot": CopilotAdapter,
         "windsurf": WindsurfAdapter,
+        "claude": ClaudeAdapter,
     }
 
     @classmethod

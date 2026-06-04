@@ -11,6 +11,7 @@ export { type Adapter, type AdapterTarget, type BuildResult } from "./adapters/b
 export { CursorAdapter } from "./adapters/cursor.js";
 export { CodexAdapter } from "./adapters/codex.js";
 export { WindsurfAdapter } from "./adapters/windsurf.js";
+export { ClaudeAdapter } from "./adapters/claude.js";
 export { detectOrigin, type SkillOrigin, type Confidence, type DetectResult } from "./adapters/detect.js";
 export { buildSkill, type BuildOptions, type Target } from "./commands/build.js";
 export { deploySkill, type DeployOptions } from "./commands/deploy.js";

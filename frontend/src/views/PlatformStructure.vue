@@ -7,7 +7,7 @@ const route = useRoute()
 const router = useRouter()
 const store = useSkillStore()
 
-const activePlatform = ref<'overview' | 'codex' | 'cursor' | 'windsurf'>('overview')
+const activePlatform = ref<'overview' | 'codex' | 'cursor' | 'windsurf' | 'claude'>('overview')
 
 // 页面自带 Skill 上下文：路由带 id 时自行加载，避免依赖跳转前的内存态
 // （直接进入、刷新或从详情页进来时也能正确带出当前 Skill）。
@@ -41,7 +41,7 @@ interface FieldDef {
   type: 'text' | 'textarea' | 'color' | 'json' | 'tags'
   parent: string
   placeholder?: string
-  platforms: ('cursor' | 'codex' | 'windsurf')[]
+  platforms: ('cursor' | 'codex' | 'windsurf' | 'claude')[]
 }
 
 const allFields: FieldDef[] = [
@@ -114,6 +114,12 @@ const platformMeta = {
     badge: 'SKILL.md frontmatter',
     desc: 'Windsurf (Cascade) 与 Cursor 同构：含 SKILL.md（frontmatter: name + description）的文件夹。项目级落 .windsurf/skills/，全局级落 ~/.codeium/windsurf/skills/。不含 UI 元数据与 MCP 声明。',
   },
+  claude: {
+    name: 'Claude Code',
+    color: '#d97757',
+    badge: 'SKILL.md frontmatter',
+    desc: 'Claude Code 与 Cursor 同构：含 SKILL.md（frontmatter: name + description）的文件夹。项目级落 .claude/skills/，全局级落 ~/.claude/skills/。不含 UI 元数据与 MCP 声明。',
+  },
 }
 
 const fieldsForPlatform = computed(() => {
@@ -170,6 +176,13 @@ const fieldsForPlatform = computed(() => {
       >
         <span class="seg-dot windsurf"></span>
         Windsurf
+      </button>
+      <button
+        :class="['seg-btn', { active: activePlatform === 'claude' }]"
+        @click="activePlatform = 'claude'"
+      >
+        <span class="seg-dot claude"></span>
+        Claude Code
       </button>
     </nav>
 
@@ -296,6 +309,16 @@ const fieldsForPlatform = computed(() => {
           <ul>
             <li>与 Cursor 同构：输出含 <code>SKILL.md</code>（frontmatter: <code>name</code> + <code>description</code>）的文件夹</li>
             <li>项目级落 <code>.windsurf/skills/{id}/</code>；全局级落 <code>~/.codeium/windsurf/skills/{id}/</code></li>
+            <li>不包含 UI 元数据、MCP 工具声明；无平台特有必填字段</li>
+          </ul>
+        </div>
+
+        <!-- Claude Code: build info (与 Cursor 同构，无平台特有可编辑字段) -->
+        <div v-else-if="activePlatform === 'claude'" class="build-info">
+          <h4>构建说明</h4>
+          <ul>
+            <li>与 Cursor 同构：输出含 <code>SKILL.md</code>（frontmatter: <code>name</code> + <code>description</code>）的文件夹</li>
+            <li>项目级落 <code>.claude/skills/{id}/</code>；全局级落 <code>~/.claude/skills/{id}/</code></li>
             <li>不包含 UI 元数据、MCP 工具声明；无平台特有必填字段</li>
           </ul>
         </div>
@@ -465,6 +488,7 @@ const fieldsForPlatform = computed(() => {
 .seg-dot.codex { background: #10b981; }
 .seg-dot.cursor { background: #6366f1; }
 .seg-dot.windsurf { background: #06b6d4; }
+.seg-dot.claude { background: #d97757; }
 
 /* Content */
 .page-content {

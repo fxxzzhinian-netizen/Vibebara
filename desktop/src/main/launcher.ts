@@ -10,25 +10,42 @@ import type {
  * 一键启动工具（方案 B M5-a / 决策 D）。
  *
  * 在 Electron 主进程用 TS 重做原 `backend/app/api/launcher.py` 的命令解析与启动
- * （cursor / codex-cli / codex-app）——cloud 形态已下线后端 /launcher 路由，桌面壳
- * 在本机直接启动。经 IPC 暴露给渲染层（见 ipc.ts）。
+ * （cursor / codex-cli / codex-app / windsurf）——cloud 形态已下线后端 /launcher 路由，
+ * 桌面壳在本机直接启动。经 IPC 暴露给渲染层（见 ipc.ts）。
  *
  * 命令解析口径与 launcher.py 一致：
  *   · cursor   : which(cursor.cmd/cursor) → 后台静默启动；
  *   · codex-cli: which(codex.cmd/codex)   → 新终端窗口启动（交互式）；
- *   · codex-app: which(codex-app.cmd/codex-app/Codex.exe) 或 AppX(Get-StartApps) → 后台启动。
+ *   · codex-app: which(codex-app.cmd/codex-app/Codex.exe) 或 AppX(Get-StartApps) → 后台启动；
+ *   · windsurf : which(windsurf.cmd/windsurf/Windsurf.exe) 或 AppX(Get-StartApps) → 后台启动。
  */
 
 const IS_WINDOWS = process.platform === "win32";
 const IS_MAC = process.platform === "darwin";
 
-const SUPPORTED_TOOLS: LauncherToolId[] = ["cursor", "codex-cli", "codex-app"];
+const SUPPORTED_TOOLS: LauncherToolId[] = [
+  "cursor",
+  "codex-cli",
+  "codex-app",
+  "windsurf",
+  "claude-code",
+  "claude-app",
+];
 
 const TOOL_LABELS: Record<LauncherToolId, string> = {
   cursor: "Cursor",
   "codex-cli": "Codex CLI",
   "codex-app": "Codex App",
+  windsurf: "Windsurf",
+  "claude-code": "Claude Code",
+  "claude-app": "Claude",
 };
+
+/** 交互式 CLI 工具（新终端窗口启动）；其余按 GUI 应用后台启动。 */
+const TERMINAL_TOOLS: ReadonlySet<LauncherToolId> = new Set([
+  "codex-cli",
+  "claude-code",
+]);
 
 /** 在 PATH 中查找首个可用可执行文件，返回绝对路径或 null（对齐 shutil.which）。 */
 function which(...candidates: string[]): string | null {
@@ -106,6 +123,40 @@ function resolveCommand(tool: LauncherToolId): string[] {
     throw new Error("Codex App 未找到，请确认 Codex 桌面应用已安装");
   }
 
+  if (tool === "windsurf") {
+    if (IS_WINDOWS) {
+      const exe = which("windsurf.cmd", "windsurf", "Windsurf.exe");
+      if (exe) return [exe];
+      const appx = findAppxApp("Windsurf");
+      if (appx) return ["explorer.exe", appx];
+    } else {
+      const exe = which("windsurf", "Windsurf");
+      if (exe) return [exe];
+    }
+    throw new Error("windsurf 命令未找到，请确认 Windsurf 已安装且在 PATH 中");
+  }
+
+  if (tool === "claude-code") {
+    const exe = IS_WINDOWS ? which("claude.cmd", "claude") : which("claude");
+    if (exe) return [exe];
+    throw new Error(
+      "claude 命令未找到，请确认 Claude Code 已安装 (npm i -g @anthropic-ai/claude-code)",
+    );
+  }
+
+  if (tool === "claude-app") {
+    if (IS_WINDOWS) {
+      const exe = which("claude-app.cmd", "claude-app", "Claude.exe");
+      if (exe) return [exe];
+      const appx = findAppxApp("Claude");
+      if (appx) return ["explorer.exe", appx];
+    } else {
+      const exe = which("claude-app", "Claude");
+      if (exe) return [exe];
+    }
+    throw new Error("Claude App 未找到，请确认 Claude 桌面应用已安装");
+  }
+
   throw new Error(`不支持的工具: ${tool}`);
 }
 
@@ -165,6 +216,15 @@ export function listTools(): { tools: LauncherToolInfo[] } {
     } else if (id === "codex-app") {
       mode = "app";
       description = "启动 Codex 桌面应用";
+    } else if (id === "windsurf") {
+      mode = "app";
+      description = "启动 Windsurf IDE";
+    } else if (id === "claude-code") {
+      mode = "terminal";
+      description = "在终端中启动 Claude Code 交互式对话";
+    } else if (id === "claude-app") {
+      mode = "app";
+      description = "启动 Claude 桌面应用";
     } else {
       mode = "app";
       description = "启动 Cursor IDE";
@@ -191,7 +251,8 @@ export function launchTool(
   }
 
   const label = TOOL_LABELS[tool];
-  if (tool === "codex-cli") {
+  const isTerminal = TERMINAL_TOOLS.has(tool);
+  if (isTerminal) {
     launchTerminal(cmd);
   } else {
     launchBackground(cmd);
@@ -201,7 +262,7 @@ export function launchTool(
   return {
     status: "launched",
     tool,
-    mode: tool === "codex-cli" ? "terminal" : "app",
+    mode: isTerminal ? "terminal" : "app",
     message: `${label} 已成功启动${suffix}`,
   };
 }

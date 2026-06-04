@@ -26,6 +26,7 @@ export interface NativeSkillItem {
   deployed_cursor: boolean
   deployed_codex: boolean
   deployed_windsurf: boolean
+  deployed_claude: boolean
   created_at: string | null
   updated_at: string | null
 }

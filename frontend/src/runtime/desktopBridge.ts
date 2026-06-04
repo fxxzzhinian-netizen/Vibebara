@@ -11,7 +11,13 @@
  * （localStorage / 云端 /launcher）。前端据此「按形态选择」，保持 web 形态不变。
  */
 
-export type DesktopToolId = 'cursor' | 'codex-cli' | 'codex-app'
+export type DesktopToolId =
+  | 'cursor'
+  | 'codex-cli'
+  | 'codex-app'
+  | 'windsurf'
+  | 'claude-code'
+  | 'claude-app'
 
 export interface DesktopToolInfo {
   id: DesktopToolId

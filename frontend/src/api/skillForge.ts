@@ -58,6 +58,7 @@ export interface InstalledAtStatus {
   cursor: boolean
   codex: boolean
   windsurf: boolean
+  claude: boolean
 }
 
 export interface UnifiedSkillPackage {

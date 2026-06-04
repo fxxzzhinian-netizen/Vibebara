@@ -3,12 +3,14 @@ import type { Adapter } from "../adapters/base.js";
 import { CursorAdapter } from "../adapters/cursor.js";
 import { CodexAdapter } from "../adapters/codex.js";
 import { WindsurfAdapter } from "../adapters/windsurf.js";
+import { ClaudeAdapter } from "../adapters/claude.js";
 import { buildSkill, type Target } from "./build.js";
 import { copyDir, ensureDir } from "../utils/fs.js";
 
 function adapterFor(target: string): Adapter {
   if (target === "codex") return new CodexAdapter();
   if (target === "windsurf") return new WindsurfAdapter();
+  if (target === "claude") return new ClaudeAdapter();
   return new CursorAdapter();
 }
 
