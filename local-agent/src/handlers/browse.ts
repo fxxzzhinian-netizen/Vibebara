@@ -19,8 +19,12 @@ const HIDDEN_DIRS = new Set([
   "node_modules",
   "__pycache__",
   ".git",
+  ".svn",
+  ".hg",
   "dist",
   "build",
+  "$RECYCLE.BIN",
+  "System Volume Information",
 ]);
 
 function listDrivesWindows(): DirEntry[] {
@@ -103,7 +107,7 @@ export function handleBrowse(
       }
     }
     if (!isDir) continue;
-    if (entry.name.startsWith(".") || HIDDEN_DIRS.has(entry.name)) continue;
+    if (HIDDEN_DIRS.has(entry.name)) continue;
     const abs = path.join(p, entry.name);
     dirs.push({ name: entry.name, absPath: abs, isDrive: false });
     // 【任务③】不再登记列出的子目录——仅浏览不授权写入。

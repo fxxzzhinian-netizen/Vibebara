@@ -99,12 +99,13 @@ async def browse_directory(path_str: str) -> Dict[str, Any]:
 
         parent = str(p.parent) if p.parent != p else None
         dirs = []
-        hidden = {"node_modules", "__pycache__", ".git", "dist", "build"}
+        hidden = {"node_modules", "__pycache__", ".git", ".svn", ".hg", "dist", "build",
+                  "$RECYCLE.BIN", "System Volume Information"}
         try:
             for child in sorted(p.iterdir()):
                 if not child.is_dir():
                     continue
-                if child.name.startswith(".") or child.name in hidden:
+                if child.name in hidden:
                     continue
                 dirs.append({
                     "name": child.name,

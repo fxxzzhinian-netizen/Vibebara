@@ -107,7 +107,7 @@ watch(() => props.modelValue, (val) => {
           <div v-if="browseError" class="fp-error">{{ browseError }}</div>
 
           <div class="fp-list" v-if="!loading">
-            <div v-if="dirs.length === 0" class="fp-empty">此目录下无子文件夹</div>
+            <div v-if="dirs.length === 0" class="fp-empty">此目录下没有子文件夹</div>
             <div
               v-for="d in dirs"
               :key="d.abs_path"
