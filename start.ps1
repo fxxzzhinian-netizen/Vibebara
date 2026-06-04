@@ -1,4 +1,4 @@
-# VibeHub - Startup Script (Windows PowerShell)
+﻿# VibeHub - Startup Script (Windows PowerShell)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 

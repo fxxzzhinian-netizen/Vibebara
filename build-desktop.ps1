@@ -1,4 +1,4 @@
-# VibeHub Desktop - 一键构建 / 启动 / 打包（Windows PowerShell）
+﻿# VibeHub Desktop - 一键构建 / 启动 / 打包（Windows PowerShell）
 #
 # 默认行为（无参数）：构建三件套 → 拉起 cloud 模式后端 → 启动桌面壳。
 # 即：双击或执行本脚本就能跑起完整桌面客户端。
