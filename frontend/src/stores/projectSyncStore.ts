@@ -140,12 +140,15 @@ export const useProjectSyncStore = defineStore('project-sync', () => {
     return res
   }
 
-  /** 全局部署：落本机平台目录 ~/.{tool}/skills，一次性安装、不跟踪同步。 */
+  /**
+   * 全局部署：落本机平台目录 ~/.{tool}/skills，一次性安装、不跟踪同步。
+   * 始终覆盖同名旧副本（overwrite 由底层强制为 true，此处入参仅作兼容保留）。
+   */
   async function deploySkillGlobal(
     projectId: string,
     skillId: string,
     toolType: string,
-    overwrite: boolean = false,
+    overwrite: boolean = true,
   ) {
     const res = await deployProjectSkillGlobal(projectId, skillId, {
       tool_type: toolType,
