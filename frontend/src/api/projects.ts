@@ -6,6 +6,7 @@ import {
   pushOrchestrated,
   pullUpdateOrchestrated,
   getLocalStatusOrchestrated,
+  resumeTrackingOrchestrated,
 } from './orchestration'
 
 export interface ProjectInfo {
@@ -99,6 +100,13 @@ export interface PullUpdateResponse {
   success: boolean
   conflict?: boolean
   deployment?: UserSkillDeploymentInfo
+  error?: string
+}
+
+export interface ResumeTrackingResponse {
+  success: boolean
+  deployment?: UserSkillDeploymentInfo
+  status?: string
   error?: string
 }
 
@@ -288,6 +296,23 @@ export async function stopTrackingDeployment(
   const { data } = await apiClient.delete<{ success: boolean; error?: string }>(
     `/skill-deployments/${deploymentId}`,
     { params: { delete_files: deleteFiles } },
+  )
+  return data
+}
+
+/**
+ * 恢复跟踪：对已停止跟踪的部署就地重启跟踪（复用本地文件、重算基线/状态）。
+ * @param deployment 编排模式必传：需 install_path 经本地代理实算 hash 上报。
+ */
+export async function resumeTrackingDeployment(
+  deploymentId: string,
+  deployment?: UserSkillDeploymentInfo | null,
+): Promise<ResumeTrackingResponse> {
+  if (isOrchestrationEnabled() && deployment) {
+    return resumeTrackingOrchestrated(deploymentId, deployment)
+  }
+  const { data } = await apiClient.post<ResumeTrackingResponse>(
+    `/skill-deployments/${deploymentId}/resume-tracking`,
   )
   return data
 }

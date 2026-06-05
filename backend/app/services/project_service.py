@@ -316,8 +316,14 @@ async def add_skill_to_project(
 
 
 async def remove_skill_from_project(
-    project_id: str, skill_id: str
+    project_id: str, skill_id: str, user_id: str
 ) -> Dict[str, Any]:
+    """从项目移除 Skill 关联。
+
+    跟踪守卫：当前用户该 Skill 仍在跟踪（tracking_enabled=True）时拦截，要求先
+    「停止跟踪」，避免移除后留下够不着的孤儿部署。移除通过后顺带删除当前用户该
+    project+skill 的残留（已 untracked）部署记录，杜绝重新关联时复活错位。
+    """
     async with async_session_factory() as session:
         result = await session.execute(
             select(ProjectSkill).where(
@@ -328,6 +334,29 @@ async def remove_skill_from_project(
         ps = result.scalar_one_or_none()
         if not ps:
             return {"success": False, "error": "Project skill ref not found"}
+
+        active = await session.scalar(
+            select(UserSkillDeployment).where(
+                UserSkillDeployment.project_id == project_id,
+                UserSkillDeployment.team_skill_id == skill_id,
+                UserSkillDeployment.user_id == user_id,
+                UserSkillDeployment.tracking_enabled.is_(True),
+            )
+        )
+        if active:
+            return {
+                "success": False,
+                "code": "tracking_active",
+                "error": "请先停止跟踪再移除",
+            }
+
+        await session.execute(
+            delete(UserSkillDeployment).where(
+                UserSkillDeployment.project_id == project_id,
+                UserSkillDeployment.team_skill_id == skill_id,
+                UserSkillDeployment.user_id == user_id,
+            )
+        )
         await session.delete(ps)
         await session.commit()
         return {"success": True}
@@ -548,6 +577,100 @@ async def stop_tracking_deployment(
     if delete_files and install_path:
         shutil.rmtree(install_path, ignore_errors=True)
     return {"success": True}
+
+
+async def resume_tracking_deployment(
+    deployment_id: str,
+    user_id: str,
+    installed_hash: Optional[str] = None,
+) -> Dict[str, Any]:
+    """恢复跟踪：对已停止跟踪（untracked）的部署就地重启跟踪。
+
+    复用现有本地文件：以本地当前 hash 重新刷新 dirty/状态，并把 repo_hash/
+    repo_version 对齐团队仓库最新。基线 installed_hash **保留不覆盖**，使停跟踪
+    期间的本地改动恢复为「待推送(changed)」而非静默丢弃。
+
+    installed_hash：编排（桌面）形态由前端经本地代理实算上报（权威）；web 灰度
+    形态留空，由后端读 install_path 计算。本地缺失则不启用跟踪并引导重新部署。
+    """
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        if not deployment:
+            return {"success": False, "error": "Deployment not found"}
+        if deployment.user_id != user_id:
+            return {"success": False, "error": "Cannot resume another user's deployment"}
+        if deployment.tracking_enabled:
+            return {"success": False, "error": "Deployment is already tracking"}
+
+        project = await session.get(Project, deployment.project_id)
+        pkg = await session.get(SkillPackage, deployment.team_skill_id)
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == deployment.project_id,
+                ProjectSkill.skill_id == deployment.team_skill_id,
+            )
+        )
+        if not project or not pkg or not ref:
+            return {"success": False, "error": "该 Skill 已从项目移除，无法恢复跟踪"}
+
+        install_path = deployment.install_path
+        base_installed_hash = deployment.installed_hash
+        base_repo_hash = deployment.repo_hash
+
+        # 本地当前 hash：编排上报优先，否则后端读盘
+        current_local_hash = (
+            installed_hash
+            if installed_hash is not None
+            else _compute_content_hash(install_path)
+        )
+
+        if not current_local_hash:
+            deployment.status = "missing"
+            deployment.local_dirty = False
+            deployment.last_seen_at = datetime.now(timezone.utc)
+            await session.commit()
+            return {
+                "success": False,
+                "status": "missing",
+                "error": "本地部署目录缺失，请重新部署",
+            }
+
+        team_hash = _compute_content_hash(pkg.store_path) if pkg.store_path else ""
+        local_changed = current_local_hash != base_installed_hash
+        repo_advanced = bool(base_repo_hash) and base_repo_hash != team_hash
+
+        if repo_advanced and local_changed:
+            new_status = "conflict"
+        elif repo_advanced:
+            new_status = "outdated"
+        elif local_changed:
+            new_status = "changed"
+        else:
+            new_status = "synced"
+
+        deployment.tracking_enabled = True
+        deployment.local_dirty = local_changed
+        deployment.repo_hash = team_hash
+        deployment.repo_version = ref.version
+        deployment.status = new_status
+        deployment.last_seen_at = datetime.now(timezone.utc)
+
+        await _write_change_log(
+            session=session,
+            team_id=project.team_id,
+            project_id=deployment.project_id,
+            deployment_id=deployment.id,
+            skill_id=deployment.team_skill_id,
+            user_id=user_id,
+            action="resumed",
+            version=deployment.repo_version,
+            diff_summary="恢复跟踪",
+            base_hash=base_installed_hash,
+            new_hash=current_local_hash,
+        )
+        await session.commit()
+        await session.refresh(deployment)
+        return {"success": True, "deployment": _deployment_to_dict(deployment)}
 
 
 async def promote_deployment(

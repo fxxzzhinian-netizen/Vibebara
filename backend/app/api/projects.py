@@ -20,6 +20,7 @@ from app.schemas.project import (
     PushContentRequest,
     PushDeploymentResponse,
     RegisterDeploymentRequest,
+    ResumeTrackingRequest,
     SkillDeployRequest,
     SkillDeploymentResponse,
     SyncChangesResponse,
@@ -149,7 +150,7 @@ async def remove_skill(
     user_id: str = Depends(get_current_user_id),
 ):
     await _check_project_access(project_id, user_id)
-    return await project_service.remove_skill_from_project(project_id, skill_id)
+    return await project_service.remove_skill_from_project(project_id, skill_id, user_id)
 
 
 @api_router.post("/teams/{team_id}/skills/from-personal/{skill_id}")
@@ -314,6 +315,24 @@ async def stop_tracking_deployment(
         deployment_id,
         user_id,
         delete_files=delete_files,
+    )
+
+
+@api_router.post("/skill-deployments/{deployment_id}/resume-tracking")
+async def resume_tracking_deployment(
+    deployment_id: str,
+    data: Optional[ResumeTrackingRequest] = Body(default=None),
+    user_id: str = Depends(get_current_user_id),
+):
+    """恢复跟踪：对已停止跟踪的部署就地重启跟踪（复用本地文件、重算基线/状态）。
+
+    编排（桌面）形态：请求体携 `installedHash`（本地代理对 install_path 实算）；
+    web 灰度形态：可无请求体，后端读 install_path 计算。本地缺失返回 status=missing。
+    """
+    return await project_service.resume_tracking_deployment(
+        deployment_id,
+        user_id,
+        installed_hash=data.installed_hash if data else None,
     )
 
 

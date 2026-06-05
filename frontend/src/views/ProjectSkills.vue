@@ -41,6 +41,8 @@ const pullingId = ref('')
 const actionMsg = ref('')
 
 const localStatusMap = ref<Record<string, boolean>>({})
+// 恢复跟踪时本地目录缺失 → 标记该部署需走「重新部署」（编排模式不打云端，纯前端提示）
+const redeployHintIds = ref<Record<string, boolean>>({})
 const teamRepoSkills = ref<NativeSkillItem[]>([])
 const detailId = ref<string | null>(null)
 
@@ -185,7 +187,18 @@ async function addSkillToProject(skillId: string) {
 }
 
 async function removeSkill(skillId: string) {
-  await projectStore.removeSkill(projectId.value, skillId)
+  const skill = projectStore.projectSkills.find((s) => s.skill_id === skillId)
+  if (skill?.deployment?.tracking_enabled) {
+    actionMsg.value = '该 Skill 正在本机跟踪中，请先「停止跟踪」再移除'
+    return
+  }
+  if (!window.confirm('确认从项目移除该 Skill？移除后项目成员将无法再部署它。')) {
+    return
+  }
+  const res = await projectStore.removeSkill(projectId.value, skillId)
+  if (!res.success) {
+    actionMsg.value = res.error || '移除失败'
+  }
 }
 
 function openDeploy(skillId: string) {
@@ -240,6 +253,25 @@ async function submitDeploy() {
 
 async function stopTracking(deploymentId: string) {
   await projectStore.stopTracking(deploymentId)
+}
+
+async function resumeTracking(deploymentId: string) {
+  actionMsg.value = ''
+  const res = await projectStore.resumeTracking(deploymentId)
+  if (!res.success) {
+    if (res.status === 'missing') {
+      redeployHintIds.value = { ...redeployHintIds.value, [deploymentId]: true }
+      actionMsg.value = '本地部署目录缺失，请点「重新部署」'
+    } else {
+      actionMsg.value = res.error || '恢复跟踪失败'
+    }
+    return
+  }
+  const next = { ...redeployHintIds.value }
+  delete next[deploymentId]
+  redeployHintIds.value = next
+  actionMsg.value = '已恢复跟踪'
+  await refreshLocalStatuses()
 }
 
 async function pushDeploy(deploymentId: string) {
@@ -418,6 +450,20 @@ function goBack() {
               @click="pullUpdate(skill.deployment.id, skill.deployment.status)"
             >
               {{ pullingId === skill.deployment.id ? '更新中...' : '更新本地' }}
+            </button>
+            <button
+              v-if="skill.deployment && !skill.deployment.tracking_enabled && skill.deployment.status !== 'missing' && !redeployHintIds[skill.deployment.id]"
+              class="btn-sm btn-primary"
+              @click="resumeTracking(skill.deployment.id)"
+            >
+              恢复跟踪
+            </button>
+            <button
+              v-if="skill.deployment && (skill.deployment.status === 'missing' || redeployHintIds[skill.deployment.id])"
+              class="btn-sm btn-primary"
+              @click="openDeploy(skill.skill_id)"
+            >
+              重新部署
             </button>
             <button
               v-if="skill.deployment?.tracking_enabled"

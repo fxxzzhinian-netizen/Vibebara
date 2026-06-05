@@ -25,6 +25,7 @@ import type {
   PullUpdateResponse,
   PushDeploymentResponse,
   DeploymentLocalStatusResponse,
+  ResumeTrackingResponse,
   UserSkillDeploymentInfo,
 } from './projects'
 import type {
@@ -383,6 +384,31 @@ export async function pushOrchestrated(
       diff_summary: '',
       error: errMsg(e),
     }
+  }
+}
+
+// ===================== 编排：恢复跟踪（复用本地文件就地恢复）=====================
+
+/**
+ * 恢复跟踪：本地代理实算 install 目录 hash 上报 → 云端重启跟踪、重算基线/状态。
+ * 本地目录缺失（exists=false）→ 直接返回 missing，由调用方引导「重新部署」，不打云端。
+ */
+export async function resumeTrackingOrchestrated(
+  deploymentId: string,
+  deployment: UserSkillDeploymentInfo,
+): Promise<ResumeTrackingResponse> {
+  try {
+    const cur = await localAgent.hashOne(deployment.install_path)
+    if (!cur.exists) {
+      return { success: false, status: 'missing', error: '本地部署目录缺失，请重新部署' }
+    }
+    const { data } = await cloudClient.post<ResumeTrackingResponse>(
+      `/skill-deployments/${deploymentId}/resume-tracking`,
+      { installedHash: cur.hash },
+    )
+    return data
+  } catch (e) {
+    return { success: false, error: errMsg(e) }
   }
 }
 

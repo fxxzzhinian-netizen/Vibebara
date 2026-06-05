@@ -10,6 +10,7 @@ import {
   deployProjectSkill,
   deployProjectSkillGlobal,
   stopTrackingDeployment,
+  resumeTrackingDeployment,
   promoteDeployment,
   pushDeployment,
   pullUpdateDeployment,
@@ -159,6 +160,18 @@ export const useProjectSyncStore = defineStore('project-sync', () => {
   async function stopTracking(deploymentId: string, deleteFiles: boolean = false) {
     const projectId = currentProjectId.value
     const res = await stopTrackingDeployment(deploymentId, deleteFiles)
+    if (res.success && projectId) {
+      await selectProject(projectId)
+    }
+    return res
+  }
+
+  async function resumeTracking(deploymentId: string) {
+    const projectId = currentProjectId.value
+    const res = await resumeTrackingDeployment(
+      deploymentId,
+      findDeployment(deploymentId),
+    )
     if (res.success && projectId) {
       await selectProject(projectId)
     }
@@ -339,6 +352,7 @@ export const useProjectSyncStore = defineStore('project-sync', () => {
     deploySkill,
     deploySkillGlobal,
     stopTracking,
+    resumeTracking,
     promote,
     push,
     pullUpdate,

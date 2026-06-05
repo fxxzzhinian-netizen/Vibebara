@@ -280,3 +280,15 @@ class PushContentRequest(BaseModel):
     # 推送成功后是否创建一个新的版本快照（用户在"是否更新版本序列号"弹窗中选择）。
     create_version: bool = Field(default=False, alias="createVersion")
     version_label: str = Field(default="", alias="versionLabel")
+
+
+class ResumeTrackingRequest(BaseModel):
+    """恢复跟踪请求：对已停止跟踪的部署就地重启跟踪。
+
+    installed_hash：编排（桌面）形态由前端经本地代理对 install_path 实算后上报；
+    web 灰度形态可留空，由后端读盘计算。
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    installed_hash: Optional[str] = Field(default=None, alias="installedHash")
