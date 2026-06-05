@@ -174,9 +174,16 @@ export const useProjectSyncStore = defineStore('project-sync', () => {
     return res
   }
 
-  async function push(deploymentId: string) {
+  async function push(
+    deploymentId: string,
+    opts?: { createVersion?: boolean; versionLabel?: string },
+  ) {
     const projectId = currentProjectId.value
-    const res = await pushDeployment(deploymentId, findDeployment(deploymentId))
+    const res = await pushDeployment(
+      deploymentId,
+      findDeployment(deploymentId),
+      opts,
+    )
     if (res.success && projectId) {
       await selectProject(projectId)
     }

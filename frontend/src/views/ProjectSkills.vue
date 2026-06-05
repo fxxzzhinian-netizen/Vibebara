@@ -200,31 +200,41 @@ function openDeploy(skillId: string) {
 
 async function submitDeploy() {
   if (!deploySkillId.value) return
-  if (!deployToGlobal.value && !deployPath.value.trim()) {
+  if (!deployPath.value.trim()) {
     deployError.value = '请选择本机项目路径'
     return
   }
   deployLoading.value = true
   deployError.value = ''
-  const res = deployToGlobal.value
-    ? await projectStore.deploySkillGlobal(
-        projectId.value,
-        deploySkillId.value,
-        deployTool.value,
-        deployOverwrite.value,
-      )
-    : await projectStore.deploySkill(
-        projectId.value,
-        deploySkillId.value,
-        deployTool.value,
-        deployPath.value.trim(),
-        deployOverwrite.value,
-      )
-  deployLoading.value = false
+  // 基础动作：部署到项目（带跟踪同步）。
+  const res = await projectStore.deploySkill(
+    projectId.value,
+    deploySkillId.value,
+    deployTool.value,
+    deployPath.value.trim(),
+    deployOverwrite.value,
+  )
   if (!res.success) {
+    deployLoading.value = false
     deployError.value = res.error || '部署失败'
     return
   }
+  // 附加动作：勾选「同时部署到全局」→ 再落一份到 ~/.{tool}/skills（一次性、不跟踪）。
+  if (deployToGlobal.value) {
+    const gres = await projectStore.deploySkillGlobal(
+      projectId.value,
+      deploySkillId.value,
+      deployTool.value,
+      deployOverwrite.value,
+    )
+    if (!gres.success) {
+      deployLoading.value = false
+      deployError.value = `已部署到项目，但全局部署失败：${gres.error || ''}`
+      return
+    }
+  }
+  deployLoading.value = false
+  actionMsg.value = deployToGlobal.value ? '已部署到项目并同步到全局' : '已部署到项目'
   showDeployModal.value = false
 }
 
@@ -234,13 +244,23 @@ async function stopTracking(deploymentId: string) {
 
 async function pushDeploy(deploymentId: string) {
   if (
-    !window.confirm('推送将把本地改动同步到项目 Skill，其他成员可拉取更新，是否继续？')
+    !window.confirm('推送将把本地改动同步到团队仓库，其他成员可拉取更新，是否继续？')
   ) {
     return
   }
+  // 是否成版本：选"确定"则本次推送创建一条版本快照（可在 Skill 详情页查看/回滚）。
+  const createVersion = window.confirm(
+    '是否更新版本序列号？\n\n确定：本次推送创建一个新版本（序列号 +1，可在 Skill 详情页查看/回滚）。\n取消：仅同步内容，不创建版本。',
+  )
+  let versionLabel = ''
+  if (createVersion) {
+    versionLabel = (
+      window.prompt('可为该版本填写备注/标签（可留空）：', '') || ''
+    ).trim()
+  }
   actionMsg.value = ''
   pushingId.value = deploymentId
-  const res = await projectStore.push(deploymentId)
+  const res = await projectStore.push(deploymentId, { createVersion, versionLabel })
   pushingId.value = ''
   if (!res.success) {
     actionMsg.value = res.conflict
@@ -249,7 +269,13 @@ async function pushDeploy(deploymentId: string) {
     await refreshLocalStatuses()
     return
   }
-  actionMsg.value = res.no_change ? '本地无改动，无需推送' : '已推送并同步到项目'
+  if (res.no_change) {
+    actionMsg.value = '本地无改动，无需推送'
+  } else if (res.version) {
+    actionMsg.value = `已推送并同步到项目，已创建版本 v${res.version.seq}`
+  } else {
+    actionMsg.value = '已推送并同步到项目'
+  }
   await loadMessageHistory()
   await refreshLocalStatuses()
 }
@@ -481,15 +507,15 @@ function goBack() {
             </select>
           </div>
 
-          <label class="check-line">
-            <input v-model="deployToGlobal" type="checkbox" />
-            <span>部署到全局（~/.{{ deployTool }}/skills，对所有项目生效；一次性安装，不跟踪同步）</span>
-          </label>
-
-          <div v-if="!deployToGlobal" class="field">
+          <div class="field">
             <label>本机项目路径</label>
             <FolderPicker v-model="deployPath" placeholder="点击选择项目文件夹" />
           </div>
+
+          <label class="check-line">
+            <input v-model="deployToGlobal" type="checkbox" />
+            <span>同时部署到全局（额外安装到 ~/.{{ deployTool }}/skills，对所有项目生效；一次性、不跟踪同步）</span>
+          </label>
 
           <label class="check-line">
             <input v-model="deployOverwrite" type="checkbox" />

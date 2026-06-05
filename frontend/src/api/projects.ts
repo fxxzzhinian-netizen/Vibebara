@@ -63,6 +63,16 @@ export interface ChangeItem {
   change?: 'added' | 'removed' | 'modified'
 }
 
+export interface SkillVersionInfo {
+  id: string
+  skill_id: string
+  seq: number
+  label: string
+  source: string
+  created_by_name: string
+  created_at: string | null
+}
+
 export interface PushDeploymentResponse {
   success: boolean
   no_change?: boolean
@@ -71,6 +81,7 @@ export interface PushDeploymentResponse {
   change_items: ChangeItem[]
   diff_summary: string
   deployment?: UserSkillDeploymentInfo
+  version?: SkillVersionInfo | null
   error?: string
 }
 
@@ -293,16 +304,20 @@ export async function promoteDeployment(
 /**
  * 推送本地改动到团队仓库。
  * @param deployment 编排模式必传：需读取 install_path/installed_hash 走 read-folder 上传（M0 §3.2）。
+ * @param opts createVersion=true 时推送成功后创建一个版本快照（"是否更新版本序列号"）。
  */
 export async function pushDeployment(
   deploymentId: string,
   deployment?: UserSkillDeploymentInfo | null,
+  opts?: { createVersion?: boolean; versionLabel?: string },
 ): Promise<PushDeploymentResponse> {
   if (isOrchestrationEnabled() && deployment) {
-    return pushOrchestrated(deploymentId, deployment)
+    return pushOrchestrated(deploymentId, deployment, opts)
   }
   const { data } = await apiClient.post<PushDeploymentResponse>(
     `/skill-deployments/${deploymentId}/push`,
+    null,
+    { params: { create_version: opts?.createVersion ?? false, version_label: opts?.versionLabel ?? '' } },
   )
   return data
 }

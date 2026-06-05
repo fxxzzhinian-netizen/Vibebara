@@ -16,13 +16,9 @@ const newSkillName = ref('')
 const newSkillDesc = ref('')
 const createError = ref('')
 
-const deployMode = ref<'platform' | 'project'>('project')
 const deployTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude'>('cursor')
-// 「部署到全局」勾选框：勾选=platform(~/.{tool}/skills)，不勾=project(项目目录)。
-const deployToGlobal = computed({
-  get: () => deployMode.value === 'platform',
-  set: (v: boolean) => { deployMode.value = v ? 'platform' : 'project' },
-})
+// 部署始终落项目目录（需选目录）；勾选后「同时」再额外落一份到全局 ~/.{tool}/skills。
+const deployToGlobal = ref(false)
 const deploying = ref(false)
 const deployMsg = ref('')
 
@@ -182,7 +178,7 @@ async function handleDeploy() {
 
 async function doDeploy() {
   if (!store.currentId) return
-  if (deployMode.value === 'project' && !projectDeployPath.value) {
+  if (!projectDeployPath.value) {
     deployMsg.value = '请先选择项目目录'
     setTimeout(() => { deployMsg.value = '' }, 3000)
     return
@@ -190,34 +186,40 @@ async function doDeploy() {
   deploying.value = true
   deployMsg.value = ''
   try {
-    const destPath = deployMode.value === 'project' ? projectDeployPath.value : undefined
-    const res = await store.deploy(store.currentId, deployTarget.value, destPath)
-    if (res.success) {
-      const toolLabel = TOOL_LABELS[deployTarget.value]
-      if (deployMode.value === 'project') {
-        // 启动器支持 cursor/codex/claude 自动打开；windsurf 部署成功但不自动打开。
-        if (deployTarget.value === 'windsurf') {
-          deployMsg.value = `已部署到项目 .windsurf/skills（请在 Windsurf 中手动打开项目）`
-        } else {
-          deployMsg.value = `已部署，正在打开 ${toolLabel}...`
-          const tool =
-            deployTarget.value === 'cursor'
-              ? 'cursor'
-              : deployTarget.value === 'claude'
-                ? 'claude-code'
-                : 'codex-app'
-          try {
-            await launchTool({ tool, project_path: projectDeployPath.value })
-            deployMsg.value = `已部署并打开 ${toolLabel}`
-          } catch {
-            deployMsg.value = '已部署，但打开平台失败，请手动打开'
-          }
-        }
-      } else {
-        deployMsg.value = `已部署到 ${toolLabel} 平台`
-      }
-    } else {
+    // 基础动作：部署到项目目录（destPath 有值 → scope=project）。
+    const res = await store.deploy(store.currentId, deployTarget.value, projectDeployPath.value)
+    if (!res.success) {
       deployMsg.value = res.error || '部署失败'
+      return
+    }
+    // 附加动作：勾选「全局」→ 再落一份到 ~/.{tool}/skills（destPath 省略 → scope=platform）。
+    let globalNote = ''
+    if (deployToGlobal.value) {
+      const gres = await store.deploy(store.currentId, deployTarget.value, undefined)
+      if (!gres.success) {
+        deployMsg.value = `已部署到项目，但全局部署失败：${gres.error || ''}`
+        return
+      }
+      globalNote = ' + 全局'
+    }
+    const toolLabel = TOOL_LABELS[deployTarget.value]
+    // 启动器支持 cursor/codex/claude 自动打开；windsurf 部署成功但不自动打开。
+    if (deployTarget.value === 'windsurf') {
+      deployMsg.value = `已部署到项目 .windsurf/skills${globalNote}（请在 Windsurf 中手动打开项目）`
+    } else {
+      deployMsg.value = `已部署${globalNote}，正在打开 ${toolLabel}...`
+      const tool =
+        deployTarget.value === 'cursor'
+          ? 'cursor'
+          : deployTarget.value === 'claude'
+            ? 'claude-code'
+            : 'codex-app'
+      try {
+        await launchTool({ tool, project_path: projectDeployPath.value })
+        deployMsg.value = `已部署${globalNote}并打开 ${toolLabel}`
+      } catch {
+        deployMsg.value = '已部署，但打开平台失败，请手动打开'
+      }
     }
   } catch (e: any) {
     deployMsg.value = e.message
@@ -403,9 +405,9 @@ onMounted(() => {
             </div>
 
             <div class="deploy-group">
-              <label class="global-check" :title="`勾选后部署到全局 ~/.${deployTarget}/skills`">
+              <label class="global-check" :title="`勾选后在部署到项目的同时，额外部署到全局 ~/.${deployTarget}/skills`">
                 <input v-model="deployToGlobal" type="checkbox" />
-                <span>全局</span>
+                <span>同时全局</span>
               </label>
               <select v-model="deployTarget" class="sm-select target-select">
                 <option value="cursor">Cursor</option>
@@ -414,7 +416,6 @@ onMounted(() => {
                 <option value="claude">Claude Code</option>
               </select>
               <button
-                v-if="deployMode === 'project'"
                 class="btn tool-btn pick-dir"
                 @click="openDirPicker"
                 :title="projectDeployPath || '选择项目目录'"
@@ -493,8 +494,8 @@ onMounted(() => {
               </label>
             </div>
             <p class="hint">
-              设为 false 时，Cursor 构建产物会包含 <code>disable-model-invocation: true</code>，
-              Codex 构建产物会包含 <code>allow_implicit_invocation: false</code>。
+              设为 false 时，Cursor 与 Claude 构建产物会包含 <code>disable-model-invocation: true</code>，
+              Codex 构建产物会包含 <code>allow_implicit_invocation: false</code>；Windsurf 不支持该字段（忽略）。
             </p>
           </section>
 

@@ -67,6 +67,8 @@ class PushDeploymentResponse(BaseModel):
     change_items: List[Dict[str, Any]] = []
     diff_summary: str = ""
     deployment: Optional[UserSkillDeploymentInfo] = None
+    # 本次推送若创建了版本快照，回传该版本（含 seq），供前端提示"已创建版本 vN"。
+    version: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
 
@@ -275,3 +277,6 @@ class PushContentRequest(BaseModel):
 
     current_hash: str = Field(default="", alias="currentHash")
     files: List[FilePayloadIn] = []
+    # 推送成功后是否创建一个新的版本快照（用户在"是否更新版本序列号"弹窗中选择）。
+    create_version: bool = Field(default=False, alias="createVersion")
+    version_label: str = Field(default="", alias="versionLabel")

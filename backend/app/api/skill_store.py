@@ -20,9 +20,13 @@ from app.schemas.skill_forge import (
     NativeSkillMutationResponse,
     NativeSkillDeployResponse,
     NativeSkillPreviewResponse,
+    SkillVersionListResponse,
+    SkillVersionDetailResponse,
+    RestoreVersionResponse,
 )
 from app.services import project_service
 from app.services.native_skill_store import NativeSkillStore
+from app.services.skill_version_service import SkillVersionService
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +134,8 @@ async def update_skill(
                 }
 
         result = await NativeSkillStore.update(
-            skill_id, data.partial, vibeh_content=data.vibeh_content, user_id=user_id
+            skill_id, data.partial, vibeh_content=data.vibeh_content, user_id=user_id,
+            create_version=data.create_version, version_label=data.version_label,
         )
         return {
             "success": True,
@@ -138,6 +143,7 @@ async def update_skill(
             "no_change": result.get("no_change", False),
             "diff_summary": result.get("diff_summary", ""),
             "change_items": result.get("change_items", []),
+            "version": result.get("version"),
         }
     except FileNotFoundError as e:
         logger.warning(f"[store/update] {skill_id} 不存在")
@@ -305,4 +311,87 @@ async def preview_skill(
         return {"success": False, "error": str(e)}
     except Exception as e:
         logger.exception(f"[store/preview] {skill_id} 预览失败")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =========================================================================
+# Skill 版本记录（团队仓库版本快照：列表 / 查看 / 回滚）
+# =========================================================================
+
+
+async def _assert_team_skill_editable(skill_id: str, user_id: str) -> None:
+    """版本回滚等写操作的鉴权：团队 Skill 需团队成员；个人 Skill 需本人。"""
+    async with async_session_factory() as session:
+        row = await session.get(SkillPackage, skill_id)
+    if row is None:
+        raise FileNotFoundError(f"Skill '{skill_id}' not found")
+    if row.scope == "team":
+        if row.team_id not in await _user_team_ids(user_id):
+            raise PermissionError("无权操作该团队 Skill（非团队成员）")
+    elif row.owner_id and row.owner_id != user_id:
+        raise PermissionError("无权操作他人的个人 Skill")
+
+
+@api_router.get("/{skill_id}/versions", response_model=SkillVersionListResponse)
+async def list_skill_versions(
+    skill_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """列出该 Skill 的所有版本快照（按序列号倒序）。"""
+    try:
+        await _assert_skill_accessible(skill_id, user_id)
+        versions = await SkillVersionService.list_versions(skill_id)
+        return {"success": True, "versions": versions}
+    except (FileNotFoundError, PermissionError) as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.exception(f"[store/versions] {skill_id} 版本列表失败")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.get(
+    "/{skill_id}/versions/{version_id}",
+    response_model=SkillVersionDetailResponse,
+)
+async def get_skill_version(
+    skill_id: str, version_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """查看某个历史版本的完整内容（config + VibeH 正文）。"""
+    try:
+        await _assert_skill_accessible(skill_id, user_id)
+        version = await SkillVersionService.get_version(version_id)
+        if version is None or version.get("skill_id") != skill_id:
+            return {"success": False, "error": "版本不存在"}
+        return {"success": True, "version": version}
+    except (FileNotFoundError, PermissionError) as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.exception(f"[store/versions] {skill_id}/{version_id} 查看失败")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post(
+    "/{skill_id}/versions/{version_id}/restore",
+    response_model=RestoreVersionResponse,
+)
+async def restore_skill_version(
+    skill_id: str, version_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """把团队仓库内容回滚到指定历史版本（会生成一个新的 restore 版本）。"""
+    try:
+        await _assert_team_skill_editable(skill_id, user_id)
+        result = await SkillVersionService.restore_version(
+            skill_id, version_id, user_id
+        )
+        return {
+            "success": True,
+            "version": result.get("version"),
+            "diff_summary": result.get("diff_summary", ""),
+        }
+    except (FileNotFoundError, PermissionError) as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.exception(f"[store/versions] {skill_id}/{version_id} 回滚失败")
         raise HTTPException(status_code=500, detail=str(e))

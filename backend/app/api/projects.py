@@ -335,6 +335,8 @@ async def promote_deployment(
 async def push_deployment(
     deployment_id: str,
     data: Optional[PushContentRequest] = Body(default=None),
+    create_version: bool = Query(False),
+    version_label: str = Query(""),
     user_id: str = Depends(get_current_user_id),
 ):
     """推送本地改动到团队仓库。
@@ -343,6 +345,9 @@ async def push_deployment(
     - **有请求体**（`{currentHash, files}`）= 编排形态（cloud/桌面）：前端经本地代理
       read-folder 上传 install 内容，云端解析+diff+提升，**不读后端盘**。
     - **无请求体** = 一次性形态（local）：云端读 install_path 解析（维持现状）。
+
+    `create_version`/`version_label`（query，请求体形态亦可由 body 携带）：用户选择
+    "更新版本序列号"时推送成功后落一条版本快照。query 优先于 body 以兼容两种形态。
     """
     if data is not None:
         return await project_service.push_deployment_content(
@@ -350,8 +355,15 @@ async def push_deployment(
             user_id,
             current_hash=data.current_hash,
             files=[f.model_dump() for f in data.files],
+            create_version=create_version or data.create_version,
+            version_label=version_label or data.version_label,
         )
-    return await project_service.push_deployment(deployment_id, user_id)
+    return await project_service.push_deployment(
+        deployment_id,
+        user_id,
+        create_version=create_version,
+        version_label=version_label,
+    )
 
 
 @api_router.get(

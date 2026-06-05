@@ -63,6 +63,28 @@ export interface NativeSkillListResponse {
   error?: string
 }
 
+export interface SkillVersionItem {
+  id: string
+  skill_id: string
+  team_id: string | null
+  seq: number
+  label: string
+  content_hash: string
+  change_summary: string
+  change_items: ChangeItem[]
+  resource_count: number
+  source: string
+  created_by: string
+  created_by_name: string
+  created_at: string | null
+}
+
+export interface SkillVersionDetail extends SkillVersionItem {
+  config: Record<string, unknown>
+  vibeh_content: string
+  resources: string[]
+}
+
 export interface MutationResponse {
   success: boolean
   skill?: NativeSkillItem
@@ -70,6 +92,7 @@ export interface MutationResponse {
   no_change?: boolean
   diff_summary?: string
   change_items?: ChangeItem[]
+  version?: SkillVersionItem | null
 }
 
 export interface DeployResponse {
@@ -121,10 +144,64 @@ export async function updateNativeSkill(
   id: string,
   partial: Record<string, unknown>,
   vibeh_content?: string,
+  opts?: { createVersion?: boolean; versionLabel?: string },
 ): Promise<MutationResponse> {
   const { data } = await apiClient.put<MutationResponse>(
     `/skill-forge/store/${id}`,
-    { partial, vibeh_content: vibeh_content ?? null },
+    {
+      partial,
+      vibeh_content: vibeh_content ?? null,
+      create_version: opts?.createVersion ?? false,
+      version_label: opts?.versionLabel ?? '',
+    },
+  )
+  return data
+}
+
+export interface SkillVersionListResponse {
+  success: boolean
+  versions: SkillVersionItem[]
+  error?: string
+}
+
+export interface SkillVersionDetailResponse {
+  success: boolean
+  version?: SkillVersionDetail
+  error?: string
+}
+
+export interface RestoreVersionResponse {
+  success: boolean
+  version?: SkillVersionItem
+  diff_summary?: string
+  error?: string
+}
+
+export async function listSkillVersions(
+  skillId: string,
+): Promise<SkillVersionListResponse> {
+  const { data } = await apiClient.get<SkillVersionListResponse>(
+    `/skill-forge/store/${skillId}/versions`,
+  )
+  return data
+}
+
+export async function getSkillVersion(
+  skillId: string,
+  versionId: string,
+): Promise<SkillVersionDetailResponse> {
+  const { data } = await apiClient.get<SkillVersionDetailResponse>(
+    `/skill-forge/store/${skillId}/versions/${versionId}`,
+  )
+  return data
+}
+
+export async function restoreSkillVersion(
+  skillId: string,
+  versionId: string,
+): Promise<RestoreVersionResponse> {
+  const { data } = await apiClient.post<RestoreVersionResponse>(
+    `/skill-forge/store/${skillId}/versions/${versionId}/restore`,
   )
   return data
 }

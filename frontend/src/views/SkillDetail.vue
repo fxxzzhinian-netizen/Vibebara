@@ -1,7 +1,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getNativeSkill, updateNativeSkill, type NativeSkillDetail } from '@/api/skillStore'
+import {
+  getNativeSkill,
+  updateNativeSkill,
+  listSkillVersions,
+  getSkillVersion,
+  restoreSkillVersion,
+  type NativeSkillDetail,
+  type SkillVersionItem,
+  type SkillVersionDetail,
+} from '@/api/skillStore'
+import type { ChangeItem } from '@/api/projects'
 import { useTeamStore } from '@/stores/teamStore'
 
 const route = useRoute()
@@ -13,7 +23,7 @@ const detail = ref<NativeSkillDetail | null>(null)
 const loading = ref(false)
 const error = ref('')
 
-type TabKey = 'basic' | 'instructions' | 'policy' | 'deps' | 'resources' | 'metadata'
+type TabKey = 'basic' | 'instructions' | 'policy' | 'deps' | 'resources' | 'metadata' | 'versions'
 const activeTab = ref<TabKey>('basic')
 
 const cfg = computed(() => (detail.value?.config ?? null) as Record<string, any> | null)
@@ -72,11 +82,24 @@ function onResourceEdit(kind: 'scripts' | 'references' | 'assets', val: string) 
 
 async function save() {
   if (!draft.value) return
+  // 是否成版本：保存团队 Skill 时询问是否更新版本序列号。
+  const createVersion = window.confirm(
+    '是否更新版本序列号？\n\n确定：本次保存创建一个新版本（序列号 +1，可在「版本」标签查看/回滚）。\n取消：仅保存内容，不创建版本。',
+  )
+  let versionLabel = ''
+  if (createVersion) {
+    versionLabel = (
+      window.prompt('可为该版本填写备注/标签（可留空）：', '') || ''
+    ).trim()
+  }
   saving.value = true
   saveMsg.value = ''
   saveOk.value = false
   try {
-    const res = await updateNativeSkill(skillId.value, draft.value, draftVibeh.value)
+    const res = await updateNativeSkill(skillId.value, draft.value, draftVibeh.value, {
+      createVersion,
+      versionLabel,
+    })
     if (res.success) {
       if (res.no_change) {
         // 未检测到实质改动：不退出编辑、不打扰其他成员，提示后让用户继续编辑
@@ -85,12 +108,14 @@ async function save() {
       } else {
         saveOk.value = true
         const summary = res.diff_summary && res.diff_summary !== '无改动' ? res.diff_summary : ''
+        const verNote = res.version ? `已创建版本 v${res.version.seq}，` : ''
         saveMsg.value = summary
-          ? `已保存：${summary}，已记入「项目动态」，其他成员可在项目页「更新本地」`
-          : '已保存，已记入「项目动态」，其他成员可在项目页「更新本地」'
+          ? `已保存：${summary}，${verNote}已记入「项目动态」，其他成员可在项目页「更新本地」`
+          : `已保存，${verNote}已记入「项目动态」，其他成员可在项目页「更新本地」`
         editing.value = false
         draft.value = null
         await load()
+        if (versionsLoaded.value) await loadVersions()
       }
     } else {
       saveMsg.value = res.error || '保存失败'
@@ -100,6 +125,117 @@ async function save() {
   } finally {
     saving.value = false
   }
+}
+
+// ---- 版本记录 ----
+const versions = ref<SkillVersionItem[]>([])
+const versionsLoading = ref(false)
+const versionsLoaded = ref(false)
+const versionsError = ref('')
+const versionActionMsg = ref('')
+const expandedVersionId = ref('')
+const restoringId = ref('')
+const viewingVersion = ref<SkillVersionDetail | null>(null)
+const viewLoading = ref(false)
+
+async function loadVersions() {
+  versionsLoading.value = true
+  versionsError.value = ''
+  try {
+    const res = await listSkillVersions(skillId.value)
+    if (res.success) {
+      versions.value = res.versions
+      versionsLoaded.value = true
+    } else {
+      versionsError.value = res.error || '加载版本失败'
+    }
+  } catch (e: any) {
+    versionsError.value = e?.response?.data?.detail || e.message || '请求异常'
+  } finally {
+    versionsLoading.value = false
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'versions' && !versionsLoaded.value && !versionsLoading.value) {
+    loadVersions()
+  }
+})
+
+function toggleVersion(id: string) {
+  expandedVersionId.value = expandedVersionId.value === id ? '' : id
+}
+
+async function viewVersion(v: SkillVersionItem) {
+  viewLoading.value = true
+  versionActionMsg.value = ''
+  try {
+    const res = await getSkillVersion(skillId.value, v.id)
+    if (res.success && res.version) {
+      viewingVersion.value = res.version
+    } else {
+      versionActionMsg.value = res.error || '查看版本失败'
+    }
+  } catch (e: any) {
+    versionActionMsg.value = e?.response?.data?.detail || e.message || '请求异常'
+  } finally {
+    viewLoading.value = false
+  }
+}
+
+function closeVersionView() {
+  viewingVersion.value = null
+}
+
+async function restore(v: SkillVersionItem) {
+  if (
+    !window.confirm(
+      `确认回滚到版本 v${v.seq}？\n\n团队仓库内容将被还原为该版本，并生成一条新的回滚版本；其他成员可在项目页「更新本地」拉取。`,
+    )
+  ) {
+    return
+  }
+  restoringId.value = v.id
+  versionActionMsg.value = ''
+  try {
+    const res = await restoreSkillVersion(skillId.value, v.id)
+    if (res.success) {
+      versionActionMsg.value = res.version
+        ? `已回滚到 v${v.seq}（新版本 v${res.version.seq}）`
+        : `已回滚到 v${v.seq}`
+      await load()
+      await loadVersions()
+    } else {
+      versionActionMsg.value = res.error || '回滚失败'
+    }
+  } catch (e: any) {
+    versionActionMsg.value = e?.response?.data?.detail || e.message || '请求异常'
+  } finally {
+    restoringId.value = ''
+  }
+}
+
+function sourceLabel(source: string): string {
+  const m: Record<string, string> = {
+    push: '推送',
+    web_edit: '网页编辑',
+    restore: '回滚',
+  }
+  return m[source] || source
+}
+
+function changeItemText(item: ChangeItem): string {
+  if (item.kind === 'field') {
+    const fmt = (v: unknown) =>
+      v === undefined || v === null || v === '' ? '空' : String(v)
+    return `${item.label || item.path}：${fmt(item.old)} → ${fmt(item.new)}`
+  }
+  if (item.kind === 'body') {
+    return `正文 VibeH.md  +${item.added_lines ?? 0} / -${item.removed_lines ?? 0} 行`
+  }
+  const verb =
+    item.change === 'added' ? '新增' : item.change === 'removed' ? '删除' : '修改'
+  return `${verb}资源 ${item.path}`
 }
 
 const skills = computed(() => (cfg.value?.dependencies?.skills ?? []) as string[])
@@ -217,6 +353,7 @@ function timeAgo(ts: string | null | undefined): string {
         <button :class="{ active: activeTab === 'deps' }" @click="activeTab = 'deps'">依赖</button>
         <button :class="{ active: activeTab === 'resources' }" @click="activeTab = 'resources'">资源</button>
         <button :class="{ active: activeTab === 'metadata' }" @click="activeTab = 'metadata'">元数据</button>
+        <button v-if="isTeamSkill" :class="{ active: activeTab === 'versions' }" @click="activeTab = 'versions'">版本</button>
         <span class="nav-spacer" />
         <button class="link-btn" @click="router.push('/platform-structure/' + skillId)" title="查看各平台 Skill 结构">平台结构 →</button>
       </nav>
@@ -286,8 +423,8 @@ function timeAgo(ts: string | null | undefined): string {
             </div>
           </div>
           <p class="hint">
-            设为禁止时，Cursor 构建产物会包含 <code>disable-model-invocation: true</code>，
-            Codex 构建产物会包含 <code>allow_implicit_invocation: false</code>。
+            设为禁止时，Cursor 与 Claude 构建产物会包含 <code>disable-model-invocation: true</code>，
+            Codex 构建产物会包含 <code>allow_implicit_invocation: false</code>；Windsurf 不支持该字段（忽略）。
           </p>
         </section>
 
@@ -398,8 +535,110 @@ function timeAgo(ts: string | null | undefined): string {
           </div>
           <p class="hint">平台特有的元数据（如 Cursor 的 surfaces 限定）请通过「平台结构」查看。</p>
         </section>
+
+        <!-- Versions -->
+        <section v-else-if="activeTab === 'versions'" class="section">
+          <div class="ver-head">
+            <p class="hint">
+              每次推送到团队或团队仓库网页编辑保存时，可选择「更新版本序列号」生成一条版本快照；以下为该 Skill 的全部版本（按序列号倒序）。
+            </p>
+            <button class="hdr-btn ghost" :disabled="versionsLoading" @click="loadVersions">
+              {{ versionsLoading ? '刷新中...' : '刷新' }}
+            </button>
+          </div>
+
+          <div v-if="versionActionMsg" class="save-banner ok">{{ versionActionMsg }}</div>
+          <div v-if="versionsError" class="state-box err">{{ versionsError }}</div>
+
+          <div v-if="versionsLoading && !versions.length" class="state-box">
+            <span class="spinner" /> 加载中...
+          </div>
+          <div v-else-if="!versions.length" class="state-box">
+            暂无版本记录。推送或保存时选择「更新版本序列号」即可创建第一个版本。
+          </div>
+
+          <ul v-else class="ver-list">
+            <li v-for="v in versions" :key="v.id" class="ver-item">
+              <div class="ver-row">
+                <span class="ver-seq">v{{ v.seq }}</span>
+                <span v-if="v.label" class="ver-label">{{ v.label }}</span>
+                <span :class="['ver-source', v.source]">{{ sourceLabel(v.source) }}</span>
+                <span v-if="v.resource_count" class="ver-res-chip">{{ v.resource_count }} 个资源文件</span>
+                <span class="ver-meta">{{ v.created_by_name || v.created_by || '—' }} · {{ timeAgo(v.created_at) }}</span>
+                <span class="ver-actions">
+                  <button class="btn-xs" :disabled="viewLoading" @click="viewVersion(v)">查看</button>
+                  <button
+                    v-if="canEdit"
+                    class="btn-xs danger"
+                    :disabled="restoringId === v.id"
+                    @click="restore(v)"
+                  >
+                    {{ restoringId === v.id ? '回滚中...' : '回滚' }}
+                  </button>
+                </span>
+              </div>
+              <div v-if="v.change_summary" class="ver-summary">{{ v.change_summary }}</div>
+              <div
+                v-if="v.change_items && v.change_items.length"
+                class="ver-changes-toggle"
+                @click="toggleVersion(v.id)"
+              >
+                {{ expandedVersionId === v.id ? '▾' : '▸' }} 改动明细（{{ v.change_items.length }}）
+              </div>
+              <ul v-if="expandedVersionId === v.id" class="ver-changes">
+                <li v-for="(item, i) in v.change_items" :key="i">{{ changeItemText(item) }}</li>
+              </ul>
+            </li>
+          </ul>
+        </section>
       </div>
     </template>
+
+    <!-- 版本内容查看弹窗 -->
+    <div v-if="viewingVersion" class="ver-modal-mask" @click.self="closeVersionView">
+      <div class="ver-modal">
+        <header class="ver-modal-head">
+          <h3>版本 v{{ viewingVersion.seq }} 内容快照</h3>
+          <span class="ver-modal-sub">
+            {{ sourceLabel(viewingVersion.source) }} · {{ viewingVersion.created_by_name }} · {{ timeAgo(viewingVersion.created_at) }}
+          </span>
+          <span class="spacer" />
+          <button class="back-btn" @click="closeVersionView" title="关闭">×</button>
+        </header>
+        <div class="ver-modal-body">
+          <div class="field">
+            <label>描述 (description)</label>
+            <div class="value pre">{{ (viewingVersion.config as any)?.description || '暂无描述' }}</div>
+          </div>
+          <div class="field">
+            <label>VibeH.md 正文</label>
+            <pre class="ver-code">{{ viewingVersion.vibeh_content || '（空）' }}</pre>
+          </div>
+          <div class="field">
+            <label>资源文件（scripts / references / assets）</label>
+            <ul v-if="viewingVersion.resources && viewingVersion.resources.length" class="ver-res-list">
+              <li v-for="p in viewingVersion.resources" :key="p">{{ p }}</li>
+            </ul>
+            <div v-else class="value">无资源文件</div>
+          </div>
+          <div class="field">
+            <label>skill.config.yaml（JSON 快照）</label>
+            <pre class="ver-code">{{ JSON.stringify(viewingVersion.config, null, 2) }}</pre>
+          </div>
+        </div>
+        <footer class="ver-modal-foot">
+          <button
+            v-if="canEdit"
+            class="hdr-btn primary"
+            :disabled="restoringId === viewingVersion.id"
+            @click="restore(viewingVersion); closeVersionView()"
+          >
+            回滚到此版本
+          </button>
+          <button class="hdr-btn ghost" @click="closeVersionView">关闭</button>
+        </footer>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -654,4 +893,159 @@ function timeAgo(ts: string | null | undefined): string {
   vertical-align: middle;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- 版本记录 ---- */
+.ver-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.ver-head .hint { flex: 1; margin: 0; }
+.ver-list { list-style: none; margin: 0; padding: 0; }
+.ver-item {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.ver-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ver-seq {
+  font-weight: 700;
+  font-size: 15px;
+  color: #6e76ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.ver-label {
+  font-size: 12px;
+  color: #e6edf3;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+.ver-source {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(110, 118, 255, 0.15);
+  color: #a9b0ff;
+  border: 1px solid #3b3f8f;
+}
+.ver-source.restore { background: rgba(210, 153, 34, 0.15); color: #e3b341; border-color: #9e6a03; }
+.ver-source.web_edit { background: rgba(63, 185, 80, 0.15); color: #7ee787; border-color: #2ea043; }
+.ver-meta { font-size: 12px; color: #8b949e; }
+.ver-res-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(121, 192, 255, 0.12);
+  color: #79c0ff;
+  border: 1px solid #1f6feb;
+}
+.ver-res-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+}
+.ver-res-list li {
+  font-size: 12px;
+  color: #79c0ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 2px 0;
+}
+.ver-actions { margin-left: auto; display: flex; gap: 6px; }
+.btn-xs {
+  border: 1px solid #30363d;
+  background: #21262d;
+  color: #e6edf3;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-xs:hover:not(:disabled) { background: #30363d; }
+.btn-xs:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-xs.danger { color: #ffa198; border-color: #6e2b27; }
+.btn-xs.danger:hover:not(:disabled) { background: #3a201e; }
+.ver-summary { margin-top: 8px; font-size: 13px; color: #c9d1d9; }
+.ver-changes-toggle {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #79c0ff;
+  cursor: pointer;
+  user-select: none;
+}
+.ver-changes {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 8px 12px;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+}
+.ver-changes li {
+  font-size: 12px;
+  color: #adbac7;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 2px 0;
+}
+
+.ver-modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(1, 4, 9, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 24px;
+}
+.ver-modal {
+  background: #11151c;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  width: min(820px, 100%);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+}
+.ver-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #21262d;
+}
+.ver-modal-head h3 { margin: 0; font-size: 16px; }
+.ver-modal-sub { font-size: 12px; color: #8b949e; }
+.ver-modal-body { padding: 16px 18px; overflow: auto; }
+.ver-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid #21262d;
+}
+.ver-code {
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12px;
+  color: #adbac7;
+  overflow: auto;
+  max-height: 360px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 </style>

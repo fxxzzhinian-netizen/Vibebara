@@ -128,6 +128,9 @@ class NativeSkillCreateRequest(BaseModel):
 class NativeSkillUpdateRequest(BaseModel):
     partial: Dict[str, Any]
     vibeh_content: Optional[str] = None
+    # 团队仓库网页编辑器保存时：用户勾选"更新版本序列号"则建一条版本快照。
+    create_version: bool = False
+    version_label: str = ""
 
 
 class NativeSkillImportRequest(BaseModel):
@@ -174,6 +177,53 @@ class NativeSkillMutationResponse(BaseModel):
     no_change: bool = False
     diff_summary: str = ""
     change_items: List[Dict[str, Any]] = []
+    # 本次保存若创建了版本快照，回传该版本（含 seq），供前端提示"已创建版本 vN"。
+    version: Optional[Dict[str, Any]] = None
+
+
+# =========================================================================
+# Skill 版本记录（团队仓库版本快照）
+# =========================================================================
+
+class SkillVersionItem(BaseModel):
+    id: str
+    skill_id: str
+    team_id: Optional[str] = None
+    seq: int
+    label: str = ""
+    content_hash: str = ""
+    change_summary: str = ""
+    change_items: List[Dict[str, Any]] = []
+    resource_count: int = 0
+    source: str = ""
+    created_by: str = ""
+    created_by_name: str = ""
+    created_at: Optional[str] = None
+
+
+class SkillVersionDetail(SkillVersionItem):
+    config: Dict[str, Any] = {}
+    vibeh_content: str = ""
+    resources: List[str] = []
+
+
+class SkillVersionListResponse(BaseModel):
+    success: bool
+    versions: List[SkillVersionItem] = []
+    error: Optional[str] = None
+
+
+class SkillVersionDetailResponse(BaseModel):
+    success: bool
+    version: Optional[SkillVersionDetail] = None
+    error: Optional[str] = None
+
+
+class RestoreVersionResponse(BaseModel):
+    success: bool
+    version: Optional[SkillVersionItem] = None
+    diff_summary: str = ""
+    error: Optional[str] = None
 
 
 class NativeSkillDeployResponse(BaseModel):

@@ -814,11 +814,19 @@ async def mark_skill_deployments_outdated(skill_id: str, editor_user_id: str) ->
         await session.commit()
 
 
-async def push_deployment(deployment_id: str, user_id: str) -> Dict[str, Any]:
+async def push_deployment(
+    deployment_id: str,
+    user_id: str,
+    create_version: bool = False,
+    version_label: str = "",
+) -> Dict[str, Any]:
     """
     用户手动推送本地部署实例改动：解析原生→抽象包，与上次推送快照对比，
     生成抽象层改动点；无冲突则写回团队仓库（推送即同步到平台），
     并把同 Skill 其他用户实例标记为可更新/冲突。
+
+    create_version=True 时（用户在"是否更新版本序列号"弹窗选择"是"），推送成功后
+    对团队仓库当前内容打一条版本快照（可在 Skill 详情页查看/回滚）。
     """
     async with async_session_factory() as session:
         deployment = await session.get(UserSkillDeployment, deployment_id)
@@ -1030,6 +1038,16 @@ async def push_deployment(deployment_id: str, user_id: str) -> Dict[str, Any]:
         status="synced",
     )
 
+    version = None
+    if create_version:
+        version = await _maybe_create_version(
+            skill_id=skill_id,
+            user_id=user_id,
+            label=version_label,
+            summary=summary,
+            change_items=change_items,
+        )
+
     return {
         "success": True,
         "no_change": False,
@@ -1038,7 +1056,33 @@ async def push_deployment(deployment_id: str, user_id: str) -> Dict[str, Any]:
         "change_items": change_items,
         "diff_summary": summary,
         "deployment": result_deployment,
+        "version": version,
     }
+
+
+async def _maybe_create_version(
+    *,
+    skill_id: str,
+    user_id: str,
+    label: str,
+    summary: str,
+    change_items: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """推送成功后按需创建版本快照；失败不阻断推送主流程。"""
+    try:
+        from app.services.skill_version_service import SkillVersionService
+
+        return await SkillVersionService.create_version(
+            skill_id,
+            created_by=user_id,
+            source="push",
+            label=label or "",
+            change_summary=summary,
+            change_items=change_items,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[push] 创建版本快照失败 skill='{skill_id}': {e}")
+        return None
 
 
 async def pull_update_deployment(
@@ -1505,6 +1549,8 @@ async def push_deployment_content(
     user_id: str,
     current_hash: str,
     files: List[Dict[str, Any]],
+    create_version: bool = False,
+    version_label: str = "",
 ) -> Dict[str, Any]:
     """③ 推送（接收上传内容）：对应 push_deployment，但输入改为上传的 install 内容。
 
@@ -1724,6 +1770,16 @@ async def push_deployment_content(
         status="synced",
     )
 
+    version = None
+    if create_version:
+        version = await _maybe_create_version(
+            skill_id=skill_id,
+            user_id=user_id,
+            label=version_label,
+            summary=summary,
+            change_items=change_items,
+        )
+
     return {
         "success": True,
         "no_change": False,
@@ -1732,6 +1788,7 @@ async def push_deployment_content(
         "change_items": change_items,
         "diff_summary": summary,
         "deployment": result_deployment,
+        "version": version,
     }
 
 

@@ -542,6 +542,8 @@ class NativeSkillStore:
         cls, skill_id: str, partial: Dict[str, Any],
         vibeh_content: Optional[str] = None,
         user_id: Optional[str] = None,
+        create_version: bool = False,
+        version_label: str = "",
     ) -> Dict[str, Any]:
         skill_dir = Path(cls._store_dir) / skill_id
         config_path = skill_dir / "skill.config.yaml"
@@ -653,11 +655,28 @@ class NativeSkillStore:
 
             await mark_skill_deployments_outdated(skill_id, editor_id)
 
+        version = None
+        if create_version:
+            try:
+                from app.services.skill_version_service import SkillVersionService
+
+                version = await SkillVersionService.create_version(
+                    skill_id,
+                    created_by=editor_id,
+                    source="web_edit",
+                    label=version_label or "",
+                    change_summary=diff_summary,
+                    change_items=change_items,
+                )
+            except Exception as e:
+                logger.warning(f"[update] 创建版本快照失败 skill='{skill_id}': {e}")
+
         return {
             "skill": cls._row_to_dict(row),
             "no_change": False,
             "diff_summary": diff_summary,
             "change_items": change_items,
+            "version": version,
         }
 
     @staticmethod
@@ -709,6 +728,15 @@ class NativeSkillStore:
                 delete(SkillPackage).where(SkillPackage.id == skill_id)
             )
             await session.commit()
+
+        # 清理该 Skill 的版本记录与磁盘资源快照（best-effort，不阻断删除）。
+        try:
+            from app.services.skill_version_service import SkillVersionService
+
+            await SkillVersionService.cleanup_skill(skill_id)
+        except Exception as e:
+            logger.warning(f"[delete] 清理版本记录失败 skill='{skill_id}': {e}")
+
         return True
 
     # ------------------------------------------------------------------

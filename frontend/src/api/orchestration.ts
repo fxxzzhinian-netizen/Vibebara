@@ -86,6 +86,8 @@ export interface CommitPullRequest {
 export interface PushDeploymentRequest {
   currentHash: string
   files: FilePayload[]
+  createVersion?: boolean
+  versionLabel?: string
 }
 
 /** 导入（接收本地文件夹内容上传，云端落 Store）。 */
@@ -343,6 +345,7 @@ export async function pullUpdateOrchestrated(
 export async function pushOrchestrated(
   deploymentId: string,
   deployment: UserSkillDeploymentInfo,
+  opts?: { createVersion?: boolean; versionLabel?: string },
 ): Promise<PushDeploymentResponse> {
   try {
     const cur = await localAgent.hashOne(deployment.install_path)
@@ -370,6 +373,8 @@ export async function pushOrchestrated(
     return await pushContent(deploymentId, {
       currentHash: cur.hash,
       files: folder.files,
+      createVersion: opts?.createVersion ?? false,
+      versionLabel: opts?.versionLabel ?? '',
     })
   } catch (e) {
     return {
