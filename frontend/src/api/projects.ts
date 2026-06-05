@@ -2,6 +2,7 @@ import apiClient from './client'
 import { isOrchestrationEnabled } from '@/runtime/config'
 import {
   deployProjectSkillOrchestrated,
+  deployProjectSkillGlobalOrchestrated,
   pushOrchestrated,
   pullUpdateOrchestrated,
   getLocalStatusOrchestrated,
@@ -248,6 +249,23 @@ export async function deployProjectSkill(
   const { data } = await apiClient.post<SkillDeploymentResponse>(
     `/projects/${projectId}/skills/${skillId}/deploy`,
     payload,
+  )
+  return data
+}
+
+export async function deployProjectSkillGlobal(
+  projectId: string,
+  skillId: string,
+  payload: { tool_type: string; overwrite?: boolean },
+): Promise<SkillDeploymentResponse> {
+  // 全局部署：落本机平台目录 ~/.{tool}/skills，一次性安装、不跟踪。
+  // 编排（桌面）→ 本地代理 platform 落盘；web 灰度 → 后端 deploy 端点 scope=platform。
+  if (isOrchestrationEnabled()) {
+    return deployProjectSkillGlobalOrchestrated(projectId, skillId, payload)
+  }
+  const { data } = await apiClient.post<SkillDeploymentResponse>(
+    `/projects/${projectId}/skills/${skillId}/deploy`,
+    { tool_type: payload.tool_type, overwrite: payload.overwrite ?? false, scope: 'platform' },
   )
   return data
 }

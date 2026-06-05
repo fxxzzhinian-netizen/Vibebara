@@ -262,6 +262,37 @@ export async function deployProjectSkillOrchestrated(
   }
 }
 
+/**
+ * 全局部署项目 Skill（落本机平台目录 ~/.{tool}/skills/{skillId}，不登记跟踪）。
+ * 复用项目 build-artifact 取产物（兼容团队/项目权限），交本地代理以 platform scope 落盘。
+ * 与项目级部署的差异：scope=platform、无 deployPath、不调用 register-deployment。
+ */
+export async function deployProjectSkillGlobalOrchestrated(
+  projectId: string,
+  skillId: string,
+  payload: { tool_type: string; overwrite?: boolean },
+): Promise<SkillDeploymentResponse> {
+  const tool = asTool(payload.tool_type)
+  try {
+    const artifact = await buildArtifactForProjectSkill(projectId, skillId, tool)
+    if (!artifact.success) {
+      return { success: false, deployed: [], error: artifact.error || '云端构建失败' }
+    }
+    const write = await localAgent.writeSkill({
+      scope: 'platform',
+      tool,
+      skillId: artifact.skillId || skillId,
+      contents: artifact.contents,
+      resources: toWriteResources(artifact.resources),
+      overwrite: payload.overwrite ?? true,
+      ensureGitignore: false,
+    })
+    return { success: true, deployed: [{ target: tool, path: write.installPath }] }
+  } catch (e) {
+    return { success: false, deployed: [], error: errMsg(e) }
+  }
+}
+
 // ===================== 编排：拉取更新（M0 §3.3）=====================
 
 export async function pullUpdateOrchestrated(

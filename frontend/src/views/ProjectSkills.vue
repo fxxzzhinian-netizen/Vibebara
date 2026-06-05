@@ -33,6 +33,7 @@ const deploySkillId = ref('')
 const deployTool = ref<'cursor' | 'codex' | 'windsurf' | 'claude'>('cursor')
 const deployPath = ref('')
 const deployOverwrite = ref(false)
+const deployToGlobal = ref(false)
 const deployError = ref('')
 const deployLoading = ref(false)
 const pushingId = ref('')
@@ -192,24 +193,33 @@ function openDeploy(skillId: string) {
   deployTool.value = 'cursor'
   deployPath.value = ''
   deployOverwrite.value = false
+  deployToGlobal.value = false
   deployError.value = ''
   showDeployModal.value = true
 }
 
 async function submitDeploy() {
-  if (!deploySkillId.value || !deployPath.value.trim()) {
+  if (!deploySkillId.value) return
+  if (!deployToGlobal.value && !deployPath.value.trim()) {
     deployError.value = '请选择本机项目路径'
     return
   }
   deployLoading.value = true
   deployError.value = ''
-  const res = await projectStore.deploySkill(
-    projectId.value,
-    deploySkillId.value,
-    deployTool.value,
-    deployPath.value.trim(),
-    deployOverwrite.value,
-  )
+  const res = deployToGlobal.value
+    ? await projectStore.deploySkillGlobal(
+        projectId.value,
+        deploySkillId.value,
+        deployTool.value,
+        deployOverwrite.value,
+      )
+    : await projectStore.deploySkill(
+        projectId.value,
+        deploySkillId.value,
+        deployTool.value,
+        deployPath.value.trim(),
+        deployOverwrite.value,
+      )
   deployLoading.value = false
   if (!res.success) {
     deployError.value = res.error || '部署失败'
@@ -471,7 +481,12 @@ function goBack() {
             </select>
           </div>
 
-          <div class="field">
+          <label class="check-line">
+            <input v-model="deployToGlobal" type="checkbox" />
+            <span>部署到全局（~/.{{ deployTool }}/skills，对所有项目生效；一次性安装，不跟踪同步）</span>
+          </label>
+
+          <div v-if="!deployToGlobal" class="field">
             <label>本机项目路径</label>
             <FolderPicker v-model="deployPath" placeholder="点击选择项目文件夹" />
           </div>

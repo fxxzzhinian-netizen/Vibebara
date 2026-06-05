@@ -385,10 +385,39 @@ async def deploy_project_skill(
     tool_type: str,
     deploy_path: str,
     overwrite: bool = False,
+    scope: str = "project",
 ) -> Dict[str, Any]:
     tool_type = tool_type.lower()
     if tool_type not in SUPPORTED_TOOLS:
         return {"success": False, "error": "tool_type must be cursor, codex, windsurf or claude"}
+
+    # 全局部署：落本机平台目录 ~/.{tool}/skills/{skill_id}，一次性安装、不登记跟踪。
+    # 仍校验项目存在与 Skill 关联关系，保持与项目级部署一致的访问约束。
+    if scope == "platform":
+        async with async_session_factory() as session:
+            project = await session.get(Project, project_id)
+            pkg = await session.get(SkillPackage, skill_id)
+            if not project or not pkg:
+                return {"success": False, "error": "Project or skill not found"}
+            ref = await session.scalar(
+                select(ProjectSkill).where(
+                    ProjectSkill.project_id == project_id,
+                    ProjectSkill.skill_id == skill_id,
+                )
+            )
+            if not ref:
+                return {"success": False, "error": "Skill is not added to this project"}
+        result = await NativeSkillStore.deploy(
+            skill_id,
+            tool_type,
+            dest_path=None,
+            notify=False,
+            allow_team=True,
+        )
+        if not result.get("success"):
+            return result
+        return {"success": True, "deployed": result.get("deployed", [])}
+
     if not deploy_path:
         return {"success": False, "error": "deploy_path is required"}
     if not Path(deploy_path).is_dir():

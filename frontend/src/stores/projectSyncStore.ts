@@ -8,6 +8,7 @@ import {
   addSkillToProject,
   removeSkillFromProject,
   deployProjectSkill,
+  deployProjectSkillGlobal,
   stopTrackingDeployment,
   promoteDeployment,
   pushDeployment,
@@ -130,6 +131,23 @@ export const useProjectSyncStore = defineStore('project-sync', () => {
     const res = await deployProjectSkill(projectId, skillId, {
       tool_type: toolType,
       deploy_path: deployPath,
+      overwrite,
+    })
+    if (res.success) {
+      await selectProject(projectId)
+    }
+    return res
+  }
+
+  /** 全局部署：落本机平台目录 ~/.{tool}/skills，一次性安装、不跟踪同步。 */
+  async function deploySkillGlobal(
+    projectId: string,
+    skillId: string,
+    toolType: string,
+    overwrite: boolean = false,
+  ) {
+    const res = await deployProjectSkillGlobal(projectId, skillId, {
+      tool_type: toolType,
       overwrite,
     })
     if (res.success) {
@@ -312,6 +330,7 @@ export const useProjectSyncStore = defineStore('project-sync', () => {
     addSkill,
     removeSkill,
     deploySkill,
+    deploySkillGlobal,
     stopTracking,
     promote,
     push,

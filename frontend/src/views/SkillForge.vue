@@ -16,8 +16,13 @@ const newSkillName = ref('')
 const newSkillDesc = ref('')
 const createError = ref('')
 
-const deployMode = ref<'platform' | 'project'>('platform')
+const deployMode = ref<'platform' | 'project'>('project')
 const deployTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude'>('cursor')
+// 「部署到全局」勾选框：勾选=platform(~/.{tool}/skills)，不勾=project(项目目录)。
+const deployToGlobal = computed({
+  get: () => deployMode.value === 'platform',
+  set: (v: boolean) => { deployMode.value = v ? 'platform' : 'project' },
+})
 const deploying = ref(false)
 const deployMsg = ref('')
 
@@ -398,10 +403,10 @@ onMounted(() => {
             </div>
 
             <div class="deploy-group">
-              <select v-model="deployMode" class="sm-select mode-select">
-                <option value="platform">平台</option>
-                <option value="project">项目</option>
-              </select>
+              <label class="global-check" :title="`勾选后部署到全局 ~/.${deployTarget}/skills`">
+                <input v-model="deployToGlobal" type="checkbox" />
+                <span>全局</span>
+              </label>
               <select v-model="deployTarget" class="sm-select target-select">
                 <option value="cursor">Cursor</option>
                 <option value="codex">Codex</option>
@@ -1006,6 +1011,23 @@ onMounted(() => {
   font-weight: 600;
   color: var(--text-muted);
 }
+
+.global-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  height: 28px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 6px 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.global-check input { cursor: pointer; margin: 0; }
 
 .sm-select.target-select {
   border-radius: 0;

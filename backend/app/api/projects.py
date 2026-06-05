@@ -245,6 +245,7 @@ async def deploy_project_skill(
         tool_type=data.tool_type,
         deploy_path=data.deploy_path,
         overwrite=data.overwrite,
+        scope=data.scope,
     )
 
 

@@ -45,8 +45,11 @@ class ProjectSkillInfo(BaseModel):
 
 class SkillDeployRequest(BaseModel):
     tool_type: str
-    deploy_path: str
+    # 全局部署（scope=platform）落本机 ~/.{tool}/skills，不需要项目路径，故可空。
+    deploy_path: str = ""
     overwrite: bool = False
+    # "project"=项目级（带跟踪同步）；"platform"=全局级（落本机平台目录，不跟踪）。
+    scope: str = "project"
 
 
 class SkillDeploymentResponse(BaseModel):
