@@ -7,6 +7,7 @@ import {
   joinTeam,
   listMembers,
   updateTeamSettings,
+  deleteTeam,
   type TeamInfo,
   type TeamMemberInfo,
 } from '@/api/teams'
@@ -90,6 +91,30 @@ export const useTeamStore = defineStore('team', () => {
     return res
   }
 
+  async function remove(
+    teamId: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const res = await deleteTeam(teamId)
+      if (res.success) {
+        if (currentTeamId.value === teamId) clearCurrent()
+        await fetchTeams()
+      }
+      return res
+    } catch (e: any) {
+      return {
+        success: false,
+        error: e?.response?.data?.detail || e.message || '删除团队失败',
+      }
+    }
+  }
+
+  // 其他成员收到 team.deleted 实时事件时：若正查看该团队则清空视图，并刷新团队列表。
+  async function handleTeamDeleted(teamId: string) {
+    if (currentTeamId.value === teamId) clearCurrent()
+    await fetchTeams()
+  }
+
   function clearCurrent() {
     currentTeamId.value = null
     currentTeam.value = null
@@ -109,6 +134,8 @@ export const useTeamStore = defineStore('team', () => {
     create,
     join,
     updateSettings,
+    remove,
+    handleTeamDeleted,
     clearCurrent,
   }
 })

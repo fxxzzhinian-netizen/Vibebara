@@ -61,6 +61,8 @@ const canManageProjects = computed(() =>
   ['owner', 'admin'].includes(myRole.value),
 )
 
+const isOwner = computed(() => myRole.value === 'owner')
+
 // —— 团队级实时同步：其他成员的结构性变更自动刷新，无需手动刷新 ——
 const { connected: teamSyncConnected } = useTeamSync(
   () => teamStore.currentTeamId,
@@ -70,7 +72,11 @@ const { connected: teamSyncConnected } = useTeamSync(
     // 自己触发的变更：对应操作已在本地刷新过，跳过以免重复请求与界面闪烁
     if (evt.user_id && evt.user_id === authStore.user?.id) return
 
-    if (evt.type.startsWith('project.')) {
+    if (evt.type === 'team.deleted') {
+      // owner 解散了团队：清空当前视图并刷新团队列表
+      teamSkills.value = []
+      await teamStore.handleTeamDeleted(teamId)
+    } else if (evt.type.startsWith('project.')) {
       await projectStore.fetchProjects(teamId)
     } else if (evt.type.startsWith('team_skill.')) {
       await loadTeamSkills(teamId)
@@ -318,6 +324,25 @@ async function removeProject(projectId: string, name: string) {
   }
 }
 
+async function removeTeam() {
+  const team = teamStore.currentTeam
+  if (!team) return
+  if (
+    !window.confirm(
+      `确认解散团队「${team.name}」？\n` +
+        `该团队下的所有项目、团队 Skill 仓库、部署记录、动态与成员关系将一并删除，且不可恢复。\n` +
+        `各成员本地已部署的文件需自行清理。`,
+    )
+  ) {
+    return
+  }
+  actionError.value = ''
+  const res = await teamStore.remove(team.id)
+  if (!res.success) {
+    actionError.value = res.error || '删除团队失败'
+  }
+}
+
 function logout() {
   authStore.logout()
   router.push('/login')
@@ -393,9 +418,19 @@ function logout() {
                 <span>Skill 自动热更新</span>
               </label>
             </div>
-            <button class="btn-sm btn-primary" @click="showCreateProject = true">
-              新建项目
-            </button>
+            <div class="header-actions">
+              <button class="btn-sm btn-primary" @click="showCreateProject = true">
+                新建项目
+              </button>
+              <button
+                v-if="isOwner"
+                class="btn-sm btn-danger"
+                title="解散团队（不可恢复）"
+                @click="removeTeam"
+              >
+                解散团队
+              </button>
+            </div>
           </div>
 
           <div class="section-title">项目列表</div>
@@ -1102,6 +1137,24 @@ function logout() {
 
 .btn-primary:hover {
   background: #4a6eee;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-danger {
+  background: #2a1a1f;
+  border-color: #6b2a33;
+  color: #ff6b6b;
+}
+
+.btn-danger:hover {
+  background: #3a1f25;
+  border-color: #8a3540;
+  color: #ff8080;
 }
 
 .modal-overlay {
