@@ -7,6 +7,7 @@ import { listNativeSkills, type NativeSkillItem } from '@/api/skillStore'
 import { getPlatformInstalledStatus } from '@/api/orchestration'
 import { useNotificationStore, formatNotification } from '@/stores/notificationStore'
 import { useSkillSync } from '@/composables/useSkillSync'
+import { promptInput } from '@/composables/useInputDialog'
 import FolderPicker from '@/components/FolderPicker.vue'
 import type { ChangeItem, UserSkillDeploymentInfo } from '@/api/projects'
 import { parseUnifiedDiff, inlineSegments } from '@/utils/diffView'
@@ -286,9 +287,15 @@ async function pushDeploy(deploymentId: string) {
   )
   let versionLabel = ''
   if (createVersion) {
-    versionLabel = (
-      window.prompt('可为该版本填写备注/标签（可留空）：', '') || ''
-    ).trim()
+    // 应用内输入框（替代 Electron 不支持的 window.prompt）；取消视为不填备注，仍继续推送。
+    const label = await promptInput({
+      title: '新版本备注',
+      message: '可为该版本填写备注/标签，用于在 Skill 详情页区分版本（可留空）。',
+      placeholder: '例如：修复样式 / 调整提示词',
+      confirmText: '确定',
+      maxlength: 100,
+    })
+    versionLabel = (label ?? '').trim()
   }
   actionMsg.value = ''
   pushingId.value = deploymentId

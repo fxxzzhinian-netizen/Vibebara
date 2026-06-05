@@ -13,6 +13,7 @@ import {
 } from '@/api/skillStore'
 import type { ChangeItem } from '@/api/projects'
 import { useTeamStore } from '@/stores/teamStore'
+import { promptInput } from '@/composables/useInputDialog'
 
 const route = useRoute()
 const router = useRouter()
@@ -88,9 +89,15 @@ async function save() {
   )
   let versionLabel = ''
   if (createVersion) {
-    versionLabel = (
-      window.prompt('可为该版本填写备注/标签（可留空）：', '') || ''
-    ).trim()
+    // 应用内输入框（替代 Electron 不支持的 window.prompt）；取消视为不填备注，仍继续保存。
+    const label = await promptInput({
+      title: '新版本备注',
+      message: '可为该版本填写备注/标签，用于在「版本」标签区分版本（可留空）。',
+      placeholder: '例如：修复样式 / 调整提示词',
+      confirmText: '确定',
+      maxlength: 100,
+    })
+    versionLabel = (label ?? '').trim()
   }
   saving.value = true
   saveMsg.value = ''

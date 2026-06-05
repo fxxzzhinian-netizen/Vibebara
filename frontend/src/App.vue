@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
 import ToastNotification from '@/components/ToastNotification.vue'
+import InputDialog from '@/components/InputDialog.vue'
 </script>
 
 <template>
   <div id="app-layout">
     <RouterView />
     <ToastNotification />
+    <InputDialog />
   </div>
 </template>
 
