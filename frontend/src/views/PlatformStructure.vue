@@ -38,21 +38,34 @@ async function handleSave() {
 interface FieldDef {
   key: string
   label: string
-  type: 'text' | 'textarea' | 'color' | 'json' | 'tags'
+  type: 'text' | 'textarea' | 'color' | 'json' | 'tags' | 'select' | 'boolean'
   parent: string
   placeholder?: string
+  options?: string[]
   platforms: ('cursor' | 'codex' | 'windsurf' | 'claude')[]
 }
 
 const allFields: FieldDef[] = [
-  // Common fields
+  // Codex UI fields
   { key: 'display_name', label: '显示名称', type: 'text', parent: 'ui', placeholder: '人类友好的标题', platforms: ['codex'] },
   { key: 'short_description', label: '简短描述', type: 'text', parent: 'ui', placeholder: '25-64 字符摘要', platforms: ['codex'] },
   { key: 'brand_color', label: '品牌颜色', type: 'color', parent: 'ui', placeholder: '#3B82F6', platforms: ['codex'] },
   { key: 'default_prompt', label: '默认提示词', type: 'text', parent: 'ui', placeholder: 'Use $skill-name to ...', platforms: ['codex'] },
   { key: 'icon_small', label: '小图标路径', type: 'text', parent: 'ui', placeholder: './assets/icon-small.svg', platforms: ['codex'] },
   { key: 'icon_large', label: '大图标路径', type: 'text', parent: 'ui', placeholder: './assets/icon-large.svg', platforms: ['codex'] },
+  // Cursor field
   { key: 'surfaces', label: '适用界面 (surfaces)', type: 'tags', parent: 'metadata', placeholder: 'ide, panel', platforms: ['cursor'] },
+  // Claude Code 专有运行时字段（写入同一 SKILL.md frontmatter）
+  { key: 'model', label: '模型 (model)', type: 'text', parent: 'claude', placeholder: 'haiku | sonnet | opus 或完整模型 ID', platforms: ['claude'] },
+  { key: 'effort', label: '推理强度 (effort)', type: 'text', parent: 'claude', placeholder: 'low | medium | high | max', platforms: ['claude'] },
+  { key: 'context', label: '运行上下文 (context)', type: 'select', parent: 'claude', options: ['', 'inline', 'fork'], platforms: ['claude'] },
+  { key: 'agent', label: '子代理类型 (agent)', type: 'text', parent: 'claude', placeholder: '仅 context: fork 时生效，如 Explore / Plan', platforms: ['claude'] },
+  { key: 'allowed_tools', label: '允许工具 (allowed-tools)', type: 'tags', parent: 'claude', placeholder: 'Read, Grep, Glob', platforms: ['claude'] },
+  { key: 'disallowed_tools', label: '禁用工具 (disallowed-tools)', type: 'tags', parent: 'claude', placeholder: 'AskUserQuestion', platforms: ['claude'] },
+  { key: 'argument_hint', label: '参数提示 (argument-hint)', type: 'text', parent: 'claude', placeholder: '<environment>', platforms: ['claude'] },
+  { key: 'when_to_use', label: '触发提示 (when_to_use)', type: 'textarea', parent: 'claude', placeholder: 'Use when user asks to deploy.', platforms: ['claude'] },
+  { key: 'user_invocable', label: '可手动调用 (user-invocable)', type: 'boolean', parent: 'claude', platforms: ['claude'] },
+  { key: 'hooks', label: 'Hooks (高级, JSON)', type: 'json', parent: 'claude', placeholder: '{"PreToolUse": [{"matcher": "Bash(git commit)", "hooks": [...]}]}', platforms: ['claude'] },
 ]
 
 const commonFields = [
@@ -79,9 +92,46 @@ function getFieldValue(field: FieldDef): string {
 function setFieldValue(field: FieldDef, val: string) {
   if (field.type === 'tags') {
     setNestedField(field.parent, field.key, val.split(',').map(s => s.trim()).filter(Boolean))
+  } else if (field.type === 'select' || field.type === 'text') {
+    // 空字符串视为"未设置"，避免写入空值污染 frontmatter
+    setNestedField(field.parent, field.key, val === '' ? undefined : val)
   } else {
     setNestedField(field.parent, field.key, val)
   }
+}
+
+// boolean 字段用三态下拉：未设置 / true / false（避免默认 false 误伤 Claude 默认 true）
+function getTriValue(field: FieldDef): string {
+  if (!cfg.value) return ''
+  const parentObj = cfg.value[field.parent] as Record<string, any> | undefined
+  const val = parentObj?.[field.key]
+  if (val === true) return 'true'
+  if (val === false) return 'false'
+  return ''
+}
+
+function setTriValue(field: FieldDef, val: string) {
+  setNestedField(field.parent, field.key, val === 'true' ? true : val === 'false' ? false : undefined)
+}
+
+// json 字段（如 Claude hooks）以格式化文本编辑，保存时解析回对象
+function getJsonValue(field: FieldDef): string {
+  if (!cfg.value) return ''
+  const parentObj = cfg.value[field.parent] as Record<string, any> | undefined
+  const val = parentObj?.[field.key]
+  if (val === undefined || val === null || val === '') return ''
+  return JSON.stringify(val, null, 2)
+}
+
+function setJsonValue(field: FieldDef, val: string) {
+  const trimmed = val.trim()
+  if (!trimmed) {
+    setNestedField(field.parent, field.key, undefined)
+    return
+  }
+  try {
+    setNestedField(field.parent, field.key, JSON.parse(trimmed))
+  } catch { /* 解析失败时保留原值，不写入 */ }
 }
 
 function getToolsJson(): string {
@@ -117,8 +167,8 @@ const platformMeta = {
   claude: {
     name: 'Claude Code',
     color: '#d97757',
-    badge: 'SKILL.md frontmatter',
-    desc: 'Claude Code 与 Cursor 同构：含 SKILL.md（frontmatter: name + description）的文件夹。项目级落 .claude/skills/，全局级落 ~/.claude/skills/。不含 UI 元数据与 MCP 声明。',
+    badge: 'SKILL.md frontmatter (标准 + 运行时扩展)',
+    desc: 'Claude Code 采用 Agent Skills 标准并扩展运行时字段：标准元数据（license/compatibility/author/version）与 Claude 专有字段（allowed-tools / model / effort / context / agent / hooks 等）全部写入同一 SKILL.md frontmatter，无独立元数据文件。项目级落 .claude/skills/，全局级落 ~/.claude/skills/。',
   },
 }
 
@@ -205,12 +255,14 @@ const fieldsForPlatform = computed(() => {
                 <th>Codex</th>
                 <th>Cursor</th>
                 <th>Windsurf</th>
+                <th>Claude Code</th>
                 <th>说明</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="f in commonFields" :key="f.key">
                 <td class="field-name">{{ f.label }}</td>
+                <td class="support yes">✓</td>
                 <td class="support yes">✓</td>
                 <td class="support yes">✓</td>
                 <td class="support yes">✓</td>
@@ -230,6 +282,7 @@ const fieldsForPlatform = computed(() => {
                 <th>Codex</th>
                 <th>Cursor</th>
                 <th>Windsurf</th>
+                <th>Claude</th>
                 <th>构建映射</th>
               </tr>
             </thead>
@@ -239,11 +292,13 @@ const fieldsForPlatform = computed(() => {
                 <td class="support yes">✓</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml interface.display_name</td>
               </tr>
               <tr>
                 <td class="field-name">ui.short_description</td>
                 <td class="support yes">✓</td>
+                <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml interface.short_description</td>
@@ -253,11 +308,13 @@ const fieldsForPlatform = computed(() => {
                 <td class="support yes">✓</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml interface.brand_color</td>
               </tr>
               <tr>
                 <td class="field-name">ui.default_prompt</td>
                 <td class="support yes">✓</td>
+                <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml interface.default_prompt</td>
@@ -267,11 +324,13 @@ const fieldsForPlatform = computed(() => {
                 <td class="support yes">✓</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml interface.icon_*</td>
               </tr>
               <tr>
                 <td class="field-name">dependencies.tools (MCP)</td>
                 <td class="support yes">✓</td>
+                <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml dependencies.tools</td>
@@ -281,7 +340,64 @@ const fieldsForPlatform = computed(() => {
                 <td class="support no">✗</td>
                 <td class="support yes">✓</td>
                 <td class="support no">✗</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ SKILL.md frontmatter metadata.surfaces</td>
+              </tr>
+              <tr>
+                <td class="field-name">metadata.license</td>
+                <td class="support yes">✓</td>
+                <td class="support no">✗</td>
+                <td class="support no">✗</td>
+                <td class="support yes">✓</td>
+                <td class="field-note">Codex → LICENSE.txt；Claude → frontmatter license</td>
+              </tr>
+              <tr>
+                <td class="field-name">metadata.compatibility / author / version</td>
+                <td class="support no">✗</td>
+                <td class="support no">✗</td>
+                <td class="support no">✗</td>
+                <td class="support yes">✓</td>
+                <td class="field-note">→ SKILL.md frontmatter compatibility / metadata</td>
+              </tr>
+              <tr>
+                <td class="field-name">claude.allowed_tools / disallowed_tools</td>
+                <td class="support no">✗</td>
+                <td class="support no">✗</td>
+                <td class="support no">✗</td>
+                <td class="support yes">✓</td>
+                <td class="field-note">→ frontmatter allowed-tools / disallowed-tools</td>
+              </tr>
+              <tr>
+                <td class="field-name">claude.model / effort</td>
+                <td class="support no">✗</td>
+                <td class="support no">✗</td>
+                <td class="support no">✗</td>
+                <td class="support yes">✓</td>
+                <td class="field-note">→ frontmatter model / effort</td>
+              </tr>
+              <tr>
+                <td class="field-name">claude.context / agent</td>
+                <td class="support no">✗</td>
+                <td class="support no">✗</td>
+                <td class="support no">✗</td>
+                <td class="support yes">✓</td>
+                <td class="field-note">→ frontmatter context (仅 fork) / agent</td>
+              </tr>
+              <tr>
+                <td class="field-name">claude.user_invocable / argument_hint</td>
+                <td class="support no">✗</td>
+                <td class="support no">✗</td>
+                <td class="support no">✗</td>
+                <td class="support yes">✓</td>
+                <td class="field-note">→ frontmatter user-invocable (仅 false) / argument-hint</td>
+              </tr>
+              <tr>
+                <td class="field-name">claude.when_to_use / hooks</td>
+                <td class="support no">✗</td>
+                <td class="support no">✗</td>
+                <td class="support no">✗</td>
+                <td class="support yes">✓</td>
+                <td class="field-note">→ frontmatter when_to_use / hooks</td>
               </tr>
             </tbody>
           </table>
@@ -313,17 +429,7 @@ const fieldsForPlatform = computed(() => {
           </ul>
         </div>
 
-        <!-- Claude Code: build info (与 Cursor 同构，无平台特有可编辑字段) -->
-        <div v-else-if="activePlatform === 'claude'" class="build-info">
-          <h4>构建说明</h4>
-          <ul>
-            <li>与 Cursor 同构：输出含 <code>SKILL.md</code>（frontmatter: <code>name</code> + <code>description</code>）的文件夹</li>
-            <li>项目级落 <code>.claude/skills/{id}/</code>；全局级落 <code>~/.claude/skills/{id}/</code></li>
-            <li>不包含 UI 元数据、MCP 工具声明；无平台特有必填字段</li>
-          </ul>
-        </div>
-
-        <!-- Editable fields -->
+        <!-- Editable fields (Cursor / Codex / Claude) -->
         <div v-else class="platform-fields">
           <div v-for="field in fieldsForPlatform" :key="field.key" class="pf-field-row">
             <label>{{ field.label }}</label>
@@ -341,8 +447,43 @@ const fieldsForPlatform = computed(() => {
                 :placeholder="field.placeholder"
               />
             </div>
+            <select
+              v-else-if="field.type === 'select'"
+              :value="getFieldValue(field)"
+              @change="setFieldValue(field, ($event.target as HTMLSelectElement).value)"
+              class="form-input"
+            >
+              <option v-for="opt in (field.options || [])" :key="opt" :value="opt">{{ opt || '未设置（默认）' }}</option>
+            </select>
+            <select
+              v-else-if="field.type === 'boolean'"
+              :value="getTriValue(field)"
+              @change="setTriValue(field, ($event.target as HTMLSelectElement).value)"
+              class="form-input"
+            >
+              <option value="">未设置（默认 true）</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+            <textarea
+              v-else-if="field.type === 'textarea'"
+              :value="getFieldValue(field)"
+              @input="setFieldValue(field, ($event.target as HTMLTextAreaElement).value)"
+              class="form-input textarea"
+              rows="3"
+              :placeholder="field.placeholder"
+            ></textarea>
+            <textarea
+              v-else-if="field.type === 'json'"
+              :value="getJsonValue(field)"
+              @change="setJsonValue(field, ($event.target as HTMLTextAreaElement).value)"
+              class="form-input textarea code-area"
+              rows="6"
+              spellcheck="false"
+              :placeholder="field.placeholder"
+            ></textarea>
             <input
-              v-else-if="field.type === 'text' || field.type === 'tags'"
+              v-else
               :value="getFieldValue(field)"
               @input="setFieldValue(field, ($event.target as HTMLInputElement).value)"
               class="form-input"
@@ -370,6 +511,18 @@ const fieldsForPlatform = computed(() => {
               <li><code>policy.auto_invoke: false</code> → 输出 <code>disable-model-invocation: true</code></li>
               <li>不包含 UI 元数据、MCP 工具声明和 LICENSE 文件</li>
               <li>图标文件 (icon_small / icon_large) 在构建时被丢弃</li>
+            </ul>
+          </div>
+
+          <!-- Claude Code: build info -->
+          <div v-if="activePlatform === 'claude'" class="build-info">
+            <h4>构建说明</h4>
+            <ul>
+              <li>标准元数据 + 上述 Claude 专有字段全部写入同一 <code>SKILL.md</code> frontmatter，无独立 <code>openai.yaml</code></li>
+              <li><code>policy.auto_invoke: false</code> → 输出 <code>disable-model-invocation: true</code>（与 Cursor 同义）</li>
+              <li><code>context: fork</code> 时 <code>agent</code> 才生效；<code>user-invocable</code> 仅在为 <code>false</code> 时输出</li>
+              <li><code>metadata</code>（license / compatibility / author / version）随构建写入 frontmatter</li>
+              <li>部署目标：项目级 <code>.claude/skills/{id}/</code>，全局级 <code>~/.claude/skills/{id}/</code></li>
             </ul>
           </div>
         </div>
