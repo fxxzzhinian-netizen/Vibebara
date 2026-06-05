@@ -93,8 +93,9 @@ function setFieldValue(field: FieldDef, val: string) {
   if (field.type === 'tags') {
     setNestedField(field.parent, field.key, val.split(',').map(s => s.trim()).filter(Boolean))
   } else if (field.type === 'select' || field.type === 'text') {
-    // 空字符串视为"未设置"，避免写入空值污染 frontmatter
-    setNestedField(field.parent, field.key, val === '' ? undefined : val)
+    // 清空 → 发 null 删除标记（后端按 null 删键）。不能发 undefined：JSON.stringify 会丢键，
+    // 后端浅合并就删不掉旧值。
+    setNestedField(field.parent, field.key, val === '' ? null : val)
   } else {
     setNestedField(field.parent, field.key, val)
   }
@@ -111,7 +112,8 @@ function getTriValue(field: FieldDef): string {
 }
 
 function setTriValue(field: FieldDef, val: string) {
-  setNestedField(field.parent, field.key, val === 'true' ? true : val === 'false' ? false : undefined)
+  // "未设置" → null 删除标记（理由同 setFieldValue）。
+  setNestedField(field.parent, field.key, val === 'true' ? true : val === 'false' ? false : null)
 }
 
 // json 字段（如 Claude hooks）以格式化文本编辑，保存时解析回对象
@@ -126,7 +128,8 @@ function getJsonValue(field: FieldDef): string {
 function setJsonValue(field: FieldDef, val: string) {
   const trimmed = val.trim()
   if (!trimmed) {
-    setNestedField(field.parent, field.key, undefined)
+    // 清空 → null 删除标记（理由同 setFieldValue）。
+    setNestedField(field.parent, field.key, null)
     return
   }
   try {

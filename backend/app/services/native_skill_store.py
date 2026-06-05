@@ -150,6 +150,20 @@ def _detect_origin(src: Path, frontmatter: Dict[str, Any]) -> str:
     return "unknown"
 
 
+def _merge_block(target: Dict[str, Any], updates: Dict[str, Any]) -> None:
+    """块内浅合并：值为 None 表示删除该键（前端清空字段时发 null），其余覆盖/新增。
+
+    背景：前端每次保存上送整份 config；某字段被清空时前端发 `null`（而非 undefined，
+    否则 JSON 序列化会丢键、后端无从得知要删）。这里据此把对应键从存储 config 里删掉，
+    避免 skill.config.yaml 残留旧值或 `null` 噪声。空字符串/空数组等仍按正常值写入。
+    """
+    for k, v in updates.items():
+        if v is None:
+            target.pop(k, None)
+        else:
+            target[k] = v
+
+
 def _config_to_ts_format(config: Dict[str, Any], vibeh_content: str = "") -> Dict[str, Any]:
     """
     将 design-doc 格式的 skill.config.yaml 转换为 TS bridge 期望的格式。
@@ -566,17 +580,18 @@ class NativeSkillStore:
             partial.pop("instructions")
 
         for key, val in partial.items():
-            if key in ("ui", "policy", "metadata", "dependencies", "resources", "_import_meta"):
+            if key in ("ui", "policy", "metadata", "dependencies", "resources", "_import_meta", "meta"):
                 config.setdefault(key, {})
                 if isinstance(val, dict):
-                    config[key].update(val)
+                    _merge_block(config[key], val)
                 else:
                     config[key] = val
-            elif key == "meta":
-                config.setdefault("meta", {})
-                config["meta"].update(val)
-            elif isinstance(val, dict) and isinstance(config.get(key), dict):
-                config[key].update(val)
+            elif isinstance(val, dict):
+                # 任意嵌套块（如 claude）：首次出现时 config 里还没有该键，
+                # 用空字典起步再 _merge_block，确保 null 删除标记也被正确处理（不落 null 噪声）。
+                if not isinstance(config.get(key), dict):
+                    config[key] = {}
+                _merge_block(config[key], val)
             else:
                 config[key] = val
 
