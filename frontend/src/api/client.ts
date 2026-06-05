@@ -23,8 +23,11 @@ import { getDesktopBridge } from '@/runtime/desktopBridge'
 const runtime = getRuntimeConfig()
 
 // ===== 云端 client（Bearer Token → 云端 API 基址）=====
+// timeout：云端不可达/被代理或防火墙挂起时，让请求按时失败抛错（拦截器/调用方可展示
+// “连接失败”），避免无超时导致登录按钮卡在“登录中…”、首屏白屏等“无报错却进不去”的表现。
 export const cloudClient = axios.create({
   baseURL: runtime.cloudApiBase,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },
