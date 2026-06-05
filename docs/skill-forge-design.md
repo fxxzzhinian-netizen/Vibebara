@@ -1,7 +1,7 @@
 # Skill Forge — 抽象 Skill 包 & 多平台构建设计
 
-> 版本：v0.3 (Confirmed)  
-> 目标平台：Cursor、Codex CLI、Claude Code、Windsurf Cascade
+> 版本：v0.4 (Confirmed)  
+> 目标平台：Cursor、Codex CLI、Claude Code、Windsurf Cascade、Kiro
 
 ---
 
@@ -10,11 +10,12 @@
 1. 定义一个**平台无关的抽象 Skill 包**格式（`skill.config.yaml` + `VibeH.md`），作为所有平台信息的**超集**
 2. 针对每个目标平台，定义**严格的构建规则**——生成的产物必须 100% 符合该平台规范，不含任何其他平台的文件或字段
 3. 构建过程是**有损转换**——目标平台不支持的字段和文件会被精确丢弃
-4. 支持**反向导入**——从任意已支持平台（Cursor / Codex / Claude / Windsurf）的原生 skill 解析为抽象包，这是平台核心能力
+4. 支持**反向导入**——从任意已支持平台（Cursor / Codex / Claude / Windsurf / Kiro）的原生 skill 解析为抽象包，这是平台核心能力
 5. 明确区分**仓库快照**、**项目 Skill 列表**与**用户部署实例**——导入仓库后不再监听原始来源目录；用户部署后才监听其本地部署目录
 6. **CC（Claude Code）与 Windsurf 必须按各自平台真实的 skill 结构构建/导入**，不再退化为 Cursor 的「最小公分母」克隆——Claude 完整 round-trip 其专有 frontmatter，Windsurf 忠于其官方 `name`+`description` 规范
+7. **Kiro 按 Agent Skills 标准核心字段构建/导入**——支持 `name`/`description` + 标准可选字段 `license`/`compatibility`/`metadata`(author/version)，不写 Codex 的 `ui.*`、Cursor 的 `disable-model-invocation`/`metadata.surfaces` 与 Claude 的运行时扩展字段
 
-### 四平台概览
+### 五平台概览
 
 | 平台 | 全局 skill 目录 | 项目 skill 目录 | frontmatter 复杂度 | 平台特有产物 |
 |------|----------------|----------------|--------------------|--------------|
@@ -22,6 +23,7 @@
 | Codex CLI | `~/.codex/skills/`（或 `$CODEX_HOME/skills/`） | `{ws}/.codex/skills/` | 低（SKILL.md 仅 name/description） | `agents/openai.yaml`、`LICENSE.txt` |
 | Claude Code | `~/.claude/skills/` | `{ws}/.claude/skills/` | **高**（标准超集 + 运行时扩展 15+ 字段） | 无独立文件，全部写入 frontmatter |
 | Windsurf | `~/.codeium/windsurf/skills/` | `{ws}/.windsurf/skills/` | 低（官方仅 name/description） | — |
+| Kiro | `~/.kiro/skills/` | `{ws}/.kiro/skills/` | 中（name/description + 标准可选 license/compatibility/metadata） | — |
 
 ---
 
@@ -150,24 +152,24 @@ metadata:
 > - **`policy.auto_invoke` 跨平台复用**：Cursor 与 Claude 共用同一语义（`auto_invoke: false` → `disable-model-invocation: true`）；Codex 映射为 `policy.allow_implicit_invocation`；Windsurf 无对应字段（忽略）。
 > - `allowed_tools` / `disallowed_tools` 虽属 Agent Skills 标准（experimental），但当前仅 Claude 实际消费，故归入 `claude:` 块，避免暗示 Cursor/Codex/Windsurf 也会输出。
 >
-> **与代码 schema（`unified.ts`）的对应**：现有 `unified.ts` 用 `triggers.disableModelInvocation`（对应本文 `policy.auto_invoke` 取反）与 `triggers.allowImplicitInvocation`，并已有 `ui`、`dependencies`、`resources`、`targets` 块。本设计新增 `claude` 块与 `metadata` 标准字段（`license`/`compatibility`/`author`/`version`）需在 `unified.ts` 落地，详见第十二章「后续实现触点」。
+> **与代码 schema（`unified.ts`）的对应**：现有 `unified.ts` 用 `triggers.disableModelInvocation`（对应本文 `policy.auto_invoke` 取反）与 `triggers.allowImplicitInvocation`，并已有 `ui`、`dependencies`、`resources`、`targets` 块。本设计新增 `claude` 块与 `metadata` 标准字段（`license`/`compatibility`/`author`/`version`）需在 `unified.ts` 落地，详见第十三章「后续实现触点」。
 
 ### 2.3 资源分类：通用 vs 平台特有
 
 抽象包中的每个文件在构建时会被判定为"通用"或"平台特有"：
 
-| 文件 | 分类 | Cursor | Codex | Claude | Windsurf |
-|------|------|--------|-------|--------|----------|
-| `VibeH.md` | 通用（合并入 SKILL.md） | 合并 | 合并 | 合并 | 合并 |
-| `skill.config.yaml` | 仅抽象包 | 丢弃 | 丢弃 | 丢弃 | 丢弃 |
-| `scripts/*` | 通用 | 复制 | 复制 | 复制 | 复制 |
-| `references/*` | 通用 | 复制 | 复制 | 复制 | 复制 |
-| `assets/*`（非图标） | 通用 | 复制 | 复制 | 复制 | 复制 |
-| `assets/icon-*.svg` | 平台特有（Codex UI） | **丢弃** | 复制 | **丢弃** | **丢弃** |
-| `LICENSE` | 平台特有（Codex） | **丢弃** | 复制为 `LICENSE.txt` | **丢弃**（许可证写入 frontmatter `license`） | **丢弃** |
-| `agents/openai.yaml` | 平台特有（Codex） | **丢弃** | 生成 | **丢弃** | **丢弃** |
+| 文件 | 分类 | Cursor | Codex | Claude | Windsurf | Kiro |
+|------|------|--------|-------|--------|----------|------|
+| `VibeH.md` | 通用（合并入 SKILL.md） | 合并 | 合并 | 合并 | 合并 | 合并 |
+| `skill.config.yaml` | 仅抽象包 | 丢弃 | 丢弃 | 丢弃 | 丢弃 | 丢弃 |
+| `scripts/*` | 通用 | 复制 | 复制 | 复制 | 复制 | 复制 |
+| `references/*` | 通用 | 复制 | 复制 | 复制 | 复制 | 复制 |
+| `assets/*`（非图标） | 通用 | 复制 | 复制 | 复制 | 复制 | 复制 |
+| `assets/icon-*.svg` | 平台特有（Codex UI） | **丢弃** | 复制 | **丢弃** | **丢弃** | **丢弃** |
+| `LICENSE` | 平台特有（Codex） | **丢弃** | 复制为 `LICENSE.txt` | **丢弃**（许可证写入 frontmatter `license`） | **丢弃** | **丢弃**（许可证写入 frontmatter `license`） |
+| `agents/openai.yaml` | 平台特有（Codex） | **丢弃** | 生成 | **丢弃** | **丢弃** | **丢弃** |
 
-> Cursor 历史实现仅复制 `scripts/` 与 `references/`（不复制 `assets/`）。本设计统一约定：**四平台均复制 `assets/` 中的通用资源**（仅 Codex 额外保留图标文件）；该差异在 Cursor 适配器落地时一并对齐。
+> Cursor 历史实现仅复制 `scripts/` 与 `references/`（不复制 `assets/`）。本设计统一约定：**五平台均复制 `assets/` 中的通用资源**（仅 Codex 额外保留图标文件）；该差异在 Cursor 适配器落地时一并对齐。
 
 判定规则：一个文件是否"平台特有"取决于它是否被 `skill.config.yaml` 中的**平台特有字段**（如 `ui.icon_small`）引用。被 `VibeH.md` 正文引用的文件始终视为通用。
 
@@ -175,24 +177,24 @@ metadata:
 
 构建时各平台对抽象字段的处理（✅ 输出 / ❌ 丢弃 / — 不适用）：
 
-| 抽象字段 | Cursor | Codex | Claude | Windsurf |
-|----------|--------|-------|--------|----------|
-| `name` | ✅ | ✅ | ✅ | ✅ |
-| `description` | ✅ | ✅ | ✅ | ✅ |
-| `policy.auto_invoke: false` | ✅ `disable-model-invocation` | ✅ `allow_implicit_invocation:false`（openai.yaml） | ✅ `disable-model-invocation` | ❌ |
-| `metadata.surfaces` | ✅ `metadata.surfaces` | ❌ | ❌ | ❌ |
-| `metadata.license` | ❌ | ✅ `LICENSE.txt` | ✅ frontmatter `license` | ❌ |
-| `metadata.compatibility` | ❌ | ❌ | ✅ frontmatter `compatibility` | ❌ |
-| `metadata.author/version` | ❌ | ❌ | ✅ frontmatter `metadata` | ❌ |
-| `ui.*`（图标/品牌/display/default_prompt） | ❌ | ✅ `agents/openai.yaml` | ❌ | ❌ |
-| `dependencies.tools` | ❌ | ✅ `agents/openai.yaml` | ❌（Claude 在 `.mcp.json`/`settings.json`，超出 skill 范围） | ❌ |
-| `claude.allowed_tools` / `disallowed_tools` | ❌ | ❌ | ✅ frontmatter | ❌ |
-| `claude.user_invocable` | ❌ | ❌ | ✅ frontmatter | ❌ |
-| `claude.argument_hint` | ❌ | ❌ | ✅ frontmatter | ❌ |
-| `claude.model` / `effort` | ❌ | ❌ | ✅ frontmatter | ❌ |
-| `claude.context` / `agent` | ❌ | ❌ | ✅ frontmatter | ❌ |
-| `claude.when_to_use` | ❌ | ❌ | ✅ frontmatter | ❌ |
-| `claude.hooks` | ❌ | ❌ | ✅ frontmatter | ❌ |
+| 抽象字段 | Cursor | Codex | Claude | Windsurf | Kiro |
+|----------|--------|-------|--------|----------|------|
+| `name` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `description` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `policy.auto_invoke: false` | ✅ `disable-model-invocation` | ✅ `allow_implicit_invocation:false`（openai.yaml） | ✅ `disable-model-invocation` | ❌ | ❌ |
+| `metadata.surfaces` | ✅ `metadata.surfaces` | ❌ | ❌ | ❌ | ❌ |
+| `metadata.license` | ❌ | ✅ `LICENSE.txt` | ✅ frontmatter `license` | ❌ | ✅ frontmatter `license` |
+| `metadata.compatibility` | ❌ | ❌ | ✅ frontmatter `compatibility` | ❌ | ✅ frontmatter `compatibility` |
+| `metadata.author/version` | ❌ | ❌ | ✅ frontmatter `metadata` | ❌ | ✅ frontmatter `metadata` |
+| `ui.*`（图标/品牌/display/default_prompt） | ❌ | ✅ `agents/openai.yaml` | ❌ | ❌ | ❌ |
+| `dependencies.tools` | ❌ | ✅ `agents/openai.yaml` | ❌（Claude 在 `.mcp.json`/`settings.json`，超出 skill 范围） | ❌ | ❌ |
+| `claude.allowed_tools` / `disallowed_tools` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
+| `claude.user_invocable` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
+| `claude.argument_hint` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
+| `claude.model` / `effort` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
+| `claude.context` / `agent` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
+| `claude.when_to_use` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
+| `claude.hooks` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
 
 > 设计原则：抽象包是超集，**写到任一平台只保留该平台支持的字段，其余精确丢弃**；导入时反向把平台原生字段还原到抽象层。
 
@@ -558,9 +560,95 @@ description: "{description}"
 
 ---
 
-## 七、构建流程
+## 七、Kiro 构建规则
 
-### 7.1 正向构建（Build）
+> Kiro（AWS）原生支持开放的 **Agent Skills 标准**：技能是含 `SKILL.md` 的文件夹，frontmatter 至少包含 `name` + `description`，并接受标准可选字段 `license`、`compatibility`、`metadata`（如 author/version）。Kiro 采用渐进式披露：启动时只加载 name + description，匹配请求或用户以 `/` 显式调用时才加载全文。
+>
+> - 工作区：`{ws}/.kiro/skills/<name>/SKILL.md`
+> - 全局：`~/.kiro/skills/<name>/SKILL.md`
+> - 同名冲突时**工作区技能优先**于全局技能
+>
+> Kiro 的 **steering**（`.kiro/steering/`）、**hooks**（`.kiro/hooks/`）、**custom agents**（`.kiro/agents/`）是另外的机制，与 skill 不同；Skill Forge 只处理 skill，不生成 steering/hooks/agents。
+>
+> Kiro 是介于 Windsurf 与 Claude 之间的「Agent Skills 标准核心」平台：比 Windsurf（仅 name+description）多出标准可选字段 `license`/`compatibility`/`metadata`，但**不含** Claude 的运行时扩展（`model`/`effort`/`context`/`hooks`/`allowed-tools` 等），也**不含** Codex 的 `ui.*`。
+
+### 7.1 产物目录
+
+```
+<output>/
+├── SKILL.md                    # 合成：标准 frontmatter（name + description + 可选 license/compatibility/metadata） + VibeH.md
+├── scripts/                    # 原样复制（随技能激活加载）
+├── references/                 # 原样复制
+└── assets/                     # 仅复制通用资源（图标文件丢弃）
+```
+
+> 目录名（`{name}`）即 Kiro 的技能标识与 `/command` 名，必须与 frontmatter `name` 一致。
+
+### 7.2 生成 `SKILL.md`
+
+Kiro 的 SKILL.md 输出 Agent Skills 标准字段：`name` + `description` 必有，`license` / `compatibility` / `metadata` 有值才输出：
+
+```yaml
+---
+name: "{name}"
+description: "{description}"
+license: "{metadata.license}"          # 仅当有值时输出
+compatibility: "{metadata.compatibility}"  # 仅当有值时输出
+metadata:                             # 仅当 author/version 有值时输出
+  author: "{metadata.author}"
+  version: "{metadata.version}"
+---
+
+{VibeH.md 原文}
+```
+
+> 所有可选字段「有值才输出」，最小产物退化为 `name` + `description`（与 Agent Skills 标准一致，Kiro 也接受）。
+
+### 7.3 字段映射
+
+| 抽象字段 | Kiro frontmatter | 说明 |
+|----------|------------------|------|
+| `name` | `name` | 直接映射；同时是目录名 / `/command` 名 |
+| `description` | `description` | 直接映射（自动激活与 `/` 调用的触发依据） |
+| `metadata.license` | `license` | 直接映射（接受 license 名或文件引用） |
+| `metadata.compatibility` | `compatibility` | 直接映射（环境要求） |
+| `metadata.author` / `metadata.version` | `metadata: { author, version }` | 映射为 Kiro 的任意键值 `metadata` |
+| `policy.*` | **丢弃** | Kiro skill 无 invocation policy 字段 |
+| `metadata.surfaces` | **丢弃** | Cursor 特有 |
+| `ui.*` | **全部丢弃** | Codex 专有 UI 元数据 |
+| `claude.*` | **全部丢弃** | Claude 专有运行时字段 |
+| `dependencies.tools` | **丢弃** | Kiro 的 MCP 在 `mcp.json`/powers，超出 skill 范围 |
+| `dependencies.skills` | **构建时校验**是否已安装，但不输出到产物 | 正文中的引用已足够 |
+| `resources.*` | 按路径复制通用文件 | 随技能加载 |
+
+### 7.4 严格删除清单
+
+构建 Kiro 产物时，以下**绝对不能存在**：
+
+| 禁止内容 | 原因 |
+|----------|------|
+| `agents/` 目录 / `openai.yaml` | Codex 特有 |
+| `disable-model-invocation` | Cursor/Claude 特有字段 |
+| `metadata.surfaces` | Cursor 特有字段 |
+| `allowed-tools` / `model` / `effort` / `context` / `agent` / `hooks` / `user-invocable` 等 Claude 字段 | Claude 特有 |
+| `LICENSE` / `LICENSE.txt` 文件 | Kiro 用 frontmatter `license`，不落 LICENSE 文件 |
+| `ui.icon_*` 引用的图标文件 | Kiro 无 UI 元数据 |
+| `skill.config.yaml` / `VibeH.md` | 抽象包文件 |
+
+### 7.5 部署目标
+
+| 范围 | 目标路径 |
+|------|----------|
+| 用户全局 | `~/.kiro/skills/{name}/` |
+| 项目级 | `{workspace}/.kiro/skills/{name}/` |
+
+> 注意：Kiro 导入技能时会复制为真实目录，**不支持** skills 目录下的符号链接；部署必须写真实文件。
+
+---
+
+## 八、构建流程
+
+### 8.1 正向构建（Build）
 
 ```
 skill.config.yaml + VibeH.md + resources/
@@ -570,29 +658,26 @@ skill.config.yaml + VibeH.md + resources/
     │   Validate    │   Zod Schema 校验 + 依赖 skill 校验
     └──────┬───────┘
            │
-   ┌───────┼───────┬───────────┐
-   ▼       ▼       ▼           ▼
-┌──────┐┌──────┐┌────────┐┌──────────┐
-│Cursor││Codex ││ Claude ││ Windsurf │
-│Build ││Build ││ Build  ││  Build   │
-└──┬───┘└──┬───┘└───┬────┘└────┬─────┘
-   │       │        │          │
-   ▼       ▼        ▼          ▼
-┌──────┐┌──────────┐┌────────────┐┌──────────┐
-│SKILL ││ SKILL.md ││ SKILL.md   ││ SKILL.md │
-│.md   ││ openai   ││ 完整 fm     ││ name +   │
-│(策略)││ .yaml    ││ (标准+claude)││ desc 仅  │
-│refs/ ││ LICENSE  ││ scripts/    ││ scripts/ │
-│scr/  ││ scripts/ ││ refs/       ││ refs/    │
-│assets││ refs/    ││ assets/     ││ assets/  │
-│(无图)││ assets/  ││ (无图标)    ││ (无图标) │
-└──┬───┘└──┬───────┘└─────┬──────┘└────┬─────┘
-   ▼       ▼              ▼            ▼
-~/.cursor ~/.codex   ~/.claude  ~/.codeium/windsurf
- /skills/  /skills/   /skills/      /skills/
+   ┌───────┬────────┬─────────┬──────────┬────────┐
+   ▼       ▼        ▼         ▼          ▼        │
+ Cursor   Codex    Claude    Windsurf    Kiro
+ Build    Build    Build     Build       Build
+   │        │        │          │          │
+   ▼        ▼        ▼          ▼          ▼
+ SKILL.md  SKILL.md  SKILL.md   SKILL.md   SKILL.md
+ (策略)    +openai   完整 fm     仅 name+   name+desc
+ refs/     .yaml     (标准       desc       +license/
+ scr/      LICENSE   +claude)   scr/       compat/meta
+ assets    scr/refs  scr/refs   refs/      scr/refs
+           assets/   assets/    assets/    assets/
+   │        │        │          │          │
+   ▼        ▼        ▼          ▼          ▼
+~/.cursor ~/.codex  ~/.claude  ~/.codeium  ~/.kiro
+ /skills/  /skills/  /skills/   /windsurf   /skills/
+                                /skills/
 ```
 
-### 7.2 构建时校验
+### 8.2 构建时校验
 
 | 校验项 | 说明 | 失败行为 |
 |--------|------|----------|
@@ -608,11 +693,11 @@ skill.config.yaml + VibeH.md + resources/
 
 ---
 
-## 八、反向导入（Import）— 平台核心能力
+## 九、反向导入（Import）— 平台核心能力
 
-从已有的 Cursor / Codex / Claude / Windsurf 原生 skill 目录，反向解析为抽象包（`skill.config.yaml` + `VibeH.md`）。
+从已有的 Cursor / Codex / Claude / Windsurf / Kiro 原生 skill 目录，反向解析为抽象包（`skill.config.yaml` + `VibeH.md`）。
 
-### 8.1 用户操作流程
+### 9.1 用户操作流程
 
 ```
 用户在主界面选择文件路径
@@ -640,10 +725,10 @@ skill.config.yaml + VibeH.md + resources/
 
 导入是一次性快照。`_import_meta.source_path` 只用于溯源和展示，不作为持续同步源；原项目中的 Skill 后续变化不会自动写回个人仓库或团队仓库。
 
-### 8.2 导入时的解析流程
+### 9.2 导入时的解析流程
 
 ```
-原生 Skill 目录（Cursor / Codex / Claude / Windsurf）
+原生 Skill 目录（Cursor / Codex / Claude / Windsurf / Kiro）
           │
           ▼
     ┌──────────────┐
@@ -667,7 +752,7 @@ skill.config.yaml + VibeH.md + resources/
     └──────────────┘
 ```
 
-### 8.3 来源检测规则
+### 9.3 来源检测规则
 
 **核心难点**：最小化的 Cursor / Windsurf / Claude skill 在结构上**无法区分**（都只有 `name` + `description` 的 SKILL.md + 可选 scripts/references/assets）。因此采用**「来源路径主信号 + frontmatter 专有字段辅信号」的双层判定**。
 
@@ -678,6 +763,7 @@ flowchart TD
     pathCheck -->|".windsurf 或 .codeium/windsurf"| windsurf[判定 Windsurf]
     pathCheck -->|".codex 或 agents/openai.yaml"| codex[判定 Codex]
     pathCheck -->|".cursor/skills/"| cursor[判定 Cursor]
+    pathCheck -->|".kiro/skills/"| kiro[判定 Kiro]
     pathCheck -->|未知| fm{frontmatter 专有字段?}
     fm -->|"allowed-tools/model/context/hooks/user-invocable 等"| claude
     fm -->|"openai.yaml 存在 / metadata.short-description"| codex
@@ -694,6 +780,7 @@ flowchart TD
 | 来源路径含 `.windsurf/skills/` 或 `.codeium/windsurf/` | Windsurf +5 |
 | 来源路径含 `.codex/skills/` | Codex +5 |
 | 来源路径含 `.cursor/skills/` | Cursor +5 |
+| 来源路径含 `.kiro/skills/` | Kiro +5 |
 | 存在 `agents/openai.yaml` | Codex +3 |
 | frontmatter 含 `allowed-tools` / `disallowed-tools` / `user-invocable` / `argument-hint` / `model` / `effort` / `context` / `agent` / `hooks` / `when_to_use` | Claude +3（任一） |
 | frontmatter 含 `metadata.short-description` | Codex +1 |
@@ -704,9 +791,11 @@ flowchart TD
 
 判定：取最高分平台；分差不足或全 0 → `unknown`（按通用 `name`+`description` 处理）。置信度：最高分 ≥5（路径命中）记 high，≥3 记 medium，否则 low。
 
-> **实现建议**：`detectOrigin(skillDir)` 当前不接收来源路径上下文，仅看目录内文件。为支持路径主信号，需把「用户选择的来源根 + skill 相对路径」一并传入 `detect.ts`，详见第十二章。
+> **Kiro 检测说明**：Kiro 的 frontmatter 字段（`license`/`compatibility`/`metadata`）与 Claude/Codex 共享，**无独占辅信号**，故 Kiro 仅靠来源路径 `.kiro/skills/` 主信号识别；脱离路径上下文（如纯目录扫描）时 Kiro 最小技能与 Cursor/Windsurf/Claude 不可区分，回退为 `unknown`。
 
-### 8.4 Cursor → 抽象包 映射
+> **实现建议**：`detectOrigin(skillDir)` 当前不接收来源路径上下文，仅看目录内文件。为支持路径主信号，需把「用户选择的来源根 + skill 相对路径」一并传入 `detect.ts`，详见第十三章。
+
+### 9.4 Cursor → 抽象包 映射
 
 | Cursor 文件/字段 | 抽象包映射 |
 |------------------|-----------|
@@ -720,7 +809,7 @@ flowchart TD
 | `assets/` 目录 | `resources.assets` + 复制文件 |
 | `ui.*` | **全部留空**（Cursor 无 UI 元数据，导入后需手动补充） |
 
-### 8.5 Codex → 抽象包 映射
+### 9.5 Codex → 抽象包 映射
 
 | Codex 文件/字段 | 抽象包映射 |
 |-----------------|-----------|
@@ -740,7 +829,7 @@ flowchart TD
 | `assets/` 目录 | `resources.assets` + 复制文件 |
 | `LICENSE.txt` | `metadata.license`（尝试检测 license 类型） |
 
-### 8.6 Claude → 抽象包 映射
+### 9.6 Claude → 抽象包 映射
 
 | Claude 文件/字段 | 抽象包映射 |
 |------------------|-----------|
@@ -768,7 +857,7 @@ flowchart TD
 
 > Claude 信息较完整时通常无 incomplete 字段；若 `ui.*` 需在跨平台（如导出到 Codex）时使用，则标记为待补齐。
 
-### 8.7 Windsurf → 抽象包 映射
+### 9.7 Windsurf → 抽象包 映射
 
 | Windsurf 文件/字段 | 抽象包映射 |
 |--------------------|-----------|
@@ -782,7 +871,24 @@ flowchart TD
 
 > Windsurf 是信息最稀疏的来源；导入后若要部署到 Codex/Claude，`incomplete_fields` 会包含 `ui.*` / `claude.*` 等，待部署时由 LLM 补齐。
 
-### 8.8 导入后的信息损失标记与来源语义
+### 9.8 Kiro → 抽象包 映射
+
+| Kiro 文件/字段 | 抽象包映射 |
+|----------------|-----------|
+| SKILL.md frontmatter `name` | `name`（缺省时回退为目录名） |
+| SKILL.md frontmatter `description` | `description`（缺省时回退为正文首段） |
+| SKILL.md frontmatter `license` | `metadata.license` |
+| SKILL.md frontmatter `compatibility` | `metadata.compatibility` |
+| SKILL.md frontmatter `metadata.author` / `metadata.version` | `metadata.author` / `metadata.version` |
+| SKILL.md body（frontmatter 之后） | `VibeH.md` |
+| `scripts/` 目录 | `resources.scripts` + 复制文件 |
+| `references/` 目录 | `resources.references` + 复制文件 |
+| `assets/` 目录 | `resources.assets` + 复制文件 |
+| `ui.*` / `claude.*` / `policy.*` / `metadata.surfaces` | **全部留空**（Kiro 无对应字段） |
+
+> Kiro 信息量介于 Windsurf 与 Claude 之间：含标准 `license`/`compatibility`/`metadata`，但无 `ui.*` 与 Claude 运行时字段；导入后若要部署到 Codex，`incomplete_fields` 会包含 `ui.*`，待部署时由 LLM 补齐。
+
+### 9.9 导入后的信息损失标记与来源语义
 
 导入时**不补齐缺失字段**，仅标记哪些字段缺失：
 
@@ -833,13 +939,13 @@ _import_meta:
 | 项目 Skill 列表 | 项目声明可用哪些团队 Skill，不绑定本地路径或工具 | 否 |
 | 用户部署实例 | 用户点击"部署"后，将项目 Skill 部署到个人本地项目目录 | 是，监听该用户选择的部署目录 |
 
-### 8.9 项目部署与监听规则
+### 9.10 项目部署与监听规则
 
 将团队仓库 Skill 添加到项目时，只进入项目 Skill 列表，不自动部署。因为团队成员可能使用不同 Vibe Coding 工具，也可能有不同的本地项目路径。
 
 只有用户在项目 Skill 列表中点击**部署**时，才需要选择部署参数：
 
-- Vibe Coding 工具：`cursor`、`codex`、`claude` 或 `windsurf`
+- Vibe Coding 工具：`cursor`、`codex`、`claude`、`windsurf` 或 `kiro`
 - 本地项目路径或部署根路径
 - 是否覆盖已存在同名 Skill
 
@@ -851,6 +957,7 @@ _import_meta:
 | Codex | `{deploy_path}/.codex/skills/{name}/` |
 | Claude | `{deploy_path}/.claude/skills/{name}/` |
 | Windsurf | `{deploy_path}/.windsurf/skills/{name}/` |
+| Kiro | `{deploy_path}/.kiro/skills/{name}/` |
 
 部署流程：
 
@@ -890,13 +997,14 @@ _import_meta:
 .codex/skills/
 .windsurf/skills/
 .claude/skills/
+.kiro/skills/
 ```
 
 写入规则：
 
 - 如果项目根目录没有 `.gitignore`，则创建。
 - 如果 `.gitignore` 已存在，则幂等追加上述块，避免重复写入。
-- 不忽略整个 `.cursor/` / `.codex/` / `.windsurf/` / `.claude/`，只忽略项目级 skills 目录，避免误伤其他可提交配置（如 `.claude/settings.json`、`.windsurf/rules/`）。
+- 不忽略整个 `.cursor/` / `.codex/` / `.windsurf/` / `.claude/` / `.kiro/`，只忽略项目级 skills 目录，避免误伤其他可提交配置（如 `.claude/settings.json`、`.windsurf/rules/`、`.kiro/steering/`、`.kiro/hooks/`）。
 - 如果相关目录此前已经被 Git 跟踪，`.gitignore` 不能自动取消跟踪，前端应提示用户需要手动从 Git 索引移除。
 
 变更回写规则：
@@ -908,12 +1016,12 @@ _import_meta:
 - 个人仓库复制到团队仓库后是独立快照，当前阶段不保留两者的版本关联。
 - 项目原本已有的 Skill 可以在用户选择本地路径后被扫描/上传到团队仓库；进入团队仓库后也成为快照，后续要通过用户部署实例触发同步。
 
-### 8.10 部署时 LLM 补齐流程
+### 9.11 部署时 LLM 补齐流程
 
 当用户点击**【部署】**按钮时，如果存在缺失字段，触发以下流程：
 
 ```
-用户点击【部署到 Cursor / Codex / Claude / Windsurf】
+用户点击【部署到 Cursor / Codex / Claude / Windsurf / Kiro】
           │
           ▼
     ┌──────────────┐
@@ -954,14 +1062,14 @@ _import_meta:
                        └──────────────┘
 ```
 
-> **平台相关性**：补齐只针对「目标平台需要、但当前缺失」的字段。例如部署到 **Windsurf** 只需 `name`+`description`，几乎不触发补齐；部署到 **Codex** 需要 `ui.*`；部署到 **Claude** 通常已足够（标准字段直接可用），仅当用户希望填充运行时字段（`model`/`allowed-tools` 等）时才补齐。
+> **平台相关性**：补齐只针对「目标平台需要、但当前缺失」的字段。例如部署到 **Windsurf** 只需 `name`+`description`，几乎不触发补齐；部署到 **Kiro** 只需 `name`+`description`（标准可选字段 `license`/`compatibility`/`metadata` 有则用、无则不输出），同样几乎不触发补齐；部署到 **Codex** 需要 `ui.*`；部署到 **Claude** 通常已足够（标准字段直接可用），仅当用户希望填充运行时字段（`model`/`allowed-tools` 等）时才补齐。
 
-### 8.11 LLM 补齐 API
+### 9.12 LLM 补齐 API
 
 ```
 POST /api/v1/skill-forge/store/{id}/complete
 
-Request: { "target": "cursor" }   // cursor | codex | claude | windsurf
+Request: { "target": "cursor" }   // cursor | codex | claude | windsurf | kiro
 
 Response: {
   "success": true,
@@ -978,7 +1086,7 @@ Response: {
 
 ---
 
-## 九、字段回退策略
+## 十、字段回退策略
 
 当抽象包中某些可选字段未填写时，构建过程使用以下回退逻辑：
 
@@ -996,9 +1104,9 @@ Response: {
 
 ---
 
-## 十、完整示例
+## 十一、完整示例
 
-### 10.1 抽象包
+### 11.1 抽象包
 
 **`skill.config.yaml`：**
 
@@ -1052,7 +1160,7 @@ Use this skill to confirm that a local skill loads correctly...
 ...
 ```
 
-### 10.2 Cursor 构建产物
+### 11.2 Cursor 构建产物
 
 ```
 test-helper/
@@ -1084,7 +1192,7 @@ Use this skill to confirm that a local skill loads correctly...
 ...
 ```
 
-### 10.3 Codex 构建产物
+### 11.3 Codex 构建产物
 
 ```
 test-helper/
@@ -1112,7 +1220,7 @@ policy:
   allow_implicit_invocation: false
 ```
 
-### 10.4 Claude 构建产物
+### 11.4 Claude 构建产物
 
 ```
 test-helper/
@@ -1155,7 +1263,7 @@ Use this skill to confirm that a local skill loads correctly...
 
 > 注意：`ui.*` 被丢弃（Codex 专有），`metadata.surfaces` 不存在；Claude 不生成 `LICENSE.txt`（许可证写入 frontmatter `license`），不生成 `agents/openai.yaml`。
 
-### 10.5 Windsurf 构建产物
+### 11.5 Windsurf 构建产物
 
 ```
 test-helper/
@@ -1188,7 +1296,45 @@ Use this skill to confirm that a local skill loads correctly...
 
 > 注意：`policy`、`ui.*`、`claude.*`、`metadata.*` 全部丢弃；产物只有 `name`+`description` 与附带资源，忠于 Windsurf 官方规范。
 
-### 10.6 反向导入示例：Claude → 抽象包
+### 11.6 Kiro 构建产物
+
+```
+test-helper/
+├── SKILL.md                    ← frontmatter(name + description + license + compatibility + metadata) + VibeH.md
+├── scripts/
+│   └── self_check.py           ← 原样复制
+├── references/
+│   └── test-cases.md           ← 原样复制
+└── assets/
+    └── sample-output.txt       ← 原样复制
+```
+
+生成的 `SKILL.md`：
+
+```yaml
+---
+name: test-helper
+description: >-
+  Full test skill for validating that agents can discover, load,
+  and follow a local skill with scripts, references, assets, and
+  UI metadata.
+license: MIT
+compatibility: "Requires Python 3.11+"
+metadata:
+  author: vibehub
+  version: "1.0.0"
+---
+
+# Test Helper
+
+## Overview
+Use this skill to confirm that a local skill loads correctly...
+...
+```
+
+> 注意：`policy.auto_invoke: false`（即 `disable-model-invocation`）被丢弃（Kiro skill 无 invocation policy）；`ui.*` 与 `claude.*` 全部丢弃；`metadata.surfaces` 不存在；不生成 `LICENSE.txt`（许可证写入 frontmatter `license`），不生成 `agents/openai.yaml`。
+
+### 11.7 反向导入示例：Claude → 抽象包
 
 **输入**：`~/.claude/skills/test-helper/`（含运行时 frontmatter 的 SKILL.md）
 
@@ -1210,7 +1356,7 @@ Use this skill to confirm that a local skill loads correctly...
 
 ---
 
-## 十一、设计决策记录
+## 十二、设计决策记录
 
 | # | 决策 | 理由 |
 |---|------|------|
@@ -1227,10 +1373,12 @@ Use this skill to confirm that a local skill loads correctly...
 | 11 | **Windsurf 忠于官方 `name`+`description` 规范** | 官方仅文档化这两个字段；多写未文档化字段无收益且可能在未来版本报错 |
 | 12 | **更正 Windsurf「无 skill 系统」的过时结论** | Windsurf Cascade 已原生支持 `.windsurf/skills/` 与 `~/.codeium/windsurf/skills/`；`research-ai-coding-skills.md` 同步更新 |
 | 13 | **来源检测以路径为主信号、frontmatter 为辅** | 最小化的 Cursor/Windsurf/Claude skill 结构无法区分，仅靠 frontmatter 会误判 |
+| 14 | **Kiro 按 Agent Skills 标准核心字段构建** | Kiro 支持标准 `name`/`description` + 可选 `license`/`compatibility`/`metadata`(author/version)，无 Claude 运行时扩展与 Codex `ui.*`；定位在 Windsurf 与 Claude 之间 |
+| 15 | **Kiro 仅靠 `.kiro/skills/` 路径主信号检测** | Kiro frontmatter 字段与 Claude/Codex 共享、无独占字段，脱离来源路径无法区分，回退 `unknown` |
 
 ---
 
-## 十二、后续实现触点（附录）
+## 十三、后续实现触点（附录）
 
 > 本次仅产出设计文档，不改代码。以下列出未来落地时需改动的文件，便于追溯。
 
@@ -1239,11 +1387,35 @@ Use this skill to confirm that a local skill loads correctly...
 | `backend/skill-forge/src/schema/unified.ts` | 新增 `claude` 块（`allowedTools`/`disallowedTools`/`userInvocable`/`argumentHint`/`model`/`effort`/`context`/`agent`/`whenToUse`/`hooks`）；扩展 `metadata` 标准字段（`license`/`compatibility`/`author`/`version`）；保持 `triggers.disableModelInvocation` 与本文 `policy.auto_invoke` 的对应 |
 | `backend/skill-forge/src/adapters/claude.ts` | `build()` 按第五章映射写出完整 frontmatter（不再只写 name+description）；复制 `assets/`；保持 `getDeployDir()` = `~/.claude/skills` |
 | `backend/skill-forge/src/adapters/windsurf.ts` | 保持只写 `name`+`description`（已符合）；与第六章删除清单对齐，确保不泄漏其他平台字段 |
-| `backend/skill-forge/src/adapters/detect.ts` | `SkillOrigin` 扩展为 `cursor`/`codex`/`claude`/`windsurf`/`unknown`；接收来源路径上下文做路径主信号；按第 8.3 打分表加入 Claude/Windsurf 信号 |
+| `backend/skill-forge/src/adapters/detect.ts` | `SkillOrigin` 扩展为 `cursor`/`codex`/`claude`/`windsurf`/`unknown`；接收来源路径上下文做路径主信号；按第 9.3 打分表加入 Claude/Windsurf 信号 |
 | `backend/skill-forge/src/commands/import.ts` | `ImportSource` 扩展为四平台；新增 `importFromClaude`（解析全部运行时字段）与 `importFromWindsurf`（name+description+resources） |
 | `backend/skill-forge/src/commands/package.ts` | unknown 回退策略调整（不再一律按 codex 解析）；把来源路径传给 `detectOrigin` |
 | `backend/skill-forge/src/adapters/cursor.ts` | 对齐资源复制约定：补充复制 `assets/` 中的通用资源 |
 | `backend/skill-forge/tests/adapters/claude.test.ts` | 增加运行时字段映射、删除清单、回退策略用例 |
 | `backend/skill-forge/tests/adapters/windsurf.test.ts` | 增加「仅输出 name+description、不泄漏其他字段」断言 |
-| `local-agent/src/gitignore.ts` | 现已忽略 `.windsurf/skills/`、`.claude/skills/`，与第 8.9 一致，无需改动 |
+| `local-agent/src/gitignore.ts` | 现已忽略 `.windsurf/skills/`、`.claude/skills/`，与第 9.10 一致，无需改动 |
 | `docs/research-ai-coding-skills.md` | 更正 Windsurf「无正式 Skill 系统」的结论 |
+
+### 13.1 Kiro 适配落地触点（本轮实施）
+
+> 本轮按第七章「Kiro 构建规则」实施 Kiro 的 Skill 部署链路（构建/导入/部署），与 windsurf/claude 接入方式对齐；不含桌面启动器与协作会话 WebSocket 适配器。
+
+| 层 | 文件 | 改动 |
+|----|------|------|
+| skill-forge | `backend/skill-forge/src/adapters/kiro.ts`（新建） | `KiroAdapter`：`build()` 输出 name/description + 条件 license/compatibility/metadata，复制 scripts/references/assets；`getDeployDir()` = `~/.kiro/skills` |
+| skill-forge | `backend/skill-forge/src/adapters/base.ts` | `AdapterTarget` 加 `"kiro"` |
+| skill-forge | `backend/skill-forge/src/adapters/detect.ts` | `SkillOrigin`/score 加 `kiro`；路径信号 `/.kiro/skills/` +5 |
+| skill-forge | `backend/skill-forge/src/schema/unified.ts` | `targets.kiro`；`importedFrom` enum 加 `kiro` |
+| skill-forge | `backend/skill-forge/src/commands/{build,deploy,migrate,package,import}.ts` | Target/adapter/installedAt/import 加 kiro |
+| skill-forge | `backend/skill-forge/src/index.ts` | export `KiroAdapter` |
+| skill-forge | `backend/skill-forge/tests/adapters/kiro.test.ts`（新建） | 字段映射、删除清单、资源复制断言 |
+| local-agent | `local-agent/src/platform.ts` | `kiroSkillsDir()` → `~/.kiro/skills`；`platformSkillsDir()` 加 kiro |
+| local-agent | `local-agent/src/types.ts` | `ToolType`/`InstalledAtStatus`/`platformSkillDirs` 加 kiro |
+| local-agent | `local-agent/src/handlers/{writeSkill,health}.ts`、`scan/scan.ts` | tool 白名单、health 路径、installedAt 探测加 kiro |
+| local-agent | `local-agent/src/gitignore.ts` | 忽略块加 `.kiro/skills/` |
+| 后端 | `backend/app/services/project_service.py` | `SUPPORTED_TOOLS`/`GITIGNORE_BLOCK`/`_install_root` 加 kiro |
+| 后端 | `backend/app/services/native_skill_store.py` | `KIRO_SKILLS_DIR`、deploy 分支、`_detect_origin`、`_upsert_db` deployed_kiro |
+| 后端 | `backend/app/models/skill_package.py` + `backend/app/core/database.py` | `deployed_kiro` 列 + 增量迁移 |
+| 后端 | `backend/app/schemas/skill_forge.py`、`backend/app/services/skill_forge_service.py`、`backend/app/api/skill_forge.py` | InstalledAtStatus/deployed_kiro/installed_at 归一化/migrate 校验加 kiro |
+| 前端 | `frontend/src/api/localAgent.ts`、`orchestration.ts`、`skillStore.ts` 等 | ToolType/InstalledAtStatus/deployed_kiro |
+| 前端 | `frontend/src/views/{ProjectSkills,PlatformStructure,Dashboard}.vue` | 部署下拉、平台字段、迁移目标/安装态加 kiro |

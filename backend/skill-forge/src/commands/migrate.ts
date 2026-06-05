@@ -6,16 +6,18 @@ import { CursorAdapter } from "../adapters/cursor.js";
 import { CodexAdapter } from "../adapters/codex.js";
 import { WindsurfAdapter } from "../adapters/windsurf.js";
 import { ClaudeAdapter } from "../adapters/claude.js";
+import { KiroAdapter } from "../adapters/kiro.js";
 import { UnifiedSkillSchema } from "../schema/unified.js";
 import { ensureDir, copyDir, writeFile } from "../utils/fs.js";
 import { dumpYaml } from "../utils/yaml.js";
 
-export type MigrateTarget = "cursor" | "codex" | "windsurf" | "claude";
+export type MigrateTarget = "cursor" | "codex" | "windsurf" | "claude" | "kiro";
 
 function adapterFor(target: MigrateTarget): Adapter {
   if (target === "codex") return new CodexAdapter();
   if (target === "windsurf") return new WindsurfAdapter();
   if (target === "claude") return new ClaudeAdapter();
+  if (target === "kiro") return new KiroAdapter();
   return new CursorAdapter();
 }
 

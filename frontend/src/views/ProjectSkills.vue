@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { useProjectSyncStore } from '@/stores/projectSyncStore'
 import { listNativeSkills, type NativeSkillItem } from '@/api/skillStore'
+import { getPlatformInstalledStatus } from '@/api/orchestration'
 import { useNotificationStore, formatNotification } from '@/stores/notificationStore'
 import { useSkillSync } from '@/composables/useSkillSync'
 import FolderPicker from '@/components/FolderPicker.vue'
@@ -30,7 +31,7 @@ const showAddSkill = ref(false)
 const addError = ref('')
 const showDeployModal = ref(false)
 const deploySkillId = ref('')
-const deployTool = ref<'cursor' | 'codex' | 'windsurf' | 'claude'>('cursor')
+const deployTool = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro'>('cursor')
 const deployPath = ref('')
 const deployOverwrite = ref(false)
 const deployToGlobal = ref(false)
@@ -232,13 +233,12 @@ async function submitDeploy() {
     deployError.value = res.error || '部署失败'
     return
   }
-  // 附加动作：勾选「同时部署到全局」→ 再落一份到 ~/.{tool}/skills（一次性、不跟踪）。
+  // 附加动作：勾选「同时部署到全局」→ 再落一份到 ~/.{tool}/skills（一次性、不跟踪、同名覆盖）。
   if (deployToGlobal.value) {
     const gres = await projectStore.deploySkillGlobal(
       projectId.value,
       deploySkillId.value,
       deployTool.value,
-      deployOverwrite.value,
     )
     if (!gres.success) {
       deployLoading.value = false
@@ -337,8 +337,47 @@ async function pullUpdate(deploymentId: string, status?: string) {
     return
   }
   actionMsg.value = '已更新本地到团队最新'
+  // 全局部署不跟踪更新；若该 Skill 也已全局部署，提示是否把本次更新同步覆盖到全局。
+  await maybePullToGlobal(deploymentId)
   await loadMessageHistory()
   await refreshLocalStatuses()
+}
+
+/** 按部署 id 在当前项目 Skill 列表里查回部署对象（取 skill_id / tool_type）。 */
+function findDeploymentById(deploymentId: string): UserSkillDeploymentInfo | null {
+  for (const s of projectStore.projectSkills) {
+    if (s.deployment?.id === deploymentId) return s.deployment
+  }
+  return null
+}
+
+/**
+ * 项目级「更新本地」成功后的可选附加动作：
+ * 全局部署是一次性安装、不跟踪更新，故团队更新拉到本地后不会自动同步到全局。
+ * 这里探测本机平台目录是否存在同名同平台的全局副本，若有则提示用户是否一并覆盖更新到全局。
+ */
+async function maybePullToGlobal(deploymentId: string) {
+  const dep = findDeploymentById(deploymentId)
+  if (!dep) return
+  const tool = dep.tool_type as 'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro'
+  let isGlobal = false
+  try {
+    const installed = await getPlatformInstalledStatus()
+    isGlobal = !!installed[dep.team_skill_id]?.[tool]
+  } catch {
+    // 本地代理不可达（如 web 灰度）→ 无法判定全局状态，静默跳过提示
+    return
+  }
+  if (!isGlobal) return
+  if (
+    !window.confirm('该 Skill 也已全局部署，是否将本次更新同步到全局（用新内容覆盖旧的全局副本）？')
+  ) {
+    return
+  }
+  const gres = await projectStore.deploySkillGlobal(projectId.value, dep.team_skill_id, tool)
+  actionMsg.value = gres.success
+    ? '已更新本地并同步到全局'
+    : `本地已更新，但全局同步失败：${gres.error || ''}`
 }
 
 function statusLabel(status?: string): string {
@@ -550,6 +589,7 @@ function goBack() {
               <option value="codex">Codex</option>
               <option value="windsurf">Windsurf</option>
               <option value="claude">Claude Code</option>
+              <option value="kiro">Kiro</option>
             </select>
           </div>
 

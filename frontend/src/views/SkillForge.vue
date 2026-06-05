@@ -16,7 +16,7 @@ const newSkillName = ref('')
 const newSkillDesc = ref('')
 const createError = ref('')
 
-const deployTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude'>('cursor')
+const deployTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro'>('cursor')
 // 部署始终落项目目录（需选目录）；勾选后「同时」再额外落一份到全局 ~/.{tool}/skills。
 const deployToGlobal = ref(false)
 const deploying = ref(false)
@@ -58,14 +58,15 @@ function confirmDirPick() {
   showDirPicker.value = false
 }
 
-const previewTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude'>('cursor')
+const previewTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro'>('cursor')
 
 /** 工具展示名（用于部署提示文案）。 */
-const TOOL_LABELS: Record<'cursor' | 'codex' | 'windsurf' | 'claude', string> = {
+const TOOL_LABELS: Record<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro', string> = {
   cursor: 'Cursor',
   codex: 'Codex',
   windsurf: 'Windsurf',
   claude: 'Claude Code',
+  kiro: 'Kiro',
 }
 const previewData = ref<{ target: string; contents: Record<string, string> }[]>([])
 const showPreview = ref(false)
@@ -128,7 +129,7 @@ async function handleDelete() {
   await store.removeSkill(store.currentId)
 }
 
-function getPlatformSpecificMissing(target: 'cursor' | 'codex' | 'windsurf' | 'claude'): string[] {
+function getPlatformSpecificMissing(target: 'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro'): string[] {
   if (!cfg.value) return []
   const missing: string[] = []
   if (target === 'codex') {
@@ -141,6 +142,8 @@ function getPlatformSpecificMissing(target: 'cursor' | 'codex' | 'windsurf' | 'c
     // Windsurf 与 Cursor 同构（SKILL.md: name+description），无平台特有必填项
   } else if (target === 'claude') {
     // Claude Code 与 Cursor 同构（SKILL.md: name+description），无平台特有必填项
+  } else if (target === 'kiro') {
+    // Kiro 仅需 name+description（标准可选字段 license/compatibility/metadata 有则用），无平台特有必填项
   }
   return missing
 }
@@ -203,9 +206,11 @@ async function doDeploy() {
       globalNote = ' + 全局'
     }
     const toolLabel = TOOL_LABELS[deployTarget.value]
-    // 启动器支持 cursor/codex/claude 自动打开；windsurf 部署成功但不自动打开。
+    // 启动器支持 cursor/codex/claude 自动打开；windsurf/kiro 部署成功但不自动打开。
     if (deployTarget.value === 'windsurf') {
       deployMsg.value = `已部署到项目 .windsurf/skills${globalNote}（请在 Windsurf 中手动打开项目）`
+    } else if (deployTarget.value === 'kiro') {
+      deployMsg.value = `已部署到项目 .kiro/skills${globalNote}（请在 Kiro 中手动打开项目）`
     } else {
       deployMsg.value = `已部署${globalNote}，正在打开 ${toolLabel}...`
       const tool =
@@ -361,6 +366,7 @@ onMounted(() => {
             <span :class="['deploy-dot codex', { on: store.installedStatus(s).codex }]" title="Codex"></span>
             <span :class="['deploy-dot windsurf', { on: store.installedStatus(s).windsurf }]" title="Windsurf"></span>
             <span :class="['deploy-dot claude', { on: store.installedStatus(s).claude }]" title="Claude Code"></span>
+            <span :class="['deploy-dot kiro', { on: store.installedStatus(s).kiro }]" title="Kiro"></span>
           </div>
         </li>
       </ul>
@@ -400,6 +406,7 @@ onMounted(() => {
                 <option value="codex">Codex</option>
                 <option value="windsurf">Windsurf</option>
                 <option value="claude">Claude Code</option>
+                <option value="kiro">Kiro</option>
               </select>
               <button class="btn tool-btn preview" @click="handlePreview">预览</button>
             </div>
@@ -414,6 +421,7 @@ onMounted(() => {
                 <option value="codex">Codex</option>
                 <option value="windsurf">Windsurf</option>
                 <option value="claude">Claude Code</option>
+                <option value="kiro">Kiro</option>
               </select>
               <button
                 class="btn tool-btn pick-dir"
@@ -873,6 +881,7 @@ onMounted(() => {
 .deploy-dot.codex.on { background: #10b981; }
 .deploy-dot.windsurf.on { background: #06b6d4; }
 .deploy-dot.claude.on { background: #d97757; }
+.deploy-dot.kiro.on { background: #7c3aed; }
 
 /* ===== Editor main ===== */
 .editor-main {

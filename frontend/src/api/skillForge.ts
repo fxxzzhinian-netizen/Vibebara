@@ -59,6 +59,7 @@ export interface InstalledAtStatus {
   codex: boolean
   windsurf: boolean
   claude: boolean
+  kiro: boolean
 }
 
 export interface UnifiedSkillPackage {

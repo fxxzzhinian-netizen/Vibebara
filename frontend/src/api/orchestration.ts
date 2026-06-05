@@ -213,6 +213,7 @@ function asTool(t: string): ToolType {
   if (t === 'codex') return 'codex'
   if (t === 'windsurf') return 'windsurf'
   if (t === 'claude') return 'claude'
+  if (t === 'kiro') return 'kiro'
   return 'cursor'
 }
 
@@ -269,6 +270,9 @@ export async function deployProjectSkillOrchestrated(
  * 全局部署项目 Skill（落本机平台目录 ~/.{tool}/skills/{skillId}，不登记跟踪）。
  * 复用项目 build-artifact 取产物（兼容团队/项目权限），交本地代理以 platform scope 落盘。
  * 与项目级部署的差异：scope=platform、无 deployPath、不调用 register-deployment。
+ *
+ * 全局部署语义：**始终覆盖同名旧副本**（一次性安装、不跟踪更新）。因此忽略 payload.overwrite，
+ * 强制 overwrite=true，避免「同名已存在」时本地代理抛 INSTALL_EXISTS 导致二次全局部署失败。
  */
 export async function deployProjectSkillGlobalOrchestrated(
   projectId: string,
@@ -287,7 +291,7 @@ export async function deployProjectSkillGlobalOrchestrated(
       skillId: artifact.skillId || skillId,
       contents: artifact.contents,
       resources: toWriteResources(artifact.resources),
-      overwrite: payload.overwrite ?? true,
+      overwrite: true,
       ensureGitignore: false,
     })
     return { success: true, deployed: [{ target: tool, path: write.installPath }] }
@@ -562,15 +566,15 @@ export async function getPlatformInstalledStatus(): Promise<
   Record<string, InstalledAtStatus>
 > {
   const map: Record<string, InstalledAtStatus> = {}
-  let dirs: { cursor: string; codex: string; windsurf: string; claude: string }
+  let dirs: { cursor: string; codex: string; windsurf: string; claude: string; kiro: string }
   try {
     const h = await localAgent.health()
     dirs = h.platformSkillDirs
   } catch {
     return map
   }
-  // 扫描四个平台目录；每个包的 installedAt 已对各平台目录各自探测，直接汇总即可。
-  for (const dir of [dirs.cursor, dirs.codex, dirs.windsurf, dirs.claude]) {
+  // 扫描五个平台目录；每个包的 installedAt 已对各平台目录各自探测，直接汇总即可。
+  for (const dir of [dirs.cursor, dirs.codex, dirs.windsurf, dirs.claude, dirs.kiro]) {
     if (!dir) continue
     try {
       const res = await localAgent.scan({ rootDir: dir })
@@ -580,6 +584,7 @@ export async function getPlatformInstalledStatus(): Promise<
           codex: p.installedAt.codex,
           windsurf: p.installedAt.windsurf,
           claude: p.installedAt.claude,
+          kiro: p.installedAt.kiro,
         }
       }
     } catch {

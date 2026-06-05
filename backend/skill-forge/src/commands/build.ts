@@ -4,10 +4,17 @@ import { CursorAdapter } from "../adapters/cursor.js";
 import { CodexAdapter } from "../adapters/codex.js";
 import { WindsurfAdapter } from "../adapters/windsurf.js";
 import { ClaudeAdapter } from "../adapters/claude.js";
+import { KiroAdapter } from "../adapters/kiro.js";
 import { loadAndValidate } from "./validate.js";
 import { ensureDir } from "../utils/fs.js";
 
-export type Target = "cursor" | "codex" | "windsurf" | "claude" | "all";
+export type Target =
+  | "cursor"
+  | "codex"
+  | "windsurf"
+  | "claude"
+  | "kiro"
+  | "all";
 
 export interface BuildOptions {
   target: Target;
@@ -20,11 +27,13 @@ function getAdapters(target: Target) {
   if (target === "codex") return [new CodexAdapter()];
   if (target === "windsurf") return [new WindsurfAdapter()];
   if (target === "claude") return [new ClaudeAdapter()];
+  if (target === "kiro") return [new KiroAdapter()];
   return [
     new CursorAdapter(),
     new CodexAdapter(),
     new WindsurfAdapter(),
     new ClaudeAdapter(),
+    new KiroAdapter(),
   ];
 }
 

@@ -30,13 +30,14 @@ from app.services.team_sync_service import TeamSyncService
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_TOOLS = {"cursor", "codex", "windsurf", "claude"}
+SUPPORTED_TOOLS = {"cursor", "codex", "windsurf", "claude", "kiro"}
 GITIGNORE_BLOCK = [
     "# VibeHub local skill deployments",
     ".cursor/skills/",
     ".codex/skills/",
     ".windsurf/skills/",
     ".claude/skills/",
+    ".kiro/skills/",
 ]
 
 
@@ -88,7 +89,9 @@ def _install_root(deploy_path: str, tool_type: str) -> Path:
         return root / ".windsurf" / "skills"
     if tool_type == "claude":
         return root / ".claude" / "skills"
-    raise ValueError("tool_type must be cursor, codex, windsurf or claude")
+    if tool_type == "kiro":
+        return root / ".kiro" / "skills"
+    raise ValueError("tool_type must be cursor, codex, windsurf, claude or kiro")
 
 
 def _ensure_gitignore(project_root: str) -> None:
@@ -418,7 +421,7 @@ async def deploy_project_skill(
 ) -> Dict[str, Any]:
     tool_type = tool_type.lower()
     if tool_type not in SUPPORTED_TOOLS:
-        return {"success": False, "error": "tool_type must be cursor, codex, windsurf or claude"}
+        return {"success": False, "error": "tool_type must be cursor, codex, windsurf, claude or kiro"}
 
     # 全局部署：落本机平台目录 ~/.{tool}/skills/{skill_id}，一次性安装、不登记跟踪。
     # 仍校验项目存在与 Skill 关联关系，保持与项目级部署一致的访问约束。
@@ -1404,7 +1407,7 @@ async def _build_artifact_payload(
     """
     tool = (tool or "").lower()
     if tool not in SUPPORTED_TOOLS:
-        return {"success": False, "error": "tool must be cursor, codex, windsurf or claude"}
+        return {"success": False, "error": "tool must be cursor, codex, windsurf, claude or kiro"}
 
     async with async_session_factory() as session:
         pkg = await session.get(SkillPackage, skill_id)
@@ -1514,7 +1517,7 @@ async def register_deployment(
     """
     tool = (tool or "").lower()
     if tool not in SUPPORTED_TOOLS:
-        return {"success": False, "error": "tool must be cursor, codex, windsurf or claude"}
+        return {"success": False, "error": "tool must be cursor, codex, windsurf, claude or kiro"}
     if not deploy_path:
         return {"success": False, "error": "deploy_path is required"}
     if not install_path:

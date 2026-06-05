@@ -1,5 +1,5 @@
 import type { AgentConfig } from "./config";
-import { cursorSkillsDir, codexSkillsDir, windsurfSkillsDir, claudeSkillsDir } from "./platform";
+import { cursorSkillsDir, codexSkillsDir, windsurfSkillsDir, claudeSkillsDir, kiroSkillsDir } from "./platform";
 import { WritableRoots } from "./security";
 
 /**
@@ -21,6 +21,7 @@ export function createContext(config: AgentConfig): AgentContext {
     codexSkillsDir(),
     windsurfSkillsDir(),
     claudeSkillsDir(),
+    kiroSkillsDir(),
   ]);
   return { config, writableRoots };
 }

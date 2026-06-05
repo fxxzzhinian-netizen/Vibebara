@@ -2,7 +2,12 @@ import path from "node:path";
 import { readFile, exists, writeFile } from "../utils/fs.js";
 import { parseFrontmatter, parseYaml, dumpYaml } from "../utils/yaml.js";
 
-export type ImportSource = "cursor" | "codex" | "claude" | "windsurf";
+export type ImportSource =
+  | "cursor"
+  | "codex"
+  | "claude"
+  | "windsurf"
+  | "kiro";
 
 export interface ImportOptions {
   from: ImportSource;
@@ -29,6 +34,8 @@ export async function importSkill(options: ImportOptions) {
     config = importFromClaude(frontmatter, body);
   } else if (from === "windsurf") {
     config = importFromWindsurf(frontmatter, body);
+  } else if (from === "kiro") {
+    config = importFromKiro(frontmatter, body);
   } else {
     config = await importFromCodex(frontmatter, body, sourcePath);
   }
@@ -75,8 +82,36 @@ function importFromWindsurf(
 }
 
 /**
+ * Kiro 原生 skill：Agent Skills 标准核心字段——name + description + 可选
+ * license / compatibility / metadata(author/version)。还原到抽象包的标准 metadata
+ * 块；无 ui.* / claude.* / policy 概念（docs/skill-forge-design.md §9.8）。
+ */
+function importFromKiro(
+  frontmatter: Record<string, unknown>,
+  body: string
+): Record<string, unknown> {
+  const config: Record<string, unknown> = {
+    name: frontmatter["name"],
+    description: frontmatter["description"],
+    version: "1.0.0",
+    instructions: body,
+  };
+
+  const metadata: Record<string, unknown> = {};
+  if (frontmatter["license"]) metadata.license = frontmatter["license"];
+  if (frontmatter["compatibility"])
+    metadata.compatibility = frontmatter["compatibility"];
+  const fmMeta = frontmatter["metadata"] as Record<string, unknown> | undefined;
+  if (fmMeta?.["author"]) metadata.author = fmMeta["author"];
+  if (fmMeta?.["version"]) metadata.version = fmMeta["version"];
+  if (Object.keys(metadata).length > 0) config.metadata = metadata;
+
+  return config;
+}
+
+/**
  * Claude Code 原生 skill：解析标准字段 + 全部 Claude 专有运行时 frontmatter，
- * 还原到抽象包的 metadata 与 claude 块（docs/skill-forge-design.md §8.6）。
+ * 还原到抽象包的 metadata 与 claude 块（docs/skill-forge-design.md §9.6）。
  */
 function importFromClaude(
   frontmatter: Record<string, unknown>,

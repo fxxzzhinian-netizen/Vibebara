@@ -267,6 +267,7 @@ function originLabel(o: string): string {
   if (o === 'codex') return 'Codex'
   if (o === 'windsurf') return 'Windsurf'
   if (o === 'claude') return 'Claude Code'
+  if (o === 'kiro') return 'Kiro'
   return '未知'
 }
 
@@ -357,6 +358,8 @@ function pathSegments(p: string) {
                 <span class="dot-label">W</span>
                 <span :class="['dot', { active: pkg.installed_at.claude }]" title="Claude Code"></span>
                 <span class="dot-label">A</span>
+                <span :class="['dot', { active: pkg.installed_at.kiro }]" title="Kiro"></span>
+                <span class="dot-label">K</span>
               </div>
               <div class="import-action">
                 <button
@@ -673,6 +676,9 @@ function pathSegments(p: string) {
 
 .origin-cursor { background: rgba(99, 102, 241, 0.12); color: var(--primary); }
 .origin-codex { background: rgba(16, 185, 129, 0.12); color: var(--success); }
+.origin-windsurf { background: rgba(6, 182, 212, 0.12); color: #06b6d4; }
+.origin-claude { background: rgba(217, 119, 87, 0.12); color: #d97757; }
+.origin-kiro { background: rgba(124, 58, 237, 0.12); color: #7c3aed; }
 .origin-unknown { background: rgba(156, 163, 175, 0.15); color: var(--text-muted); }
 
 .skill-badges-row { display: flex; gap: 0.3rem; flex-shrink: 0; }

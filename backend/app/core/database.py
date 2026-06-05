@@ -77,6 +77,7 @@ async def _migrate_add_columns() -> None:
         ("skill_packages", "project_id", "VARCHAR(36) NULL"),
         ("skill_packages", "deployed_windsurf", "TINYINT(1) NOT NULL DEFAULT 0"),
         ("skill_packages", "deployed_claude", "TINYINT(1) NOT NULL DEFAULT 0"),
+        ("skill_packages", "deployed_kiro", "TINYINT(1) NOT NULL DEFAULT 0"),
         ("skill_change_log", "team_id", "VARCHAR(36) NULL"),
         ("skill_change_log", "deployment_id", "VARCHAR(36) NULL"),
         ("skill_change_log", "source", "VARCHAR(32) NOT NULL DEFAULT 'team_repo'"),

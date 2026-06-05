@@ -7,7 +7,7 @@ const route = useRoute()
 const router = useRouter()
 const store = useSkillStore()
 
-const activePlatform = ref<'overview' | 'codex' | 'cursor' | 'windsurf' | 'claude'>('overview')
+const activePlatform = ref<'overview' | 'codex' | 'cursor' | 'windsurf' | 'claude' | 'kiro'>('overview')
 
 // 页面自带 Skill 上下文：路由带 id 时自行加载，避免依赖跳转前的内存态
 // （直接进入、刷新或从详情页进来时也能正确带出当前 Skill）。
@@ -42,7 +42,7 @@ interface FieldDef {
   parent: string
   placeholder?: string
   options?: string[]
-  platforms: ('cursor' | 'codex' | 'windsurf' | 'claude')[]
+  platforms: ('cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro')[]
 }
 
 const allFields: FieldDef[] = [
@@ -173,6 +173,12 @@ const platformMeta = {
     badge: 'SKILL.md frontmatter (标准 + 运行时扩展)',
     desc: 'Claude Code 采用 Agent Skills 标准并扩展运行时字段：标准元数据（license/compatibility/author/version）与 Claude 专有字段（allowed-tools / model / effort / context / agent / hooks 等）全部写入同一 SKILL.md frontmatter，无独立元数据文件。项目级落 .claude/skills/，全局级落 ~/.claude/skills/。',
   },
+  kiro: {
+    name: 'Kiro',
+    color: '#7c3aed',
+    badge: 'SKILL.md frontmatter (Agent Skills 标准核心)',
+    desc: 'Kiro 遵循开放 Agent Skills 标准：含 SKILL.md（frontmatter: name + description + 可选 license / compatibility / metadata(author/version)）的文件夹。介于 Windsurf 与 Claude 之间——比 Windsurf 多标准可选字段，但无 Claude 运行时扩展与 Codex 的 UI 元数据。项目级落 .kiro/skills/，全局级落 ~/.kiro/skills/。',
+  },
 }
 
 const fieldsForPlatform = computed(() => {
@@ -237,6 +243,13 @@ const fieldsForPlatform = computed(() => {
         <span class="seg-dot claude"></span>
         Claude Code
       </button>
+      <button
+        :class="['seg-btn', { active: activePlatform === 'kiro' }]"
+        @click="activePlatform = 'kiro'"
+      >
+        <span class="seg-dot kiro"></span>
+        Kiro
+      </button>
     </nav>
 
     <!-- Content -->
@@ -259,12 +272,14 @@ const fieldsForPlatform = computed(() => {
                 <th>Cursor</th>
                 <th>Windsurf</th>
                 <th>Claude Code</th>
+                <th>Kiro</th>
                 <th>说明</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="f in commonFields" :key="f.key">
                 <td class="field-name">{{ f.label }}</td>
+                <td class="support yes">✓</td>
                 <td class="support yes">✓</td>
                 <td class="support yes">✓</td>
                 <td class="support yes">✓</td>
@@ -286,6 +301,7 @@ const fieldsForPlatform = computed(() => {
                 <th>Cursor</th>
                 <th>Windsurf</th>
                 <th>Claude</th>
+                <th>Kiro</th>
                 <th>构建映射</th>
               </tr>
             </thead>
@@ -293,6 +309,7 @@ const fieldsForPlatform = computed(() => {
               <tr>
                 <td class="field-name">ui.display_name</td>
                 <td class="support yes">✓</td>
+                <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
@@ -304,11 +321,13 @@ const fieldsForPlatform = computed(() => {
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml interface.short_description</td>
               </tr>
               <tr>
                 <td class="field-name">ui.brand_color</td>
                 <td class="support yes">✓</td>
+                <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
@@ -320,11 +339,13 @@ const fieldsForPlatform = computed(() => {
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml interface.default_prompt</td>
               </tr>
               <tr>
                 <td class="field-name">ui.icon_small / icon_large</td>
                 <td class="support yes">✓</td>
+                <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
@@ -336,12 +357,14 @@ const fieldsForPlatform = computed(() => {
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ openai.yaml dependencies.tools</td>
               </tr>
               <tr>
                 <td class="field-name">metadata.surfaces</td>
                 <td class="support no">✗</td>
                 <td class="support yes">✓</td>
+                <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="field-note">→ SKILL.md frontmatter metadata.surfaces</td>
@@ -352,13 +375,15 @@ const fieldsForPlatform = computed(() => {
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support yes">✓</td>
-                <td class="field-note">Codex → LICENSE.txt；Claude → frontmatter license</td>
+                <td class="support yes">✓</td>
+                <td class="field-note">Codex → LICENSE.txt；Claude / Kiro → frontmatter license</td>
               </tr>
               <tr>
                 <td class="field-name">metadata.compatibility / author / version</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
+                <td class="support yes">✓</td>
                 <td class="support yes">✓</td>
                 <td class="field-note">→ SKILL.md frontmatter compatibility / metadata</td>
               </tr>
@@ -368,6 +393,7 @@ const fieldsForPlatform = computed(() => {
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support yes">✓</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ frontmatter allowed-tools / disallowed-tools</td>
               </tr>
               <tr>
@@ -376,6 +402,7 @@ const fieldsForPlatform = computed(() => {
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support yes">✓</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ frontmatter model / effort</td>
               </tr>
               <tr>
@@ -384,6 +411,7 @@ const fieldsForPlatform = computed(() => {
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support yes">✓</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ frontmatter context (仅 fork) / agent</td>
               </tr>
               <tr>
@@ -392,6 +420,7 @@ const fieldsForPlatform = computed(() => {
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support yes">✓</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ frontmatter user-invocable (仅 false) / argument-hint</td>
               </tr>
               <tr>
@@ -400,6 +429,7 @@ const fieldsForPlatform = computed(() => {
                 <td class="support no">✗</td>
                 <td class="support no">✗</td>
                 <td class="support yes">✓</td>
+                <td class="support no">✗</td>
                 <td class="field-note">→ frontmatter when_to_use / hooks</td>
               </tr>
             </tbody>
@@ -429,6 +459,17 @@ const fieldsForPlatform = computed(() => {
             <li>与 Cursor 同构：输出含 <code>SKILL.md</code>（frontmatter: <code>name</code> + <code>description</code>）的文件夹</li>
             <li>项目级落 <code>.windsurf/skills/{id}/</code>；全局级落 <code>~/.codeium/windsurf/skills/{id}/</code></li>
             <li>不包含 UI 元数据、MCP 工具声明；无平台特有必填字段</li>
+          </ul>
+        </div>
+
+        <!-- Kiro: build info (Agent Skills 标准核心字段，无平台特有可编辑字段) -->
+        <div v-else-if="activePlatform === 'kiro'" class="build-info">
+          <h4>构建说明</h4>
+          <ul>
+            <li>遵循开放 Agent Skills 标准：输出含 <code>SKILL.md</code>（frontmatter: <code>name</code> + <code>description</code>）的文件夹</li>
+            <li>标准可选字段 <code>license</code> / <code>compatibility</code> / <code>metadata</code>(author/version) 有值才写入 frontmatter（属通用元数据，在 Skill Forge 中编辑）</li>
+            <li>不含 Claude 运行时扩展（model / effort / context / hooks / allowed-tools 等）与 Codex 的 UI 元数据；无独立 <code>openai.yaml</code> / <code>LICENSE.txt</code></li>
+            <li>项目级落 <code>.kiro/skills/{id}/</code>；全局级落 <code>~/.kiro/skills/{id}/</code></li>
           </ul>
         </div>
 
@@ -645,6 +686,7 @@ const fieldsForPlatform = computed(() => {
 .seg-dot.cursor { background: #6366f1; }
 .seg-dot.windsurf { background: #06b6d4; }
 .seg-dot.claude { background: #d97757; }
+.seg-dot.kiro { background: #7c3aed; }
 
 /* Content */
 .page-content {

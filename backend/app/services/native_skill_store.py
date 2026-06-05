@@ -39,6 +39,8 @@ CODEX_SKILLS_DIR = Path(
 WINDSURF_SKILLS_DIR = Path.home() / ".codeium" / "windsurf" / "skills"
 # Claude Code 全局 skill 目录在 ~/.claude/skills。
 CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
+# Kiro 全局 skill 目录在 ~/.kiro/skills。
+KIRO_SKILLS_DIR = Path.home() / ".kiro" / "skills"
 
 
 def _now_iso() -> str:
@@ -125,6 +127,10 @@ def _detect_origin(src: Path, frontmatter: Dict[str, Any]) -> str:
         return "windsurf"
     if "/.claude/skills/" in src_str:
         return "claude"
+    # Kiro 无独占 frontmatter 字段（license/compatibility/metadata 与 Claude/Codex
+    # 共享），仅靠 .kiro/skills/ 路径主信号识别。
+    if "/.kiro/skills/" in src_str:
+        return "kiro"
     if (src / "agents" / "openai.yaml").exists():
         return "codex"
 
@@ -400,6 +406,9 @@ class NativeSkillStore:
                 row.deployed_claude = (
                     CLAUDE_SKILLS_DIR / skill_id / "SKILL.md"
                 ).exists()
+                row.deployed_kiro = (
+                    KIRO_SKILLS_DIR / skill_id / "SKILL.md"
+                ).exists()
             else:
                 if row.deployed_cursor is None:
                     row.deployed_cursor = False
@@ -409,6 +418,8 @@ class NativeSkillStore:
                     row.deployed_windsurf = False
                 if row.deployed_claude is None:
                     row.deployed_claude = False
+                if row.deployed_kiro is None:
+                    row.deployed_kiro = False
 
             await session.commit()
             await session.refresh(row)
@@ -1195,6 +1206,8 @@ class NativeSkillStore:
                     dest_root = project_root / ".windsurf" / "skills"
                 elif out_target == "claude":
                     dest_root = project_root / ".claude" / "skills"
+                elif out_target == "kiro":
+                    dest_root = project_root / ".kiro" / "skills"
                 else:
                     dest_root = project_root / ".codex" / "skills"
             elif out_target == "cursor":
@@ -1203,6 +1216,8 @@ class NativeSkillStore:
                 dest_root = WINDSURF_SKILLS_DIR
             elif out_target == "claude":
                 dest_root = CLAUDE_SKILLS_DIR
+            elif out_target == "kiro":
+                dest_root = KIRO_SKILLS_DIR
             else:
                 dest_root = CODEX_SKILLS_DIR
 
@@ -1274,6 +1289,7 @@ class NativeSkillStore:
             "deployed_codex": row.deployed_codex,
             "deployed_windsurf": row.deployed_windsurf,
             "deployed_claude": row.deployed_claude,
+            "deployed_kiro": row.deployed_kiro,
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         }

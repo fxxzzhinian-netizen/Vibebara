@@ -47,8 +47,8 @@ async def rescan(data: RescanRequest, user_id: str = Depends(get_current_user_id
 
 @api_router.post("/migrate", response_model=MigrateResponse)
 async def migrate(data: MigrateRequest, user_id: str = Depends(get_current_user_id)):
-    if data.target_platform not in ("cursor", "codex", "windsurf", "claude"):
-        raise HTTPException(status_code=400, detail="target_platform 必须是 cursor、codex、windsurf 或 claude")
+    if data.target_platform not in ("cursor", "codex", "windsurf", "claude", "kiro"):
+        raise HTTPException(status_code=400, detail="target_platform 必须是 cursor、codex、windsurf、claude 或 kiro")
     try:
         result = await migrate_skill_via_bridge(data.source_path, data.target_platform)
         if result.get("success") and result.get("adapted"):

@@ -7,6 +7,7 @@ export type SkillOrigin =
   | "codex"
   | "claude"
   | "windsurf"
+  | "kiro"
   | "unknown";
 export type Confidence = "high" | "medium" | "low";
 
@@ -33,6 +34,7 @@ export async function detectOrigin(skillDir: string): Promise<DetectResult> {
     codex: 0,
     claude: 0,
     windsurf: 0,
+    kiro: 0,
   };
 
   // ---- 路径主信号（+5）----
@@ -55,6 +57,12 @@ export async function detectOrigin(skillDir: string): Promise<DetectResult> {
   if (/(^|\/)\.cursor\/skills(\/|$)/.test(norm)) {
     score.cursor += 5;
     signals.push("source path under .cursor/skills/");
+  }
+  // Kiro 无独占 frontmatter 字段（license/compatibility/metadata 与 Claude/Codex
+  // 共享），仅靠来源路径主信号识别。
+  if (/(^|\/)\.kiro\/skills(\/|$)/.test(norm)) {
+    score.kiro += 5;
+    signals.push("source path under .kiro/skills/");
   }
 
   // ---- 文件结构 / frontmatter 辅信号 ----

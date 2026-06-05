@@ -23,6 +23,7 @@ export interface PackageResult {
     codex: boolean;
     windsurf: boolean;
     claude: boolean;
+    kiro: boolean;
   };
 }
 
@@ -76,6 +77,12 @@ function getClaudeSkillsDir(): string {
   return path.join(home, ".claude", "skills");
 }
 
+function getKiroSkillsDir(): string {
+  const home =
+    process.env["HOME"] || process.env["USERPROFILE"] || "";
+  return path.join(home, ".kiro", "skills");
+}
+
 export async function packageSkill(
   skillDir: string,
 ): Promise<PackageResult> {
@@ -105,12 +112,14 @@ export async function packageSkill(
   const codexDir = getCodexSkillsDir();
   const windsurfDir = getWindsurfSkillsDir();
   const claudeDir = getClaudeSkillsDir();
+  const kiroDir = getKiroSkillsDir();
 
   const installedAt = {
     cursor: await exists(path.join(cursorDir, id, "SKILL.md")),
     codex: await exists(path.join(codexDir, id, "SKILL.md")),
     windsurf: await exists(path.join(windsurfDir, id, "SKILL.md")),
     claude: await exists(path.join(claudeDir, id, "SKILL.md")),
+    kiro: await exists(path.join(kiroDir, id, "SKILL.md")),
   };
 
   return {

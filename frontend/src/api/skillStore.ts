@@ -27,6 +27,7 @@ export interface NativeSkillItem {
   deployed_codex: boolean
   deployed_windsurf: boolean
   deployed_claude: boolean
+  deployed_kiro: boolean
   created_at: string | null
   updated_at: string | null
 }

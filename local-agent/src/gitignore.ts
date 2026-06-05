@@ -11,6 +11,7 @@ export const GITIGNORE_BLOCK = [
   ".codex/skills/",
   ".windsurf/skills/",
   ".claude/skills/",
+  ".kiro/skills/",
 ];
 
 /** Python str.splitlines() 等价：按 \r\n / \r / \n 分行。 */
