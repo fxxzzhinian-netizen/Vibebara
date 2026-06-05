@@ -54,6 +54,38 @@ Vibebara/
 
 ---
 
+## 常用命令速查
+
+日常更新两步走：先在**服务器**拉取最新代码并重建，再在**本机**启动桌面壳连云端。
+
+### 1. 服务器：拉取构建（Linux，bash）
+
+```bash
+cd vibehub                              # 进入仓库目录
+git pull && docker compose up -d --build
+
+# 验证
+docker compose ps                       # backend、mysql 均为 running/healthy
+docker compose logs --tail=30 backend   # 查看启动日志
+curl http://localhost:8000/health       # {"status":"healthy",...}
+```
+
+> 若构建走了缓存导致依赖没更新：`docker compose build --no-cache backend && docker compose up -d`。
+
+### 2. 本机：启动桌面壳（PowerShell，连云端后端）
+
+```powershell
+$env:VIBEHUB_CLOUD_API_BASE = "http://43.136.128.162:8000/api/v1"
+$env:VIBEHUB_CLOUD_WS_BASE  = "ws://43.136.128.162:8000"
+.\build-desktop.ps1 -NoBe
+```
+
+> - `-NoBe`：不在本机起后端，直连云端。
+> - 首次或代码刚更新用上面这条（重建前端 + 桌面壳 + 本地代理三件套）；代码没改想秒开加 `-Quick`：`.\build-desktop.ps1 -Quick -NoBe`。
+> - 把 `服务器公网IP` 换成实际 IP。更多启动方式见下方「桌面客户端开发与联调」。
+
+---
+
 ## 云端后端部署（Docker）
 
 后端以 Docker 容器部署到云服务器（含 MySQL），桌面壳从本机直连。
