@@ -42,12 +42,23 @@ export const useTeamStore = defineStore('team', () => {
 
   async function selectTeam(teamId: string) {
     currentTeamId.value = teamId
+    // 立即用团队列表里已有的完整对象切换右侧，避免：
+    //   1) 等待网络期间右侧仍显示上一个团队；
+    //   2) getTeam 失败时右侧永远不更新。
+    const fromList = teams.value.find((t) => t.id === teamId)
+    if (fromList) currentTeam.value = fromList
+    // 切换瞬间清空上一个团队的成员，防止串味（下方 listMembers 会重新填充）。
+    members.value = []
     try {
-      const res = await getTeam(teamId)
+      // 并行拉取：团队详情与成员相互独立。后端单请求延迟较高（约 4.6s），
+      // 串行会把延迟成倍叠加，并行可压回单次往返。
+      const [res, mRes] = await Promise.all([getTeam(teamId), listMembers(teamId)])
+      // 乱序保护：若期间用户已切到别的团队，丢弃这次（旧团队的）返回，
+      // 否则慢响应会把右侧覆盖回旧团队 —— 正是“左侧高亮已变、右侧不变”的根因。
+      if (currentTeamId.value !== teamId) return
       if (res.success && res.team) {
         currentTeam.value = res.team
       }
-      const mRes = await listMembers(teamId)
       if (mRes.success) {
         members.value = mRes.members
       }

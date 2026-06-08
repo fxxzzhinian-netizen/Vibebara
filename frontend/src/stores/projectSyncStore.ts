@@ -49,18 +49,26 @@ export const useProjectSyncStore = defineStore('project-sync', () => {
     return null
   }
 
+  // 记录最近一次请求的团队：用于丢弃乱序返回（快速切换团队时，旧团队的慢响应
+  // 不能覆盖新团队的项目列表，否则右侧项目区会“串味”/不跟随切换）。
+  let lastProjectsTeamId: string | null = null
+
   async function fetchProjects(teamId: string) {
     loading.value = true
     error.value = ''
+    lastProjectsTeamId = teamId
     try {
       const res = await listProjects(teamId)
+      if (lastProjectsTeamId !== teamId) return
       if (res.success) {
         projects.value = res.projects
       }
     } catch (e: any) {
-      error.value = e?.response?.data?.detail || e.message
+      if (lastProjectsTeamId === teamId) {
+        error.value = e?.response?.data?.detail || e.message
+      }
     } finally {
-      loading.value = false
+      if (lastProjectsTeamId === teamId) loading.value = false
     }
   }
 

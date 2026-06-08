@@ -11,7 +11,13 @@
 services:
   mysql:
     image: mysql:8.0
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    # --skip-name-resolve：禁用对客户端 IP 的反向 DNS 解析。容器网络下反向 DNS
+    #   通常不可用，MySQL 每次新建连接都会等待解析超时（约 4~5s），导致每个需要
+    #   建连的后端请求恒定慢 ~4.6s。禁用后按 IP 鉴权，建连耗时降到毫秒级。
+    command: >-
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --skip-name-resolve
     environment:
       MYSQL_DATABASE: ${DB_NAME:-cowork}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}

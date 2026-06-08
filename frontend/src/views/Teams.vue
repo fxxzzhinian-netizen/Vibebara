@@ -130,19 +130,29 @@ async function joinTeam() {
 }
 
 async function selectTeam(teamId: string) {
-  await teamStore.selectTeam(teamId)
-  await projectStore.fetchProjects(teamId)
-  await loadTeamSkills(teamId)
+  // 切换瞬间清空上一个团队的项目/Skill，避免网络返回前右侧串味
+  projectStore.projects = []
+  teamSkills.value = []
+  // 团队详情/成员、项目列表、团队 Skill 三类数据相互独立 —— 并行拉取。
+  // 后端单请求延迟约 4.6s，原先串行会叠加到 ~18s（表现为右侧长时间空白）。
+  // 各调用内部已各自带乱序保护，故 Promise.all 不会相互覆盖。
+  await Promise.all([
+    teamStore.selectTeam(teamId),
+    projectStore.fetchProjects(teamId),
+    loadTeamSkills(teamId),
+  ])
 }
 
 async function loadTeamSkills(teamId: string) {
   try {
     const res = await listNativeSkills('team')
+    // 乱序保护：返回时若已切到别的团队，丢弃本次结果
+    if (teamStore.currentTeamId !== teamId) return
     teamSkills.value = res.success
       ? res.skills.filter((s) => s.team_id === teamId)
       : []
   } catch {
-    teamSkills.value = []
+    if (teamStore.currentTeamId === teamId) teamSkills.value = []
   }
 }
 
