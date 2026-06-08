@@ -10,6 +10,10 @@ from app.models.team import TeamMember
 from app.schemas.project import BuildArtifactRequest, BuildArtifactResponse
 from app.schemas.skill_forge import (
     ImportContentRequest,
+    ImportUrlRequest,
+    ImportUrlResponse,
+    ImportUrlScanRequest,
+    ImportUrlScanResponse,
     NativeSkillListResponse,
     NativeSkillDetailResponse,
     NativeSkillCreateRequest,
@@ -24,7 +28,7 @@ from app.schemas.skill_forge import (
     SkillVersionDetailResponse,
     RestoreVersionResponse,
 )
-from app.services import project_service
+from app.services import project_service, skill_url_import
 from app.services.native_skill_store import NativeSkillStore
 from app.services.skill_version_service import SkillVersionService
 
@@ -216,6 +220,83 @@ async def import_skill_content(
     except Exception as e:
         logger.exception("[store/import-content] 按内容导入失败")
         return {"success": False, "error": str(e)}
+
+
+@api_router.post("/import-url/scan", response_model=ImportUrlScanResponse)
+async def scan_url_skills(
+    data: ImportUrlScanRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """解析远程链接（GitHub/Gitee/GitLab 仓库或归档 URL），返回可导入的 Skill 列表。
+
+    全局可复用：个人 / 团队仓库共用同一解析逻辑（落库时再按 scope 分流）。
+    服务端下载源到临时缓存并按 token 索引，前端勾选后调用 /import-url 落库。
+    """
+    try:
+        result = await skill_url_import.scan_url(data.url)
+        return {
+            "success": True,
+            "token": result["token"],
+            "packages": result["packages"],
+            "source_url": result.get("source_url", ""),
+        }
+    except (FileNotFoundError, ValueError) as e:
+        return {"success": False, "packages": [], "error": str(e)}
+    except Exception as e:
+        logger.exception(f"[store/import-url/scan] 解析链接失败: {data.url}")
+        return {"success": False, "packages": [], "error": str(e)}
+
+
+@api_router.post("/import-url", response_model=ImportUrlResponse)
+async def import_url_skills(
+    data: ImportUrlRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """把链接解析结果中勾选的 Skill 导入到个人 / 团队仓库（全局，scope 分流）。"""
+    scope = (data.scope or "personal").lower()
+    if scope == "team":
+        if not data.team_id:
+            return {"success": False, "error": "scope=team 时必须提供 team_id"}
+        if data.team_id not in await _user_team_ids(user_id):
+            return {"success": False, "error": "无权导入到该团队（非团队成员）"}
+    if not data.source_paths:
+        return {"success": False, "error": "未选择要导入的 Skill"}
+
+    results = []
+    skills = []
+    ok = 0
+    try:
+        for rel in data.source_paths:
+            try:
+                src = skill_url_import.resolve_in_cache(data.token, rel)
+                if scope == "team":
+                    skill = await NativeSkillStore.import_external_to_team(
+                        str(src), data.team_id, user_id,
+                        source_url=data.source_url,
+                    )
+                else:
+                    skill = await NativeSkillStore.import_from_external(
+                        str(src), owner_id=user_id, source_url=data.source_url,
+                    )
+                ok += 1
+                skills.append(skill)
+                results.append({"source_path": rel, "success": True, "skill": skill})
+            except (FileNotFoundError, ValueError, PermissionError) as e:
+                results.append({"source_path": rel, "success": False, "error": str(e)})
+            except Exception as e:  # noqa: BLE001
+                logger.exception(f"[store/import-url] 导入失败: {rel}")
+                results.append({"source_path": rel, "success": False, "error": str(e)})
+    finally:
+        # 全部尝试完毕后释放缓存（无论成败，避免占用磁盘）。
+        skill_url_import.discard(data.token)
+
+    return {
+        "success": ok > 0,
+        "imported": ok,
+        "skills": skills,
+        "results": results,
+        "error": None if ok > 0 else "导入失败，请查看各项错误",
+    }
 
 
 @api_router.post("/{skill_id}/complete")

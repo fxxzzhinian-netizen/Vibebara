@@ -75,6 +75,45 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _normalize_tags(value: Any) -> List[str]:
+    """把任意来源的 tags 归一为「字符串列表」。
+
+    tags 存在 JSON 列，写入时直接取自 skill frontmatter（_upsert_db），用户导入的
+    原生 skill 若把 tags 写成单个字符串（``tags: alpha``）、逗号串（``tags: a,b``）、
+    数字或字典等非「字符串列表」形态，旧实现会原样落库；读取时响应模型
+    NativeSkillItem.tags 是严格的 List[str]，于是**整条 list 序列化 500**，表现为
+    “个人/团队 Skill 仓库始终加载失败”。这里在读写两端都做容错归一，既修复存量坏
+    数据、也避免再产生坏数据。
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        # 逗号/换行分隔的字符串拆成多个标签；单个标签即单元素列表。
+        parts = [p.strip() for p in value.replace("\n", ",").split(",")]
+        return [p for p in parts if p]
+    if isinstance(value, (list, tuple, set)):
+        out: List[str] = []
+        for item in value:
+            if item is None:
+                continue
+            out.append(item if isinstance(item, str) else str(item))
+        return out
+    # 数字/布尔/字典等其它标量：转成单个字符串标签，避免丢失但保证可序列化。
+    return [str(value)]
+
+
+def _normalize_version(value: Any) -> str:
+    """把 version 归一为字符串。
+
+    version 取自 frontmatter（metadata.version），YAML 会把 ``version: 1.0`` 解析为
+    数字；旧实现直接赋给行对象，create/import 响应在 refresh 前读到的是内存中的数字，
+    NativeSkillItem.version 为严格 str → 序列化 500。统一转字符串。
+    """
+    if value is None or value == "":
+        return "1.0.0"
+    return value if isinstance(value, str) else str(value)
+
+
 def _read_yaml(path: Path) -> Dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     return yaml.safe_load(text) or {}
@@ -403,11 +442,11 @@ class NativeSkillStore:
                 ui.get("short_description")
                 or config.get("shortDescription", "")
             )
-            row.version = (
+            row.version = _normalize_version(
                 metadata.get("version")
                 or config.get("version", "1.0.0")
             )
-            row.tags = (
+            row.tags = _normalize_tags(
                 metadata.get("tags")
                 or meta_legacy.get("tags", [])
             )
@@ -808,12 +847,15 @@ class NativeSkillStore:
         allow_team_update: bool = False,
         target_skill_id: Optional[str] = None,
         owner_id: Optional[str] = None,
+        source_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         从外部 Cursor/Codex skill 目录导入为平台原生 skill。
 
         导入时不补齐缺失字段，仅标记 _import_meta.incomplete_fields。
         补齐在部署时由 LLM 完成，需用户手动确认。
+
+        source_url 非空时（从远程链接导入）记入 _import_meta.source_url 供溯源。
         """
         src = Path(source_path)
         skill_md = src / "SKILL.md"
@@ -918,6 +960,8 @@ class NativeSkillStore:
             "imported_at": _now_iso(),
             "incomplete_fields": incomplete,
         }
+        if source_url:
+            config["_import_meta"]["source_url"] = source_url
 
         config.setdefault("meta", {})
         config["meta"]["importedFrom"] = detected_origin
@@ -1078,6 +1122,7 @@ class NativeSkillStore:
         team_id: str,
         user_id: str,
         origin: Optional[str] = None,
+        source_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """从本地文件夹直接导入为团队（平台）仓库 Skill（scope=team）。
 
@@ -1104,6 +1149,7 @@ class NativeSkillStore:
             allow_team_update=True,
             target_skill_id=new_id,
             owner_id=None,
+            source_url=source_url,
         )
 
         config_path = new_dir / "skill.config.yaml"
@@ -1330,8 +1376,8 @@ class NativeSkillStore:
             "display_name": row.display_name,
             "description": row.description,
             "short_description": row.short_description,
-            "version": row.version,
-            "tags": row.tags or [],
+            "version": _normalize_version(row.version),
+            "tags": _normalize_tags(row.tags),
             "imported_from": row.imported_from,
             "store_path": row.store_path,
             "scope": row.scope,

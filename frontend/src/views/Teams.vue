@@ -10,6 +10,8 @@ import {
   copySkillToTeam,
   importLocalSkillToTeam,
   scanLocalSkills,
+  scanUrlSkills,
+  importUrlSkills,
   type NativeSkillItem,
 } from '@/api/skillStore'
 import type { UnifiedSkillPackage } from '@/api/skillForge'
@@ -48,6 +50,14 @@ const scanLoading = ref(false)
 const scanned = ref(false)
 const scannedPackages = ref<UnifiedSkillPackage[]>([])
 const selectedScanPaths = ref<string[]>([])
+// 从链接引入两步：先解析链接得到 skill 列表（云端缓存返回 token），再勾选导入
+const linkUrl = ref('')
+const urlScanLoading = ref(false)
+const urlScanned = ref(false)
+const urlToken = ref('')
+const urlSourceUrl = ref('')
+const urlScannedPackages = ref<UnifiedSkillPackage[]>([])
+const selectedUrlPaths = ref<string[]>([])
 const addSkillError = ref('')
 const addSkillLoading = ref(false)
 const skillRepoMsg = ref('')
@@ -179,6 +189,8 @@ function openAddSkill() {
   selectedPersonalId.value = ''
   localPath.value = ''
   resetLocalScan()
+  resetUrlScan()
+  linkUrl.value = ''
   addSkillError.value = ''
   addSkillLoading.value = false
   showAddSkill.value = true
@@ -192,6 +204,15 @@ function resetLocalScan() {
   selectedScanPaths.value = []
 }
 
+function resetUrlScan() {
+  urlScanned.value = false
+  urlScanLoading.value = false
+  urlToken.value = ''
+  urlSourceUrl.value = ''
+  urlScannedPackages.value = []
+  selectedUrlPaths.value = []
+}
+
 function switchMethod(m: AddMethod) {
   addMethod.value = m
   addSkillError.value = ''
@@ -200,6 +221,11 @@ function switchMethod(m: AddMethod) {
 // 改变文件夹后需重新解析
 watch(localPath, () => {
   if (scanned.value || scannedPackages.value.length) resetLocalScan()
+})
+
+// 改变链接后需重新解析
+watch(linkUrl, () => {
+  if (urlScanned.value || urlScannedPackages.value.length) resetUrlScan()
 })
 
 async function loadPersonalSkills() {
@@ -303,6 +329,79 @@ async function confirmAddFromLocal() {
     }
   } catch (e: any) {
     addSkillError.value = e?.response?.data?.detail || e.message || '导入失败'
+  } finally {
+    addSkillLoading.value = false
+  }
+}
+
+// 第一步：解析链接（云端下载 + 发现可导入的 skill），返回 token 与列表
+async function scanLinkUrl() {
+  const url = linkUrl.value.trim()
+  if (!url) return
+  addSkillError.value = ''
+  urlScanLoading.value = true
+  urlScannedPackages.value = []
+  selectedUrlPaths.value = []
+  try {
+    const res = await scanUrlSkills(url)
+    if (res.success) {
+      urlToken.value = res.token
+      urlSourceUrl.value = res.source_url || url
+      urlScannedPackages.value = res.packages
+      urlScanned.value = true
+      // 默认全选，方便一次性导入
+      selectedUrlPaths.value = res.packages.map((p) => p.source_path)
+      if (!res.packages.length) {
+        addSkillError.value = '该链接下未发现可导入的 Skill（需包含 SKILL.md）'
+      }
+    } else {
+      addSkillError.value = res.error || '解析链接失败'
+    }
+  } catch (e: any) {
+    addSkillError.value = e?.response?.data?.detail || e?.response?.data?.error || e.message || '解析链接失败'
+  } finally {
+    urlScanLoading.value = false
+  }
+}
+
+function toggleUrlSelect(path: string) {
+  const i = selectedUrlPaths.value.indexOf(path)
+  if (i >= 0) selectedUrlPaths.value.splice(i, 1)
+  else selectedUrlPaths.value.push(path)
+}
+
+// 第二步：把勾选的 skill 从链接导入团队仓库
+async function confirmAddFromUrl() {
+  if (!teamStore.currentTeamId || !urlToken.value || !selectedUrlPaths.value.length) return
+  const teamId = teamStore.currentTeamId
+  addSkillError.value = ''
+  addSkillLoading.value = true
+  try {
+    const res = await importUrlSkills(
+      urlToken.value,
+      selectedUrlPaths.value,
+      'team',
+      teamId,
+      urlSourceUrl.value,
+    )
+    // token 是一次性的：云端导入后即释放缓存，无论成败都需重新解析才能再次导入
+    urlToken.value = ''
+    urlScanned.value = false
+    if (res.skills?.length) {
+      for (const s of res.skills) upsertTeamSkill(s)
+    }
+    const failed = (res.results || []).filter((r) => !r.success)
+    if (failed.length) {
+      await loadTeamSkills(teamId)
+      const detail = failed
+        .map((r) => `${r.source_path}：${r.error || '失败'}`)
+        .join('；')
+      addSkillError.value = `成功 ${res.imported} 个，失败 ${failed.length} 个 — ${detail}`
+    } else {
+      await finishAddSkill(`已从链接导入 ${res.imported} 个 Skill 到团队仓库`)
+    }
+  } catch (e: any) {
+    addSkillError.value = e?.response?.data?.detail || e?.response?.data?.error || e.message || '导入失败'
   } finally {
     addSkillLoading.value = false
   }
@@ -634,10 +733,9 @@ function logout() {
               从本地文件夹
             </button>
             <button
-              class="method-tab disabled"
+              class="method-tab"
               :class="{ active: addMethod === 'link' }"
-              disabled
-              title="即将上线"
+              @click="switchMethod('link')"
             >
               从链接引入
             </button>
@@ -721,9 +819,64 @@ function logout() {
             </div>
           </div>
 
-          <!-- 方法三：从链接引入（预留） -->
+          <!-- 方法三：从链接引入（两步：先解析链接，再勾选导入） -->
           <div v-else class="method-body">
-            <p class="hint">从远程链接（Git / URL）引入 Skill，该功能即将上线。</p>
+            <p class="hint">
+              粘贴一个链接（GitHub / Gitee / GitLab 仓库，或 .zip / .tar.gz 归档），
+              自动解析其中的 Skill 后勾选导入。
+            </p>
+            <div class="url-input-row">
+              <input
+                v-model="linkUrl"
+                class="url-input"
+                placeholder="如 https://github.com/owner/repo 或 .../tree/main/skills/foo"
+                :disabled="urlScanLoading"
+                @keyup.enter="scanLinkUrl"
+              />
+            </div>
+
+            <div v-if="urlScanned" class="scan-result">
+              <div class="scan-result-head">
+                解析到 {{ urlScannedPackages.length }} 个 Skill
+                <button
+                  v-if="urlScannedPackages.length"
+                  class="link-btn"
+                  @click="
+                    selectedUrlPaths =
+                      selectedUrlPaths.length === urlScannedPackages.length
+                        ? []
+                        : urlScannedPackages.map((p) => p.source_path)
+                  "
+                >
+                  {{ selectedUrlPaths.length === urlScannedPackages.length ? '取消全选' : '全选' }}
+                </button>
+              </div>
+              <div v-if="urlScannedPackages.length" class="scan-list">
+                <label
+                  v-for="p in urlScannedPackages"
+                  :key="p.source_path"
+                  class="scan-item"
+                  :class="{ selected: selectedUrlPaths.includes(p.source_path) }"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="selectedUrlPaths.includes(p.source_path)"
+                    @change="toggleUrlSelect(p.source_path)"
+                  />
+                  <span class="pi-main">
+                    <span class="pi-name">
+                      {{ p.display_name || p.name }}
+                      <span class="origin-badge">{{ p.origin }}</span>
+                    </span>
+                    <span class="pi-desc">{{ p.description || p.short_description || '暂无描述' }}</span>
+                    <span class="pi-path">{{ p.source_path === '.' ? '（仓库根目录）' : p.source_path }}</span>
+                  </span>
+                </label>
+              </div>
+              <div v-else class="empty-hint" style="margin-top: 12px">
+                该链接下未发现可导入的 Skill（需包含 SKILL.md）
+              </div>
+            </div>
           </div>
 
           <div v-if="addSkillError" class="error-msg">{{ addSkillError }}</div>
@@ -756,7 +909,24 @@ function logout() {
                 {{ addSkillLoading ? '导入中...' : `导入所选 (${selectedScanPaths.length})` }}
               </button>
             </template>
-            <button v-else class="btn-sm btn-primary" disabled>即将上线</button>
+            <template v-else>
+              <button
+                v-if="!urlScanned"
+                class="btn-sm btn-primary"
+                :disabled="!linkUrl.trim() || urlScanLoading"
+                @click="scanLinkUrl"
+              >
+                {{ urlScanLoading ? '解析中...' : '解析链接' }}
+              </button>
+              <button
+                v-else
+                class="btn-sm btn-primary"
+                :disabled="!selectedUrlPaths.length || addSkillLoading"
+                @click="confirmAddFromUrl"
+              >
+                {{ addSkillLoading ? '导入中...' : `导入所选 (${selectedUrlPaths.length})` }}
+              </button>
+            </template>
           </div>
         </div>
       </div>
@@ -1454,5 +1624,35 @@ function logout() {
   color: #666;
   font-family: monospace;
   word-break: break-all;
+}
+
+.url-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.url-input {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #262636;
+  color: #e0e0e0;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.url-input:focus {
+  border-color: #5b7fff;
+}
+
+.url-input::placeholder {
+  color: #666;
+}
+
+.url-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

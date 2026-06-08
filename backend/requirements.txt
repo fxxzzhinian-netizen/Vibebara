@@ -22,3 +22,6 @@ watchfiles>=0.24.0
 
 # LLM API client
 openai>=1.82.0
+
+# HTTP client（从远程链接 / GitHub 仓库导入 Skill 时下载归档）
+httpx>=0.27.0

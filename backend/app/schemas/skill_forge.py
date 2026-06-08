@@ -167,6 +167,51 @@ class ImportContentRequest(BaseModel):
     team_id: Optional[str] = Field(default=None, alias="teamId")
 
 
+class ImportUrlScanRequest(BaseModel):
+    """从远程链接（GitHub 等仓库或归档 URL）解析可导入的 Skill 列表。"""
+
+    url: str
+
+
+class ImportUrlScanResponse(BaseModel):
+    success: bool
+    token: str = ""
+    packages: List[UnifiedSkillPackage] = []
+    source_url: str = ""
+    error: Optional[str] = None
+
+
+class ImportUrlRequest(BaseModel):
+    """把链接解析结果中勾选的 Skill 导入到个人 / 团队仓库（全局可复用）。
+
+    token 为 scan 返回的缓存句柄；source_paths 为勾选的「仓库内相对路径」。
+    scope=team 时需提供 team_id。
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    token: str
+    source_paths: List[str] = []
+    scope: str = "personal"  # "personal" | "team"
+    team_id: Optional[str] = Field(default=None, alias="teamId")
+    source_url: Optional[str] = Field(default=None, alias="sourceUrl")
+
+
+class ImportUrlResultItem(BaseModel):
+    source_path: str = ""
+    success: bool = False
+    skill: Optional[NativeSkillItem] = None
+    error: Optional[str] = None
+
+
+class ImportUrlResponse(BaseModel):
+    success: bool
+    imported: int = 0
+    skills: List[NativeSkillItem] = []
+    results: List[ImportUrlResultItem] = []
+    error: Optional[str] = None
+
+
 class NativeSkillBuildRequest(BaseModel):
     target: str = "all"
 

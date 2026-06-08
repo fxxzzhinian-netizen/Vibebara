@@ -24,7 +24,7 @@ RUN set -eux; \
 ARG NODE_VERSION=20.18.1
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends curl xz-utils ca-certificates; \
+    apt-get install -y --no-install-recommends curl xz-utils ca-certificates git; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
       amd64) nodearch=x64 ;; \

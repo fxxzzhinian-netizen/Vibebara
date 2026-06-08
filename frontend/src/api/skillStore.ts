@@ -340,3 +340,67 @@ export async function importLocalSkillToTeam(
   )
   return data
 }
+
+// =========================================================================
+// 从远程链接导入 Skill（GitHub/Gitee/GitLab 仓库或归档 URL）
+//
+// 全局可复用：个人与团队仓库共用同一套云端解析/导入端点，仅 scope/teamId 不同。
+// 该流程「下载源 + 解析 + 落库」全部在云端完成（与本地文件夹导入不同，不依赖本地
+// 代理），因此**不走 orchestration 分流**，始终调用云端 apiClient。
+// =========================================================================
+
+export interface UrlSkillScanResponse {
+  success: boolean
+  token: string
+  packages: UnifiedSkillPackage[]
+  source_url: string
+  error?: string
+}
+
+export interface UrlImportResultItem {
+  source_path: string
+  success: boolean
+  skill?: NativeSkillItem
+  error?: string
+}
+
+export interface UrlImportResponse {
+  success: boolean
+  imported: number
+  skills: NativeSkillItem[]
+  results: UrlImportResultItem[]
+  error?: string
+}
+
+/** 第一步：解析链接，返回缓存 token 与发现的可导入 Skill 列表。 */
+export async function scanUrlSkills(url: string): Promise<UrlSkillScanResponse> {
+  const { data } = await apiClient.post<UrlSkillScanResponse>(
+    '/skill-forge/store/import-url/scan',
+    { url },
+  )
+  return data
+}
+
+/**
+ * 第二步：把勾选的 Skill 导入到个人 / 团队仓库。
+ * scope='team' 时需传 teamId；sourceUrl 仅用于溯源记录。
+ */
+export async function importUrlSkills(
+  token: string,
+  sourcePaths: string[],
+  scope: 'personal' | 'team' = 'personal',
+  teamId?: string,
+  sourceUrl?: string,
+): Promise<UrlImportResponse> {
+  const { data } = await apiClient.post<UrlImportResponse>(
+    '/skill-forge/store/import-url',
+    {
+      token,
+      source_paths: sourcePaths,
+      scope,
+      teamId: teamId ?? null,
+      sourceUrl: sourceUrl ?? null,
+    },
+  )
+  return data
+}
