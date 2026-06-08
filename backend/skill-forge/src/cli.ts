@@ -33,7 +33,7 @@ program
 program
   .command("build")
   .description("Build skill for target platform(s)")
-  .requiredOption("-t, --target <target>", "Target platform: cursor, codex, windsurf, claude, kiro, or all")
+  .requiredOption("-t, --target <target>", "Target platform: cursor, codex, windsurf, claude, kiro, trae, qoder, or all")
   .option("-c, --config <path>", "Path to skill.config.yaml")
   .option("-o, --output <dir>", "Output directory")
   .action(async (opts: { target: string; config?: string; output?: string }) => {
@@ -56,7 +56,7 @@ program
 program
   .command("deploy")
   .description("Deploy skill to target platform(s)")
-  .requiredOption("-t, --target <target>", "Target platform: cursor, codex, windsurf, claude, kiro, or all")
+  .requiredOption("-t, --target <target>", "Target platform: cursor, codex, windsurf, claude, kiro, trae, qoder, or all")
   .option("-c, --config <path>", "Path to skill.config.yaml")
   .action(async (opts: { target: string; config?: string }) => {
     try {
@@ -93,7 +93,7 @@ program
 program
   .command("import")
   .description("Import an existing native skill as unified config")
-  .requiredOption("-f, --from <source>", "Source platform: cursor, codex, windsurf, claude or kiro")
+  .requiredOption("-f, --from <source>", "Source platform: cursor, codex, windsurf, claude, kiro, trae or qoder")
   .requiredOption("-p, --path <path>", "Path to existing skill directory")
   .option("-o, --output <dir>", "Output directory for skill.config.yaml")
   .action(
@@ -142,7 +142,7 @@ program
   .requiredOption("-p, --path <path>", "Path to skill directory")
   .requiredOption(
     "-t, --target <target>",
-    "Target platform: cursor, codex, windsurf, claude or kiro"
+    "Target platform: cursor, codex, windsurf, claude, kiro, trae or qoder"
   )
   .option("-o, --output <dir>", "Custom output directory")
   .action(

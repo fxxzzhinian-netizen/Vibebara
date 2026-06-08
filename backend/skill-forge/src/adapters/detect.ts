@@ -8,6 +8,8 @@ export type SkillOrigin =
   | "claude"
   | "windsurf"
   | "kiro"
+  | "trae"
+  | "qoder"
   | "unknown";
 export type Confidence = "high" | "medium" | "low";
 
@@ -35,6 +37,8 @@ export async function detectOrigin(skillDir: string): Promise<DetectResult> {
     claude: 0,
     windsurf: 0,
     kiro: 0,
+    trae: 0,
+    qoder: 0,
   };
 
   // ---- 路径主信号（+5）----
@@ -63,6 +67,18 @@ export async function detectOrigin(skillDir: string): Promise<DetectResult> {
   if (/(^|\/)\.kiro\/skills(\/|$)/.test(norm)) {
     score.kiro += 5;
     signals.push("source path under .kiro/skills/");
+  }
+  // Trae 仅 name+description、无独占 frontmatter 辅信号（与 Windsurf 同），
+  // 仅靠来源路径主信号识别。.trae/skills/ 对国际版与国内版相同。
+  if (/(^|\/)\.trae\/skills(\/|$)/.test(norm)) {
+    score.trae += 5;
+    signals.push("source path under .trae/skills/");
+  }
+  // Qoder 仅 name+description、无独占 frontmatter 辅信号（与 Windsurf/Trae 同），
+  // 仅靠来源路径主信号识别。.qoder/skills/ 全局/项目统一（无国内/国际分叉）。
+  if (/(^|\/)\.qoder\/skills(\/|$)/.test(norm)) {
+    score.qoder += 5;
+    signals.push("source path under .qoder/skills/");
   }
 
   // ---- 文件结构 / frontmatter 辅信号 ----

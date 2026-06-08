@@ -1,7 +1,7 @@
 # Skill Forge — 抽象 Skill 包 & 多平台构建设计
 
-> 版本：v0.4 (Confirmed)  
-> 目标平台：Cursor、Codex CLI、Claude Code、Windsurf Cascade、Kiro
+> 版本：v0.6 (Confirmed)  
+> 目标平台：Cursor、Codex CLI、Claude Code、Windsurf Cascade、Kiro、Trae、Qoder
 
 ---
 
@@ -14,8 +14,10 @@
 5. 明确区分**仓库快照**、**项目 Skill 列表**与**用户部署实例**——导入仓库后不再监听原始来源目录；用户部署后才监听其本地部署目录
 6. **CC（Claude Code）与 Windsurf 必须按各自平台真实的 skill 结构构建/导入**，不再退化为 Cursor 的「最小公分母」克隆——Claude 完整 round-trip 其专有 frontmatter，Windsurf 忠于其官方 `name`+`description` 规范
 7. **Kiro 按 Agent Skills 标准核心字段构建/导入**——支持 `name`/`description` + 标准可选字段 `license`/`compatibility`/`metadata`(author/version)，不写 Codex 的 `ui.*`、Cursor 的 `disable-model-invocation`/`metadata.surfaces` 与 Claude 的运行时扩展字段
+8. **Trae 按与 Windsurf 同源的最小 Agent Skills 规范构建/导入**——官方仅文档化 `name`+`description`，构建产物严格只输出这两个字段；全局目录在 `~/.trae/skills`（国际版 trae.ai）与 `~/.trae-cn/skills`（国内版 trae.cn）间自动探测，项目级统一落 `.trae/skills/`
+9. **Qoder 按与 Windsurf/Trae 同源的最小 Agent Skills 规范构建/导入**——官方（IDE 与 CLI 一致）仅文档化 `name`+`description`，构建产物严格只输出这两个字段；全局目录统一为 `~/.qoder/skills`（无国内/国际分叉），项目级落 `.qoder/skills/`，同名时项目级优先
 
-### 五平台概览
+### 七平台概览
 
 | 平台 | 全局 skill 目录 | 项目 skill 目录 | frontmatter 复杂度 | 平台特有产物 |
 |------|----------------|----------------|--------------------|--------------|
@@ -24,6 +26,8 @@
 | Claude Code | `~/.claude/skills/` | `{ws}/.claude/skills/` | **高**（标准超集 + 运行时扩展 15+ 字段） | 无独立文件，全部写入 frontmatter |
 | Windsurf | `~/.codeium/windsurf/skills/` | `{ws}/.windsurf/skills/` | 低（官方仅 name/description） | — |
 | Kiro | `~/.kiro/skills/` | `{ws}/.kiro/skills/` | 中（name/description + 标准可选 license/compatibility/metadata） | — |
+| Trae | `~/.trae/skills/`（自动探测 `~/.trae-cn/skills/`） | `{ws}/.trae/skills/` | 低（官方仅 name/description） | — |
+| Qoder | `~/.qoder/skills/` | `{ws}/.qoder/skills/` | 低（官方仅 name/description） | — |
 
 ---
 
@@ -152,22 +156,22 @@ metadata:
 > - **`policy.auto_invoke` 跨平台复用**：Cursor 与 Claude 共用同一语义（`auto_invoke: false` → `disable-model-invocation: true`）；Codex 映射为 `policy.allow_implicit_invocation`；Windsurf 无对应字段（忽略）。
 > - `allowed_tools` / `disallowed_tools` 虽属 Agent Skills 标准（experimental），但当前仅 Claude 实际消费，故归入 `claude:` 块，避免暗示 Cursor/Codex/Windsurf 也会输出。
 >
-> **与代码 schema（`unified.ts`）的对应**：现有 `unified.ts` 用 `triggers.disableModelInvocation`（对应本文 `policy.auto_invoke` 取反）与 `triggers.allowImplicitInvocation`，并已有 `ui`、`dependencies`、`resources`、`targets` 块。本设计新增 `claude` 块与 `metadata` 标准字段（`license`/`compatibility`/`author`/`version`）需在 `unified.ts` 落地，详见第十三章「后续实现触点」。
+> **与代码 schema（`unified.ts`）的对应**：现有 `unified.ts` 用 `triggers.disableModelInvocation`（对应本文 `policy.auto_invoke` 取反）与 `triggers.allowImplicitInvocation`，并已有 `ui`、`dependencies`、`resources`、`targets` 块。本设计新增 `claude` 块与 `metadata` 标准字段（`license`/`compatibility`/`author`/`version`）需在 `unified.ts` 落地，详见第十五章「后续实现触点」。
 
 ### 2.3 资源分类：通用 vs 平台特有
 
 抽象包中的每个文件在构建时会被判定为"通用"或"平台特有"：
 
-| 文件 | 分类 | Cursor | Codex | Claude | Windsurf | Kiro |
-|------|------|--------|-------|--------|----------|------|
-| `VibeH.md` | 通用（合并入 SKILL.md） | 合并 | 合并 | 合并 | 合并 | 合并 |
-| `skill.config.yaml` | 仅抽象包 | 丢弃 | 丢弃 | 丢弃 | 丢弃 | 丢弃 |
-| `scripts/*` | 通用 | 复制 | 复制 | 复制 | 复制 | 复制 |
-| `references/*` | 通用 | 复制 | 复制 | 复制 | 复制 | 复制 |
-| `assets/*`（非图标） | 通用 | 复制 | 复制 | 复制 | 复制 | 复制 |
-| `assets/icon-*.svg` | 平台特有（Codex UI） | **丢弃** | 复制 | **丢弃** | **丢弃** | **丢弃** |
-| `LICENSE` | 平台特有（Codex） | **丢弃** | 复制为 `LICENSE.txt` | **丢弃**（许可证写入 frontmatter `license`） | **丢弃** | **丢弃**（许可证写入 frontmatter `license`） |
-| `agents/openai.yaml` | 平台特有（Codex） | **丢弃** | 生成 | **丢弃** | **丢弃** | **丢弃** |
+| 文件 | 分类 | Cursor | Codex | Claude | Windsurf | Kiro | Trae | Qoder |
+|------|------|--------|-------|--------|----------|------|------|-------|
+| `VibeH.md` | 通用（合并入 SKILL.md） | 合并 | 合并 | 合并 | 合并 | 合并 | 合并 | 合并 |
+| `skill.config.yaml` | 仅抽象包 | 丢弃 | 丢弃 | 丢弃 | 丢弃 | 丢弃 | 丢弃 | 丢弃 |
+| `scripts/*` | 通用 | 复制 | 复制 | 复制 | 复制 | 复制 | 复制 | 复制 |
+| `references/*` | 通用 | 复制 | 复制 | 复制 | 复制 | 复制 | 复制 | 复制 |
+| `assets/*`（非图标） | 通用 | 复制 | 复制 | 复制 | 复制 | 复制 | 复制 | 复制 |
+| `assets/icon-*.svg` | 平台特有（Codex UI） | **丢弃** | 复制 | **丢弃** | **丢弃** | **丢弃** | **丢弃** | **丢弃** |
+| `LICENSE` | 平台特有（Codex） | **丢弃** | 复制为 `LICENSE.txt` | **丢弃**（许可证写入 frontmatter `license`） | **丢弃** | **丢弃**（许可证写入 frontmatter `license`） | **丢弃** | **丢弃** |
+| `agents/openai.yaml` | 平台特有（Codex） | **丢弃** | 生成 | **丢弃** | **丢弃** | **丢弃** | **丢弃** | **丢弃** |
 
 > Cursor 历史实现仅复制 `scripts/` 与 `references/`（不复制 `assets/`）。本设计统一约定：**五平台均复制 `assets/` 中的通用资源**（仅 Codex 额外保留图标文件）；该差异在 Cursor 适配器落地时一并对齐。
 
@@ -177,24 +181,24 @@ metadata:
 
 构建时各平台对抽象字段的处理（✅ 输出 / ❌ 丢弃 / — 不适用）：
 
-| 抽象字段 | Cursor | Codex | Claude | Windsurf | Kiro |
-|----------|--------|-------|--------|----------|------|
-| `name` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `description` | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `policy.auto_invoke: false` | ✅ `disable-model-invocation` | ✅ `allow_implicit_invocation:false`（openai.yaml） | ✅ `disable-model-invocation` | ❌ | ❌ |
-| `metadata.surfaces` | ✅ `metadata.surfaces` | ❌ | ❌ | ❌ | ❌ |
-| `metadata.license` | ❌ | ✅ `LICENSE.txt` | ✅ frontmatter `license` | ❌ | ✅ frontmatter `license` |
-| `metadata.compatibility` | ❌ | ❌ | ✅ frontmatter `compatibility` | ❌ | ✅ frontmatter `compatibility` |
-| `metadata.author/version` | ❌ | ❌ | ✅ frontmatter `metadata` | ❌ | ✅ frontmatter `metadata` |
-| `ui.*`（图标/品牌/display/default_prompt） | ❌ | ✅ `agents/openai.yaml` | ❌ | ❌ | ❌ |
-| `dependencies.tools` | ❌ | ✅ `agents/openai.yaml` | ❌（Claude 在 `.mcp.json`/`settings.json`，超出 skill 范围） | ❌ | ❌ |
-| `claude.allowed_tools` / `disallowed_tools` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
-| `claude.user_invocable` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
-| `claude.argument_hint` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
-| `claude.model` / `effort` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
-| `claude.context` / `agent` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
-| `claude.when_to_use` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
-| `claude.hooks` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ |
+| 抽象字段 | Cursor | Codex | Claude | Windsurf | Kiro | Trae | Qoder |
+|----------|--------|-------|--------|----------|------|------|-------|
+| `name` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `description` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `policy.auto_invoke: false` | ✅ `disable-model-invocation` | ✅ `allow_implicit_invocation:false`（openai.yaml） | ✅ `disable-model-invocation` | ❌ | ❌ | ❌ | ❌ |
+| `metadata.surfaces` | ✅ `metadata.surfaces` | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `metadata.license` | ❌ | ✅ `LICENSE.txt` | ✅ frontmatter `license` | ❌ | ✅ frontmatter `license` | ❌ | ❌ |
+| `metadata.compatibility` | ❌ | ❌ | ✅ frontmatter `compatibility` | ❌ | ✅ frontmatter `compatibility` | ❌ | ❌ |
+| `metadata.author/version` | ❌ | ❌ | ✅ frontmatter `metadata` | ❌ | ✅ frontmatter `metadata` | ❌ | ❌ |
+| `ui.*`（图标/品牌/display/default_prompt） | ❌ | ✅ `agents/openai.yaml` | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `dependencies.tools` | ❌ | ✅ `agents/openai.yaml` | ❌（Claude 在 `.mcp.json`/`settings.json`，超出 skill 范围） | ❌ | ❌ | ❌ | ❌ |
+| `claude.allowed_tools` / `disallowed_tools` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ | ❌ | ❌ |
+| `claude.user_invocable` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ | ❌ | ❌ |
+| `claude.argument_hint` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ | ❌ | ❌ |
+| `claude.model` / `effort` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ | ❌ | ❌ |
+| `claude.context` / `agent` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ | ❌ | ❌ |
+| `claude.when_to_use` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ | ❌ | ❌ |
+| `claude.hooks` | ❌ | ❌ | ✅ frontmatter | ❌ | ❌ | ❌ | ❌ |
 
 > 设计原则：抽象包是超集，**写到任一平台只保留该平台支持的字段，其余精确丢弃**；导入时反向把平台原生字段还原到抽象层。
 
@@ -646,9 +650,165 @@ metadata:                             # 仅当 author/version 有值时输出
 
 ---
 
-## 八、构建流程
+## 八、Trae 构建规则
 
-### 8.1 正向构建（Build）
+> Trae（字节跳动）原生支持开放的 **Agent Skills 标准**：技能是含 `SKILL.md` 的一级子目录，frontmatter 官方仅文档化 `name` + `description`。Trae 启动时只扫描 skills 目录的**一级子目录**（不递归嵌套），匹配请求或用户显式调用时才加载 `SKILL.md` 全文与附带文件（渐进式披露）。
+>
+> - 工作区：`{ws}/.trae/skills/<name>/SKILL.md`（国际版 trae.ai 与国内版 trae.cn 项目目录相同）
+> - 全局：国际版 `~/.trae/skills/<name>/SKILL.md`；国内版 `~/.trae-cn/skills/<name>/SKILL.md`
+>
+> Trae 的 **rules**（`.trae/rules/`）是另一套始终生效的约束机制，与 skill 不同；Skill Forge 只处理 skill，不生成 rules。
+>
+> 定位：Trae 与 **Windsurf 同源**——官方均仅文档化 `name`+`description`，故构建规则与 Windsurf 完全一致（严格只输出这两个字段，其余精确丢弃）。与 Windsurf 的唯一差异是部署目录，且全局目录需在国际版 / 国内版间**自动探测**。
+
+### 8.1 产物目录
+
+```
+<output>/
+├── SKILL.md                    # 合成：极简 frontmatter（仅 name + description） + VibeH.md
+├── scripts/                    # 原样复制（随技能激活加载）
+├── references/                 # 原样复制
+└── assets/                     # 仅复制通用资源（图标文件丢弃）
+```
+
+> 目录名（`{name}`）即 Trae 的技能标识，必须与 frontmatter `name` 一致。
+
+### 8.2 生成 `SKILL.md`
+
+Trae 官方 frontmatter **仅要求 `name` + `description`**，不文档化其他字段。为忠于规范，构建产物**只输出这两个字段**：
+
+```yaml
+---
+name: "{name}"
+description: "{description}"
+---
+
+{VibeH.md 原文}
+```
+
+### 8.3 字段映射
+
+| 抽象字段 | Trae 映射 | 说明 |
+|----------|-----------|------|
+| `name` | frontmatter `name` | 直接映射；同时是目录名 |
+| `description` | frontmatter `description` | 直接映射（自动激活的触发依据，须清晰描述触发条件） |
+| `policy.*` | **丢弃** | Trae skill 无 invocation policy 字段 |
+| `ui.*` | **全部丢弃** | Codex 专有 |
+| `claude.*` | **全部丢弃** | Claude 专有 |
+| `metadata.*`（license/surfaces/...） | **全部丢弃** | Trae 未文档化 |
+| `dependencies.*` | **丢弃** | 无对应声明 |
+| `resources.*` | 按路径复制通用文件 | 随技能加载 |
+
+### 8.4 严格删除清单
+
+构建 Trae 产物时，以下**绝对不能存在**：
+
+| 禁止内容 | 原因 |
+|----------|------|
+| `agents/` 目录 / `openai.yaml` | Codex 特有 |
+| `disable-model-invocation` | Cursor/Claude 特有字段 |
+| `allowed-tools` / `model` / `context` / `hooks` 等 Claude 字段 | Claude 特有 |
+| `license` / `compatibility` / `metadata` frontmatter | Trae 未文档化字段 |
+| `LICENSE` / `LICENSE.txt` | Codex 特有 |
+| `skill.config.yaml` / `VibeH.md` | 抽象包文件 |
+| `ui.icon_*` 引用的图标文件 | Trae 无 UI 元数据 |
+
+### 8.5 部署目标
+
+| 范围 | 目标路径 | 说明 |
+|------|----------|------|
+| 用户全局 | `~/.trae/skills/{name}/` 或 `~/.trae-cn/skills/{name}/` | **自动探测**：优先已存在的 `~/.trae`，否则 `~/.trae-cn`，都不存在回退 `~/.trae` |
+| 项目级 | `{workspace}/.trae/skills/{name}/` | 随仓库提交；国际版与国内版相同 |
+
+> **全局目录自动探测**：Trae 国际版（trae.ai）用 `~/.trae`，国内版（trae.cn）用 `~/.trae-cn`，两者项目目录都是 `.trae/skills/`。全局部署与安装态探测共用同一解析逻辑：
+>
+> ```
+> resolveTraeSkillsDir():
+>   若 ~/.trae 存在        → ~/.trae/skills
+>   否则若 ~/.trae-cn 存在  → ~/.trae-cn/skills
+>   否则                   → ~/.trae/skills（默认）
+> ```
+
+---
+
+## 九、Qoder 构建规则
+
+> Qoder（阿里巴巴）原生支持开放的 **Agent Skills 标准**：技能是含 `SKILL.md` 的一级子目录，frontmatter 官方（IDE 与 CLI 文档一致）仅文档化 `name` + `description`。Qoder 启动时只加载 name+description，匹配请求或用户以 `/skill-name` 显式调用时才加载 `SKILL.md` 全文与附带文件（渐进式披露）；IDE 运行中可用 `/skills reload`（或重启）刷新。
+>
+> - 工作区：`{ws}/.qoder/skills/<name>/SKILL.md`
+> - 全局：`~/.qoder/skills/<name>/SKILL.md`
+> - 同名冲突时**项目级技能优先**于全局技能
+>
+> Qoder 另有 Skill UI（交互式 HTML 组件）、Canvas（`.canvas.tsx`）、subagent、`/vercel-deploy` 等内置能力，均**不写入 skill frontmatter**，与本设计无关；Skill Forge 只处理 skill 的 `SKILL.md` + 附带资源。
+>
+> 定位：Qoder 与 **Windsurf / Trae 同源**——官方均仅文档化 `name`+`description`，故构建规则与 Windsurf/Trae 完全一致（严格只输出这两个字段，其余精确丢弃）。与 Trae 的唯一差异是部署目录：Qoder 全局目录统一为 `~/.qoder/skills`（**无国内/国际分叉，无需自动探测**），项目级落 `.qoder/skills/`。
+
+### 9.1 产物目录
+
+```
+<output>/
+├── SKILL.md                    # 合成：极简 frontmatter（仅 name + description） + VibeH.md
+├── scripts/                    # 原样复制（随技能激活加载）
+├── references/                 # 原样复制
+└── assets/                     # 仅复制通用资源（图标文件丢弃）
+```
+
+> 目录名（`{name}`）即 Qoder 的技能标识，必须与 frontmatter `name` 一致。
+
+### 9.2 生成 `SKILL.md`
+
+Qoder 官方 frontmatter **仅要求 `name` + `description`**，不文档化其他字段。为忠于规范，构建产物**只输出这两个字段**：
+
+```yaml
+---
+name: "{name}"
+description: "{description}"
+---
+
+{VibeH.md 原文}
+```
+
+### 9.3 字段映射
+
+| 抽象字段 | Qoder 映射 | 说明 |
+|----------|-----------|------|
+| `name` | frontmatter `name` | 直接映射；同时是目录名（小写+连字符，≤64） |
+| `description` | frontmatter `description` | 直接映射（自动激活与 `/` 调用的触发依据，≤1024） |
+| `policy.*` | **丢弃** | Qoder skill 无 invocation policy 字段 |
+| `ui.*` | **全部丢弃** | Codex 专有 |
+| `claude.*` | **全部丢弃** | Claude 专有 |
+| `metadata.*`（license/surfaces/...） | **全部丢弃** | Qoder 未文档化 |
+| `dependencies.*` | **丢弃** | 无对应声明 |
+| `resources.*` | 按路径复制通用文件 | 随技能加载 |
+
+### 9.4 严格删除清单
+
+构建 Qoder 产物时，以下**绝对不能存在**：
+
+| 禁止内容 | 原因 |
+|----------|------|
+| `agents/` 目录 / `openai.yaml` | Codex 特有 |
+| `disable-model-invocation` | Cursor/Claude 特有字段 |
+| `allowed-tools` / `model` / `context` / `hooks` 等 Claude 字段 | Claude 特有 |
+| `license` / `compatibility` / `metadata` frontmatter | Qoder 未文档化字段 |
+| `LICENSE` / `LICENSE.txt` | Codex 特有 |
+| `skill.config.yaml` / `VibeH.md` | 抽象包文件 |
+| `ui.icon_*` 引用的图标文件 | Qoder 无 UI 元数据 |
+
+### 9.5 部署目标
+
+| 范围 | 目标路径 | 说明 |
+|------|----------|------|
+| 用户全局 | `~/.qoder/skills/{name}/` | 统一目录，无国内/国际分叉 |
+| 项目级 | `{workspace}/.qoder/skills/{name}/` | 随仓库提交；同名时项目级优先于全局 |
+
+> **与 Trae 的差异**：Trae 全局目录需在 `~/.trae` 与 `~/.trae-cn` 间自动探测；Qoder 全局目录恒为 `~/.qoder/skills`，无需探测，解析逻辑更简单。
+
+---
+
+## 十、构建流程
+
+### 10.1 正向构建（Build）
 
 ```
 skill.config.yaml + VibeH.md + resources/
@@ -677,7 +837,11 @@ skill.config.yaml + VibeH.md + resources/
                                 /skills/
 ```
 
-### 8.2 构建时校验
+> **Trae**：构建规则与 Windsurf 同构（SKILL.md 仅 `name`+`description` + `scr/refs/assets`），仅部署目录不同——全局落 `~/.trae/skills/`（自动探测 `~/.trae-cn/skills/`），项目级落 `.trae/skills/`。
+>
+> **Qoder**：构建规则同样与 Windsurf/Trae 同构（SKILL.md 仅 `name`+`description` + `scr/refs/assets`），全局落 `~/.qoder/skills/`（统一目录，无须探测），项目级落 `.qoder/skills/`。
+
+### 10.2 构建时校验
 
 | 校验项 | 说明 | 失败行为 |
 |--------|------|----------|
@@ -693,11 +857,11 @@ skill.config.yaml + VibeH.md + resources/
 
 ---
 
-## 九、反向导入（Import）— 平台核心能力
+## 十一、反向导入（Import）— 平台核心能力
 
-从已有的 Cursor / Codex / Claude / Windsurf / Kiro 原生 skill 目录，反向解析为抽象包（`skill.config.yaml` + `VibeH.md`）。
+从已有的 Cursor / Codex / Claude / Windsurf / Kiro / Trae / Qoder 原生 skill 目录，反向解析为抽象包（`skill.config.yaml` + `VibeH.md`）。
 
-### 9.1 用户操作流程
+### 11.1 用户操作流程
 
 ```
 用户在主界面选择文件路径
@@ -725,10 +889,10 @@ skill.config.yaml + VibeH.md + resources/
 
 导入是一次性快照。`_import_meta.source_path` 只用于溯源和展示，不作为持续同步源；原项目中的 Skill 后续变化不会自动写回个人仓库或团队仓库。
 
-### 9.2 导入时的解析流程
+### 11.2 导入时的解析流程
 
 ```
-原生 Skill 目录（Cursor / Codex / Claude / Windsurf / Kiro）
+原生 Skill 目录（Cursor / Codex / Claude / Windsurf / Kiro / Trae / Qoder）
           │
           ▼
     ┌──────────────┐
@@ -752,9 +916,9 @@ skill.config.yaml + VibeH.md + resources/
     └──────────────┘
 ```
 
-### 9.3 来源检测规则
+### 11.3 来源检测规则
 
-**核心难点**：最小化的 Cursor / Windsurf / Claude skill 在结构上**无法区分**（都只有 `name` + `description` 的 SKILL.md + 可选 scripts/references/assets）。因此采用**「来源路径主信号 + frontmatter 专有字段辅信号」的双层判定**。
+**核心难点**：最小化的 Cursor / Windsurf / Claude / Trae / Qoder skill 在结构上**无法区分**（都只有 `name` + `description` 的 SKILL.md + 可选 scripts/references/assets）。因此采用**「来源路径主信号 + frontmatter 专有字段辅信号」的双层判定**。
 
 ```mermaid
 flowchart TD
@@ -764,6 +928,8 @@ flowchart TD
     pathCheck -->|".codex 或 agents/openai.yaml"| codex[判定 Codex]
     pathCheck -->|".cursor/skills/"| cursor[判定 Cursor]
     pathCheck -->|".kiro/skills/"| kiro[判定 Kiro]
+    pathCheck -->|".trae/skills/"| trae[判定 Trae]
+    pathCheck -->|".qoder/skills/"| qoder[判定 Qoder]
     pathCheck -->|未知| fm{frontmatter 专有字段?}
     fm -->|"allowed-tools/model/context/hooks/user-invocable 等"| claude
     fm -->|"openai.yaml 存在 / metadata.short-description"| codex
@@ -781,6 +947,8 @@ flowchart TD
 | 来源路径含 `.codex/skills/` | Codex +5 |
 | 来源路径含 `.cursor/skills/` | Cursor +5 |
 | 来源路径含 `.kiro/skills/` | Kiro +5 |
+| 来源路径含 `.trae/skills/` | Trae +5 |
+| 来源路径含 `.qoder/skills/` | Qoder +5 |
 | 存在 `agents/openai.yaml` | Codex +3 |
 | frontmatter 含 `allowed-tools` / `disallowed-tools` / `user-invocable` / `argument-hint` / `model` / `effort` / `context` / `agent` / `hooks` / `when_to_use` | Claude +3（任一） |
 | frontmatter 含 `metadata.short-description` | Codex +1 |
@@ -793,9 +961,13 @@ flowchart TD
 
 > **Kiro 检测说明**：Kiro 的 frontmatter 字段（`license`/`compatibility`/`metadata`）与 Claude/Codex 共享，**无独占辅信号**，故 Kiro 仅靠来源路径 `.kiro/skills/` 主信号识别；脱离路径上下文（如纯目录扫描）时 Kiro 最小技能与 Cursor/Windsurf/Claude 不可区分，回退为 `unknown`。
 
-> **实现建议**：`detectOrigin(skillDir)` 当前不接收来源路径上下文，仅看目录内文件。为支持路径主信号，需把「用户选择的来源根 + skill 相对路径」一并传入 `detect.ts`，详见第十三章。
+> **Trae 检测说明**：Trae 的 frontmatter 仅 `name`+`description`，**无任何独占辅信号**（与 Windsurf 同），故 Trae 仅靠来源路径 `.trae/skills/` 主信号识别；脱离路径上下文（如纯目录扫描）时 Trae 最小技能与 Cursor/Windsurf/Claude/Kiro 不可区分，回退为 `unknown`。
 
-### 9.4 Cursor → 抽象包 映射
+> **Qoder 检测说明**：Qoder 的 frontmatter 仅 `name`+`description`，**无任何独占辅信号**（与 Windsurf/Trae 同），故 Qoder 仅靠来源路径 `.qoder/skills/` 主信号识别；脱离路径上下文（如纯目录扫描）时 Qoder 最小技能与 Cursor/Windsurf/Claude/Kiro/Trae 不可区分，回退为 `unknown`。
+
+> **实现建议**：`detectOrigin(skillDir)` 当前不接收来源路径上下文，仅看目录内文件。为支持路径主信号，需把「用户选择的来源根 + skill 相对路径」一并传入 `detect.ts`，详见第十五章。
+
+### 11.4 Cursor → 抽象包 映射
 
 | Cursor 文件/字段 | 抽象包映射 |
 |------------------|-----------|
@@ -809,7 +981,7 @@ flowchart TD
 | `assets/` 目录 | `resources.assets` + 复制文件 |
 | `ui.*` | **全部留空**（Cursor 无 UI 元数据，导入后需手动补充） |
 
-### 9.5 Codex → 抽象包 映射
+### 11.5 Codex → 抽象包 映射
 
 | Codex 文件/字段 | 抽象包映射 |
 |-----------------|-----------|
@@ -829,7 +1001,7 @@ flowchart TD
 | `assets/` 目录 | `resources.assets` + 复制文件 |
 | `LICENSE.txt` | `metadata.license`（尝试检测 license 类型） |
 
-### 9.6 Claude → 抽象包 映射
+### 11.6 Claude → 抽象包 映射
 
 | Claude 文件/字段 | 抽象包映射 |
 |------------------|-----------|
@@ -857,7 +1029,7 @@ flowchart TD
 
 > Claude 信息较完整时通常无 incomplete 字段；若 `ui.*` 需在跨平台（如导出到 Codex）时使用，则标记为待补齐。
 
-### 9.7 Windsurf → 抽象包 映射
+### 11.7 Windsurf → 抽象包 映射
 
 | Windsurf 文件/字段 | 抽象包映射 |
 |--------------------|-----------|
@@ -871,7 +1043,7 @@ flowchart TD
 
 > Windsurf 是信息最稀疏的来源；导入后若要部署到 Codex/Claude，`incomplete_fields` 会包含 `ui.*` / `claude.*` 等，待部署时由 LLM 补齐。
 
-### 9.8 Kiro → 抽象包 映射
+### 11.8 Kiro → 抽象包 映射
 
 | Kiro 文件/字段 | 抽象包映射 |
 |----------------|-----------|
@@ -888,7 +1060,35 @@ flowchart TD
 
 > Kiro 信息量介于 Windsurf 与 Claude 之间：含标准 `license`/`compatibility`/`metadata`，但无 `ui.*` 与 Claude 运行时字段；导入后若要部署到 Codex，`incomplete_fields` 会包含 `ui.*`，待部署时由 LLM 补齐。
 
-### 9.9 导入后的信息损失标记与来源语义
+### 11.9 Trae → 抽象包 映射
+
+| Trae 文件/字段 | 抽象包映射 |
+|----------------|-----------|
+| SKILL.md frontmatter `name` | `name` |
+| SKILL.md frontmatter `description` | `description` |
+| SKILL.md body（frontmatter 之后） | `VibeH.md` |
+| `scripts/` 目录 | `resources.scripts` + 复制文件 |
+| `references/` 目录 | `resources.references` + 复制文件 |
+| `assets/` 目录 | `resources.assets` + 复制文件 |
+| `ui.*` / `claude.*` / `policy.*` / `metadata.*` | **全部留空**（Trae 仅 name+description） |
+
+> Trae 与 Windsurf 一样是信息最稀疏的来源；导入后若要部署到 Codex/Claude，`incomplete_fields` 会包含 `ui.*` / `claude.*` 等，待部署时由 LLM 补齐。
+
+### 11.10 Qoder → 抽象包 映射
+
+| Qoder 文件/字段 | 抽象包映射 |
+|----------------|-----------|
+| SKILL.md frontmatter `name` | `name` |
+| SKILL.md frontmatter `description` | `description` |
+| SKILL.md body（frontmatter 之后） | `VibeH.md` |
+| `scripts/` 目录 | `resources.scripts` + 复制文件 |
+| `references/` 目录 | `resources.references` + 复制文件 |
+| `assets/` 目录 | `resources.assets` + 复制文件 |
+| `ui.*` / `claude.*` / `policy.*` / `metadata.*` | **全部留空**（Qoder 仅 name+description） |
+
+> Qoder 与 Windsurf/Trae 一样是信息最稀疏的来源；导入后若要部署到 Codex/Claude，`incomplete_fields` 会包含 `ui.*` / `claude.*` 等，待部署时由 LLM 补齐。
+
+### 11.11 导入后的信息损失标记与来源语义
 
 导入时**不补齐缺失字段**，仅标记哪些字段缺失：
 
@@ -939,13 +1139,13 @@ _import_meta:
 | 项目 Skill 列表 | 项目声明可用哪些团队 Skill，不绑定本地路径或工具 | 否 |
 | 用户部署实例 | 用户点击"部署"后，将项目 Skill 部署到个人本地项目目录 | 是，监听该用户选择的部署目录 |
 
-### 9.10 项目部署与监听规则
+### 11.12 项目部署与监听规则
 
 将团队仓库 Skill 添加到项目时，只进入项目 Skill 列表，不自动部署。因为团队成员可能使用不同 Vibe Coding 工具，也可能有不同的本地项目路径。
 
 只有用户在项目 Skill 列表中点击**部署**时，才需要选择部署参数：
 
-- Vibe Coding 工具：`cursor`、`codex`、`claude`、`windsurf` 或 `kiro`
+- Vibe Coding 工具：`cursor`、`codex`、`claude`、`windsurf`、`kiro`、`trae` 或 `qoder`
 - 本地项目路径或部署根路径
 - 是否覆盖已存在同名 Skill
 
@@ -958,6 +1158,8 @@ _import_meta:
 | Claude | `{deploy_path}/.claude/skills/{name}/` |
 | Windsurf | `{deploy_path}/.windsurf/skills/{name}/` |
 | Kiro | `{deploy_path}/.kiro/skills/{name}/` |
+| Trae | `{deploy_path}/.trae/skills/{name}/` |
+| Qoder | `{deploy_path}/.qoder/skills/{name}/` |
 
 部署流程：
 
@@ -974,7 +1176,7 @@ _import_meta:
 选择工具 + 本地部署路径
       │
       ▼
-按目标工具构建 Cursor/Codex/Claude/Windsurf 原生产物
+按目标工具构建 Cursor/Codex/Claude/Windsurf/Kiro/Trae/Qoder 原生产物
       │
       ▼
 写入用户指定的项目级 skills 目录
@@ -998,13 +1200,15 @@ _import_meta:
 .windsurf/skills/
 .claude/skills/
 .kiro/skills/
+.trae/skills/
+.qoder/skills/
 ```
 
 写入规则：
 
 - 如果项目根目录没有 `.gitignore`，则创建。
 - 如果 `.gitignore` 已存在，则幂等追加上述块，避免重复写入。
-- 不忽略整个 `.cursor/` / `.codex/` / `.windsurf/` / `.claude/` / `.kiro/`，只忽略项目级 skills 目录，避免误伤其他可提交配置（如 `.claude/settings.json`、`.windsurf/rules/`、`.kiro/steering/`、`.kiro/hooks/`）。
+- 不忽略整个 `.cursor/` / `.codex/` / `.windsurf/` / `.claude/` / `.kiro/` / `.trae/` / `.qoder/`，只忽略项目级 skills 目录，避免误伤其他可提交配置（如 `.claude/settings.json`、`.windsurf/rules/`、`.kiro/steering/`、`.kiro/hooks/`、`.trae/rules/`）。
 - 如果相关目录此前已经被 Git 跟踪，`.gitignore` 不能自动取消跟踪，前端应提示用户需要手动从 Git 索引移除。
 
 变更回写规则：
@@ -1016,12 +1220,12 @@ _import_meta:
 - 个人仓库复制到团队仓库后是独立快照，当前阶段不保留两者的版本关联。
 - 项目原本已有的 Skill 可以在用户选择本地路径后被扫描/上传到团队仓库；进入团队仓库后也成为快照，后续要通过用户部署实例触发同步。
 
-### 9.11 部署时 LLM 补齐流程
+### 11.13 部署时 LLM 补齐流程
 
 当用户点击**【部署】**按钮时，如果存在缺失字段，触发以下流程：
 
 ```
-用户点击【部署到 Cursor / Codex / Claude / Windsurf / Kiro】
+用户点击【部署到 Cursor / Codex / Claude / Windsurf / Kiro / Trae / Qoder】
           │
           ▼
     ┌──────────────┐
@@ -1062,14 +1266,14 @@ _import_meta:
                        └──────────────┘
 ```
 
-> **平台相关性**：补齐只针对「目标平台需要、但当前缺失」的字段。例如部署到 **Windsurf** 只需 `name`+`description`，几乎不触发补齐；部署到 **Kiro** 只需 `name`+`description`（标准可选字段 `license`/`compatibility`/`metadata` 有则用、无则不输出），同样几乎不触发补齐；部署到 **Codex** 需要 `ui.*`；部署到 **Claude** 通常已足够（标准字段直接可用），仅当用户希望填充运行时字段（`model`/`allowed-tools` 等）时才补齐。
+> **平台相关性**：补齐只针对「目标平台需要、但当前缺失」的字段。例如部署到 **Windsurf**、**Trae** 或 **Qoder** 只需 `name`+`description`，几乎不触发补齐；部署到 **Kiro** 只需 `name`+`description`（标准可选字段 `license`/`compatibility`/`metadata` 有则用、无则不输出），同样几乎不触发补齐；部署到 **Codex** 需要 `ui.*`；部署到 **Claude** 通常已足够（标准字段直接可用），仅当用户希望填充运行时字段（`model`/`allowed-tools` 等）时才补齐。
 
-### 9.12 LLM 补齐 API
+### 11.14 LLM 补齐 API
 
 ```
 POST /api/v1/skill-forge/store/{id}/complete
 
-Request: { "target": "cursor" }   // cursor | codex | claude | windsurf | kiro
+Request: { "target": "cursor" }   // cursor | codex | claude | windsurf | kiro | trae | qoder
 
 Response: {
   "success": true,
@@ -1086,7 +1290,7 @@ Response: {
 
 ---
 
-## 十、字段回退策略
+## 十二、字段回退策略
 
 当抽象包中某些可选字段未填写时，构建过程使用以下回退逻辑：
 
@@ -1097,16 +1301,16 @@ Response: {
 | `ui.default_prompt` | `"Use ${{name}} to {{description 前 30 字符}}."` | `"Use $my-skill to validate output format."` |
 | `ui.brand_color` | 不输出该字段 | — |
 | `ui.icon_*` | 不输出该字段 | — |
-| `policy.auto_invoke` | 默认 `true` | 各平台均默认允许（Windsurf 无此字段） |
+| `policy.auto_invoke` | 默认 `true` | 各平台均默认允许（Windsurf / Trae / Qoder 无此字段） |
 | `claude.*` | 无值不输出对应 frontmatter | — |
 | `metadata.license` | 不生成 `LICENSE` / `LICENSE.txt`，Claude 不输出 `license` | — |
 | `metadata.version` | `"0.0.0"` | — |
 
 ---
 
-## 十一、完整示例
+## 十三、完整示例
 
-### 11.1 抽象包
+### 13.1 抽象包
 
 **`skill.config.yaml`：**
 
@@ -1160,7 +1364,7 @@ Use this skill to confirm that a local skill loads correctly...
 ...
 ```
 
-### 11.2 Cursor 构建产物
+### 13.2 Cursor 构建产物
 
 ```
 test-helper/
@@ -1192,7 +1396,7 @@ Use this skill to confirm that a local skill loads correctly...
 ...
 ```
 
-### 11.3 Codex 构建产物
+### 13.3 Codex 构建产物
 
 ```
 test-helper/
@@ -1220,7 +1424,7 @@ policy:
   allow_implicit_invocation: false
 ```
 
-### 11.4 Claude 构建产物
+### 13.4 Claude 构建产物
 
 ```
 test-helper/
@@ -1263,7 +1467,7 @@ Use this skill to confirm that a local skill loads correctly...
 
 > 注意：`ui.*` 被丢弃（Codex 专有），`metadata.surfaces` 不存在；Claude 不生成 `LICENSE.txt`（许可证写入 frontmatter `license`），不生成 `agents/openai.yaml`。
 
-### 11.5 Windsurf 构建产物
+### 13.5 Windsurf 构建产物
 
 ```
 test-helper/
@@ -1296,7 +1500,7 @@ Use this skill to confirm that a local skill loads correctly...
 
 > 注意：`policy`、`ui.*`、`claude.*`、`metadata.*` 全部丢弃；产物只有 `name`+`description` 与附带资源，忠于 Windsurf 官方规范。
 
-### 11.6 Kiro 构建产物
+### 13.6 Kiro 构建产物
 
 ```
 test-helper/
@@ -1334,7 +1538,73 @@ Use this skill to confirm that a local skill loads correctly...
 
 > 注意：`policy.auto_invoke: false`（即 `disable-model-invocation`）被丢弃（Kiro skill 无 invocation policy）；`ui.*` 与 `claude.*` 全部丢弃；`metadata.surfaces` 不存在；不生成 `LICENSE.txt`（许可证写入 frontmatter `license`），不生成 `agents/openai.yaml`。
 
-### 11.7 反向导入示例：Claude → 抽象包
+### 13.7 Trae 构建产物
+
+```
+test-helper/
+├── SKILL.md                    ← frontmatter(name + description 仅两字段) + VibeH.md
+├── scripts/
+│   └── self_check.py           ← 原样复制
+├── references/
+│   └── test-cases.md           ← 原样复制
+└── assets/
+    └── sample-output.txt       ← 原样复制
+```
+
+生成的 `SKILL.md`：
+
+```yaml
+---
+name: test-helper
+description: >-
+  Full test skill for validating that agents can discover, load,
+  and follow a local skill with scripts, references, assets, and
+  UI metadata.
+---
+
+# Test Helper
+
+## Overview
+Use this skill to confirm that a local skill loads correctly...
+...
+```
+
+> 注意：与 Windsurf 完全一致——`policy`、`ui.*`、`claude.*`、`metadata.*` 全部丢弃；产物只有 `name`+`description` 与附带资源，忠于 Trae 官方规范。部署时全局落 `~/.trae/skills/`（自动探测 `~/.trae-cn/skills/`）。
+
+### 13.8 Qoder 构建产物
+
+```
+test-helper/
+├── SKILL.md                    ← frontmatter(name + description 仅两字段) + VibeH.md
+├── scripts/
+│   └── self_check.py           ← 原样复制
+├── references/
+│   └── test-cases.md           ← 原样复制
+└── assets/
+    └── sample-output.txt       ← 原样复制
+```
+
+生成的 `SKILL.md`：
+
+```yaml
+---
+name: test-helper
+description: >-
+  Full test skill for validating that agents can discover, load,
+  and follow a local skill with scripts, references, assets, and
+  UI metadata.
+---
+
+# Test Helper
+
+## Overview
+Use this skill to confirm that a local skill loads correctly...
+...
+```
+
+> 注意：与 Windsurf/Trae 完全一致——`policy`、`ui.*`、`claude.*`、`metadata.*` 全部丢弃；产物只有 `name`+`description` 与附带资源，忠于 Qoder 官方规范。部署时全局落 `~/.qoder/skills/`（统一目录，无须探测），项目级落 `.qoder/skills/`。
+
+### 13.9 反向导入示例：Claude → 抽象包
 
 **输入**：`~/.claude/skills/test-helper/`（含运行时 frontmatter 的 SKILL.md）
 
@@ -1356,7 +1626,7 @@ Use this skill to confirm that a local skill loads correctly...
 
 ---
 
-## 十二、设计决策记录
+## 十四、设计决策记录
 
 | # | 决策 | 理由 |
 |---|------|------|
@@ -1375,10 +1645,16 @@ Use this skill to confirm that a local skill loads correctly...
 | 13 | **来源检测以路径为主信号、frontmatter 为辅** | 最小化的 Cursor/Windsurf/Claude skill 结构无法区分，仅靠 frontmatter 会误判 |
 | 14 | **Kiro 按 Agent Skills 标准核心字段构建** | Kiro 支持标准 `name`/`description` + 可选 `license`/`compatibility`/`metadata`(author/version)，无 Claude 运行时扩展与 Codex `ui.*`；定位在 Windsurf 与 Claude 之间 |
 | 15 | **Kiro 仅靠 `.kiro/skills/` 路径主信号检测** | Kiro frontmatter 字段与 Claude/Codex 共享、无独占字段，脱离来源路径无法区分，回退 `unknown` |
+| 16 | **Trae 忠于官方 `name`+`description` 规范（与 Windsurf 同源）** | Trae 官方仅文档化这两个字段；构建规则完全复用 Windsurf，严格只输出 name+description，避免写入未文档化字段在未来版本报错 |
+| 17 | **Trae 全局目录在 `~/.trae` 与 `~/.trae-cn` 间自动探测** | Trae 国际版（trae.ai）用 `~/.trae`、国内版（trae.cn）用 `~/.trae-cn`，项目目录两版相同；运行时探测目录存在性择优，部署与安装态探测共用同一解析逻辑 |
+| 18 | **Trae 仅靠 `.trae/skills/` 路径主信号检测** | Trae frontmatter 仅 name+description、无独占字段，脱离来源路径与 Cursor/Windsurf/Claude/Kiro 不可区分，回退 `unknown` |
+| 19 | **Qoder 忠于官方 `name`+`description` 规范（与 Windsurf/Trae 同源）** | Qoder 官方文档（IDE 与 CLI 一致）仅文档化这两个字段；构建规则完全复用 Windsurf/Trae，严格只输出 name+description。第三方加载器（vercel-labs/skills）虽报告 Qoder 支持 `allowed-tools` 透传，但 Qoder 官方未文档化，故按项目惯例不输出未文档化字段，避免未来版本报错 |
+| 20 | **Qoder 全局目录统一为 `~/.qoder/skills`（无国内/国际分叉）** | 与 Trae 不同，Qoder 不区分国内/国际版本，全局目录恒为 `~/.qoder/skills`，无须自动探测；项目级落 `.qoder/skills/`，同名时项目级优先于全局 |
+| 21 | **Qoder 仅靠 `.qoder/skills/` 路径主信号检测** | Qoder frontmatter 仅 name+description、无独占字段，脱离来源路径与 Cursor/Windsurf/Claude/Kiro/Trae 不可区分，回退 `unknown` |
 
 ---
 
-## 十三、后续实现触点（附录）
+## 十五、后续实现触点（附录）
 
 > 本次仅产出设计文档，不改代码。以下列出未来落地时需改动的文件，便于追溯。
 
@@ -1387,18 +1663,18 @@ Use this skill to confirm that a local skill loads correctly...
 | `backend/skill-forge/src/schema/unified.ts` | 新增 `claude` 块（`allowedTools`/`disallowedTools`/`userInvocable`/`argumentHint`/`model`/`effort`/`context`/`agent`/`whenToUse`/`hooks`）；扩展 `metadata` 标准字段（`license`/`compatibility`/`author`/`version`）；保持 `triggers.disableModelInvocation` 与本文 `policy.auto_invoke` 的对应 |
 | `backend/skill-forge/src/adapters/claude.ts` | `build()` 按第五章映射写出完整 frontmatter（不再只写 name+description）；复制 `assets/`；保持 `getDeployDir()` = `~/.claude/skills` |
 | `backend/skill-forge/src/adapters/windsurf.ts` | 保持只写 `name`+`description`（已符合）；与第六章删除清单对齐，确保不泄漏其他平台字段 |
-| `backend/skill-forge/src/adapters/detect.ts` | `SkillOrigin` 扩展为 `cursor`/`codex`/`claude`/`windsurf`/`unknown`；接收来源路径上下文做路径主信号；按第 9.3 打分表加入 Claude/Windsurf 信号 |
+| `backend/skill-forge/src/adapters/detect.ts` | `SkillOrigin` 扩展为 `cursor`/`codex`/`claude`/`windsurf`/`unknown`；接收来源路径上下文做路径主信号；按第 11.3 打分表加入 Claude/Windsurf 信号 |
 | `backend/skill-forge/src/commands/import.ts` | `ImportSource` 扩展为四平台；新增 `importFromClaude`（解析全部运行时字段）与 `importFromWindsurf`（name+description+resources） |
 | `backend/skill-forge/src/commands/package.ts` | unknown 回退策略调整（不再一律按 codex 解析）；把来源路径传给 `detectOrigin` |
 | `backend/skill-forge/src/adapters/cursor.ts` | 对齐资源复制约定：补充复制 `assets/` 中的通用资源 |
 | `backend/skill-forge/tests/adapters/claude.test.ts` | 增加运行时字段映射、删除清单、回退策略用例 |
 | `backend/skill-forge/tests/adapters/windsurf.test.ts` | 增加「仅输出 name+description、不泄漏其他字段」断言 |
-| `local-agent/src/gitignore.ts` | 现已忽略 `.windsurf/skills/`、`.claude/skills/`，与第 9.10 一致，无需改动 |
+| `local-agent/src/gitignore.ts` | 现已忽略 `.windsurf/skills/`、`.claude/skills/`，与第 11.12 一致，无需改动 |
 | `docs/research-ai-coding-skills.md` | 更正 Windsurf「无正式 Skill 系统」的结论 |
 
-### 13.1 Kiro 适配落地触点（本轮实施）
+### 15.1 Kiro 适配落地触点（已实施）
 
-> 本轮按第七章「Kiro 构建规则」实施 Kiro 的 Skill 部署链路（构建/导入/部署），与 windsurf/claude 接入方式对齐；不含桌面启动器与协作会话 WebSocket 适配器。
+> 按第七章「Kiro 构建规则」实施 Kiro 的 Skill 部署链路（构建/导入/部署），与 windsurf/claude 接入方式对齐；不含桌面启动器与协作会话 WebSocket 适配器。
 
 | 层 | 文件 | 改动 |
 |----|------|------|
@@ -1419,3 +1695,51 @@ Use this skill to confirm that a local skill loads correctly...
 | 后端 | `backend/app/schemas/skill_forge.py`、`backend/app/services/skill_forge_service.py`、`backend/app/api/skill_forge.py` | InstalledAtStatus/deployed_kiro/installed_at 归一化/migrate 校验加 kiro |
 | 前端 | `frontend/src/api/localAgent.ts`、`orchestration.ts`、`skillStore.ts` 等 | ToolType/InstalledAtStatus/deployed_kiro |
 | 前端 | `frontend/src/views/{ProjectSkills,PlatformStructure,Dashboard}.vue` | 部署下拉、平台字段、迁移目标/安装态加 kiro |
+
+### 15.2 Trae 适配落地触点（已实施）
+
+> 按第八章「Trae 构建规则」实施 Trae 的 Skill 部署链路（构建/导入/部署），与 windsurf/kiro 接入方式对齐；构建规则复用 Windsurf（严格 name+description），全局目录在 `~/.trae` 与 `~/.trae-cn` 间自动探测。不含桌面启动器与协作会话 WebSocket 适配器。
+
+| 层 | 文件 | 改动 |
+|----|------|------|
+| skill-forge | `backend/skill-forge/src/adapters/trae.ts`（新建） | `TraeAdapter`：`build()` 严格输出 name/description，复制 scripts/references/assets；`getDeployDir()` 自动探测 `~/.trae/skills` ↔ `~/.trae-cn/skills` |
+| skill-forge | `backend/skill-forge/src/adapters/base.ts` | `AdapterTarget` 加 `"trae"` |
+| skill-forge | `backend/skill-forge/src/adapters/detect.ts` | `SkillOrigin`/score 加 `trae`；路径信号 `/.trae/skills/` +5（无 frontmatter 辅信号） |
+| skill-forge | `backend/skill-forge/src/schema/unified.ts` | `targets.trae`；`importedFrom` enum 加 `trae` |
+| skill-forge | `backend/skill-forge/src/commands/{build,deploy,migrate,package,import}.ts` | Target/adapter/installedAt/import 加 trae（`importFromTrae` = name+description） |
+| skill-forge | `backend/skill-forge/src/index.ts`、`cli.ts` | export `TraeAdapter`；CLI help 文案补 trae |
+| skill-forge | `backend/skill-forge/tests/adapters/trae.test.ts`（新建） | 字段映射、删除清单、资源复制断言 |
+| local-agent | `local-agent/src/platform.ts` | `traeSkillsDir()` 自动探测；`platformSkillsDir()` 加 trae |
+| local-agent | `local-agent/src/types.ts` | `ToolType`/`InstalledAtStatus`/`platformSkillDirs` 加 trae |
+| local-agent | `local-agent/src/handlers/{writeSkill,health}.ts`、`scan/scan.ts`、`context.ts` | tool 白名单、health 路径、installedAt 探测、可写根加 trae |
+| local-agent | `local-agent/src/gitignore.ts` | 忽略块加 `.trae/skills/` |
+| 后端 | `backend/app/services/project_service.py` | `SUPPORTED_TOOLS`/`GITIGNORE_BLOCK`/`_install_root` 加 trae |
+| 后端 | `backend/app/services/native_skill_store.py` | `trae_skills_dir()`（自动探测）、deploy 分支、`_detect_origin`、`_upsert_db` deployed_trae |
+| 后端 | `backend/app/models/skill_package.py` + `backend/app/core/database.py` | `deployed_trae` 列 + 增量迁移 |
+| 后端 | `backend/app/schemas/skill_forge.py`、`backend/app/services/skill_forge_service.py`、`backend/app/api/skill_forge.py` | InstalledAtStatus/deployed_trae/installed_at 归一化/migrate 校验加 trae |
+| 前端 | `frontend/src/api/localAgent.ts`、`orchestration.ts`、`skillStore.ts`、`skillForge.ts` | ToolType/InstalledAtStatus/deployed_trae |
+| 前端 | `frontend/src/views/{SkillForge,ProjectSkills,PlatformStructure,Dashboard}.vue` | 部署下拉、平台字段、迁移目标/安装态加 trae |
+
+### 15.3 Qoder 适配落地触点（本轮实施）
+
+> 本轮按第九章「Qoder 构建规则」实施 Qoder 的 Skill 部署链路（构建/导入/部署），与 windsurf/trae 接入方式对齐；构建规则复用 Windsurf/Trae（严格 name+description），全局目录统一为 `~/.qoder/skills`（无国内/国际分叉，无须探测）。不含桌面启动器与协作会话 WebSocket 适配器。
+
+| 层 | 文件 | 改动 |
+|----|------|------|
+| skill-forge | `backend/skill-forge/src/adapters/qoder.ts`（新建） | `QoderAdapter`：`build()` 严格输出 name/description，复制 scripts/references/assets；`getDeployDir()` = `~/.qoder/skills`（统一目录） |
+| skill-forge | `backend/skill-forge/src/adapters/base.ts` | `AdapterTarget` 加 `"qoder"` |
+| skill-forge | `backend/skill-forge/src/adapters/detect.ts` | `SkillOrigin`/score 加 `qoder`；路径信号 `/.qoder/skills/` +5（无 frontmatter 辅信号） |
+| skill-forge | `backend/skill-forge/src/schema/unified.ts` | `targets.qoder`；`importedFrom` enum 加 `qoder` |
+| skill-forge | `backend/skill-forge/src/commands/{build,deploy,migrate,package,import}.ts` | Target/adapter/installedAt/import 加 qoder（`importFromQoder` = name+description） |
+| skill-forge | `backend/skill-forge/src/index.ts`、`cli.ts` | export `QoderAdapter`；CLI help 文案补 qoder |
+| skill-forge | `backend/skill-forge/tests/adapters/qoder.test.ts`（新建） | 字段映射、删除清单、资源复制断言 |
+| local-agent | `local-agent/src/platform.ts` | `qoderSkillsDir()` → `~/.qoder/skills`；`platformSkillsDir()` 加 qoder |
+| local-agent | `local-agent/src/types.ts` | `ToolType`/`InstalledAtStatus`/`platformSkillDirs` 加 qoder |
+| local-agent | `local-agent/src/handlers/{writeSkill,health}.ts`、`scan/scan.ts`、`context.ts` | tool 白名单、health 路径、installedAt 探测、可写根加 qoder |
+| local-agent | `local-agent/src/gitignore.ts` | 忽略块加 `.qoder/skills/` |
+| 后端 | `backend/app/services/project_service.py` | `SUPPORTED_TOOLS`/`GITIGNORE_BLOCK`/`_install_root` 加 qoder |
+| 后端 | `backend/app/services/native_skill_store.py` | `QODER_SKILLS_DIR`、deploy 分支、`_detect_origin`、`_upsert_db` deployed_qoder |
+| 后端 | `backend/app/models/skill_package.py` + `backend/app/core/database.py` | `deployed_qoder` 列 + 增量迁移 |
+| 后端 | `backend/app/schemas/skill_forge.py`、`backend/app/services/skill_forge_service.py`、`backend/app/api/skill_forge.py` | InstalledAtStatus/deployed_qoder/installed_at 归一化/migrate 校验加 qoder |
+| 前端 | `frontend/src/api/localAgent.ts`、`orchestration.ts`、`skillStore.ts`、`skillForge.ts` | ToolType/InstalledAtStatus/deployed_qoder |
+| 前端 | `frontend/src/views/{SkillForge,ProjectSkills,PlatformStructure,Dashboard}.vue` | 部署下拉、平台字段、迁移目标/安装态加 qoder |

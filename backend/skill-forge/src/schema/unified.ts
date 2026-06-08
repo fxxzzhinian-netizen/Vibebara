@@ -91,6 +91,8 @@ export const UnifiedSkillSchema = z.object({
       windsurf: z.record(z.unknown()).optional(),
       claude: z.record(z.unknown()).optional(),
       kiro: z.record(z.unknown()).optional(),
+      trae: z.record(z.unknown()).optional(),
+      qoder: z.record(z.unknown()).optional(),
     })
     .default({}),
 });
@@ -102,7 +104,16 @@ export const NativeSkillMetaSchema = z.object({
   createdAt: z.string().datetime().optional(),
   updatedAt: z.string().datetime().optional(),
   importedFrom: z
-    .enum(["cursor", "codex", "windsurf", "claude", "kiro", "manual"])
+    .enum([
+      "cursor",
+      "codex",
+      "windsurf",
+      "claude",
+      "kiro",
+      "trae",
+      "qoder",
+      "manual",
+    ])
     .optional(),
   tags: z.array(z.string()).default([]),
   readme: z.string().optional(),

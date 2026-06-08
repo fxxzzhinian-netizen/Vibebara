@@ -189,6 +189,8 @@ class SkillRegistry:
                     "windsurf": installed.get("windsurf", False),
                     "claude": installed.get("claude", False),
                     "kiro": installed.get("kiro", False),
+                    "trae": installed.get("trae", False),
+                    "qoder": installed.get("qoder", False),
                 },
             })
         return result

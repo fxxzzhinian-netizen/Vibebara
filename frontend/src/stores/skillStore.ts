@@ -42,7 +42,7 @@ export const useSkillStore = defineStore('skill-store', () => {
   const hasSkills = computed(() => skills.value.length > 0)
   const currentConfig = computed(() => currentDetail.value?.config ?? null)
 
-  /** 某 Skill 是否已装到本机 cursor/codex/windsurf/claude/kiro：编排形态优先本地代理 scan 结果，否则回退云端字段。 */
+  /** 某 Skill 是否已装到本机 cursor/codex/windsurf/claude/kiro/trae/qoder：编排形态优先本地代理 scan 结果，否则回退云端字段。 */
   function installedStatus(skill: NativeSkillItem): InstalledAtStatus {
     const local = platformInstalled.value[skill.id]
     if (isOrchestrationEnabled() && local) return local
@@ -52,6 +52,8 @@ export const useSkillStore = defineStore('skill-store', () => {
       windsurf: skill.deployed_windsurf,
       claude: skill.deployed_claude,
       kiro: skill.deployed_kiro,
+      trae: skill.deployed_trae,
+      qoder: skill.deployed_qoder,
     }
   }
 

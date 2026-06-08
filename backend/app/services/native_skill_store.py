@@ -43,6 +43,34 @@ CLAUDE_SKILLS_DIR = Path.home() / ".claude" / "skills"
 KIRO_SKILLS_DIR = Path.home() / ".kiro" / "skills"
 
 
+def trae_skills_dir() -> Path:
+    """Trae 全局 skill 目录自动探测（docs/skill-forge-design.md §8.5）。
+
+    Trae 国际版（trae.ai）用 ~/.trae，国内版（trae.cn）用 ~/.trae-cn，两版项目
+    目录都是 .trae/skills/。择优规则：优先已存在的 ~/.trae，否则 ~/.trae-cn，
+    都不存在回退 ~/.trae。与 skill-forge resolveTraeSkillsDir / local-agent
+    traeSkillsDir 口径一致。
+    """
+    home = Path.home()
+    intl = home / ".trae"
+    cn = home / ".trae-cn"
+    if intl.exists():
+        return intl / "skills"
+    if cn.exists():
+        return cn / "skills"
+    return intl / "skills"
+
+
+def qoder_skills_dir() -> Path:
+    """Qoder 全局 skill 目录（docs/skill-forge-design.md §9.5）。
+
+    Qoder 全局目录统一为 ~/.qoder/skills，**无国内/国际分叉，无须探测**
+    （与 Trae 不同）。项目级目录为 .qoder/skills/，同名时项目级优先于全局。
+    与 skill-forge resolveQoderSkillsDir / local-agent qoderSkillsDir 口径一致。
+    """
+    return Path.home() / ".qoder" / "skills"
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -131,6 +159,14 @@ def _detect_origin(src: Path, frontmatter: Dict[str, Any]) -> str:
     # 共享），仅靠 .kiro/skills/ 路径主信号识别。
     if "/.kiro/skills/" in src_str:
         return "kiro"
+    # Trae 仅 name+description、无独占 frontmatter 辅信号（与 Windsurf 同），
+    # 仅靠 .trae/skills/ 路径主信号识别。
+    if "/.trae/skills/" in src_str:
+        return "trae"
+    # Qoder 仅 name+description、无独占 frontmatter 辅信号（与 Windsurf/Trae 同），
+    # 仅靠 .qoder/skills/ 路径主信号识别（全局/项目统一，无国内/国际分叉）。
+    if "/.qoder/skills/" in src_str:
+        return "qoder"
     if (src / "agents" / "openai.yaml").exists():
         return "codex"
 
@@ -409,6 +445,12 @@ class NativeSkillStore:
                 row.deployed_kiro = (
                     KIRO_SKILLS_DIR / skill_id / "SKILL.md"
                 ).exists()
+                row.deployed_trae = (
+                    trae_skills_dir() / skill_id / "SKILL.md"
+                ).exists()
+                row.deployed_qoder = (
+                    qoder_skills_dir() / skill_id / "SKILL.md"
+                ).exists()
             else:
                 if row.deployed_cursor is None:
                     row.deployed_cursor = False
@@ -420,6 +462,10 @@ class NativeSkillStore:
                     row.deployed_claude = False
                 if row.deployed_kiro is None:
                     row.deployed_kiro = False
+                if row.deployed_trae is None:
+                    row.deployed_trae = False
+                if row.deployed_qoder is None:
+                    row.deployed_qoder = False
 
             await session.commit()
             await session.refresh(row)
@@ -1208,6 +1254,10 @@ class NativeSkillStore:
                     dest_root = project_root / ".claude" / "skills"
                 elif out_target == "kiro":
                     dest_root = project_root / ".kiro" / "skills"
+                elif out_target == "trae":
+                    dest_root = project_root / ".trae" / "skills"
+                elif out_target == "qoder":
+                    dest_root = project_root / ".qoder" / "skills"
                 else:
                     dest_root = project_root / ".codex" / "skills"
             elif out_target == "cursor":
@@ -1218,6 +1268,10 @@ class NativeSkillStore:
                 dest_root = CLAUDE_SKILLS_DIR
             elif out_target == "kiro":
                 dest_root = KIRO_SKILLS_DIR
+            elif out_target == "trae":
+                dest_root = trae_skills_dir()
+            elif out_target == "qoder":
+                dest_root = qoder_skills_dir()
             else:
                 dest_root = CODEX_SKILLS_DIR
 
@@ -1290,6 +1344,8 @@ class NativeSkillStore:
             "deployed_windsurf": row.deployed_windsurf,
             "deployed_claude": row.deployed_claude,
             "deployed_kiro": row.deployed_kiro,
+            "deployed_trae": row.deployed_trae,
+            "deployed_qoder": row.deployed_qoder,
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         }

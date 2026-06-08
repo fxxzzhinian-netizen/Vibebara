@@ -16,7 +16,7 @@ const newSkillName = ref('')
 const newSkillDesc = ref('')
 const createError = ref('')
 
-const deployTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro'>('cursor')
+const deployTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'>('cursor')
 // 部署始终落项目目录（需选目录）；勾选后「同时」再额外落一份到全局 ~/.{tool}/skills。
 const deployToGlobal = ref(false)
 const deploying = ref(false)
@@ -58,15 +58,17 @@ function confirmDirPick() {
   showDirPicker.value = false
 }
 
-const previewTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro'>('cursor')
+const previewTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'>('cursor')
 
 /** 工具展示名（用于部署提示文案）。 */
-const TOOL_LABELS: Record<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro', string> = {
+const TOOL_LABELS: Record<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder', string> = {
   cursor: 'Cursor',
   codex: 'Codex',
   windsurf: 'Windsurf',
   claude: 'Claude Code',
   kiro: 'Kiro',
+  trae: 'Trae',
+  qoder: 'Qoder',
 }
 const previewData = ref<{ target: string; contents: Record<string, string> }[]>([])
 const showPreview = ref(false)
@@ -129,7 +131,7 @@ async function handleDelete() {
   await store.removeSkill(store.currentId)
 }
 
-function getPlatformSpecificMissing(target: 'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro'): string[] {
+function getPlatformSpecificMissing(target: 'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'): string[] {
   if (!cfg.value) return []
   const missing: string[] = []
   if (target === 'codex') {
@@ -144,6 +146,10 @@ function getPlatformSpecificMissing(target: 'cursor' | 'codex' | 'windsurf' | 'c
     // Claude Code 与 Cursor 同构（SKILL.md: name+description），无平台特有必填项
   } else if (target === 'kiro') {
     // Kiro 仅需 name+description（标准可选字段 license/compatibility/metadata 有则用），无平台特有必填项
+  } else if (target === 'trae') {
+    // Trae 与 Windsurf 同源（SKILL.md: name+description），无平台特有必填项
+  } else if (target === 'qoder') {
+    // Qoder 与 Windsurf/Trae 同源（SKILL.md: name+description），无平台特有必填项
   }
   return missing
 }
@@ -206,11 +212,15 @@ async function doDeploy() {
       globalNote = ' + 全局'
     }
     const toolLabel = TOOL_LABELS[deployTarget.value]
-    // 启动器支持 cursor/codex/claude 自动打开；windsurf/kiro 部署成功但不自动打开。
+    // 启动器支持 cursor/codex/claude 自动打开；windsurf/kiro/trae/qoder 部署成功但不自动打开。
     if (deployTarget.value === 'windsurf') {
       deployMsg.value = `已部署到项目 .windsurf/skills${globalNote}（请在 Windsurf 中手动打开项目）`
     } else if (deployTarget.value === 'kiro') {
       deployMsg.value = `已部署到项目 .kiro/skills${globalNote}（请在 Kiro 中手动打开项目）`
+    } else if (deployTarget.value === 'trae') {
+      deployMsg.value = `已部署到项目 .trae/skills${globalNote}（请在 Trae 中手动打开项目）`
+    } else if (deployTarget.value === 'qoder') {
+      deployMsg.value = `已部署到项目 .qoder/skills${globalNote}（请在 Qoder 中手动打开项目）`
     } else {
       deployMsg.value = `已部署${globalNote}，正在打开 ${toolLabel}...`
       const tool =
@@ -367,6 +377,8 @@ onMounted(() => {
             <span :class="['deploy-dot windsurf', { on: store.installedStatus(s).windsurf }]" title="Windsurf"></span>
             <span :class="['deploy-dot claude', { on: store.installedStatus(s).claude }]" title="Claude Code"></span>
             <span :class="['deploy-dot kiro', { on: store.installedStatus(s).kiro }]" title="Kiro"></span>
+            <span :class="['deploy-dot trae', { on: store.installedStatus(s).trae }]" title="Trae"></span>
+            <span :class="['deploy-dot qoder', { on: store.installedStatus(s).qoder }]" title="Qoder"></span>
           </div>
         </li>
       </ul>
@@ -407,6 +419,8 @@ onMounted(() => {
                 <option value="windsurf">Windsurf</option>
                 <option value="claude">Claude Code</option>
                 <option value="kiro">Kiro</option>
+                <option value="trae">Trae</option>
+                <option value="qoder">Qoder</option>
               </select>
               <button class="btn tool-btn preview" @click="handlePreview">预览</button>
             </div>
@@ -422,6 +436,8 @@ onMounted(() => {
                 <option value="windsurf">Windsurf</option>
                 <option value="claude">Claude Code</option>
                 <option value="kiro">Kiro</option>
+                <option value="trae">Trae</option>
+                <option value="qoder">Qoder</option>
               </select>
               <button
                 class="btn tool-btn pick-dir"
@@ -882,6 +898,8 @@ onMounted(() => {
 .deploy-dot.windsurf.on { background: #06b6d4; }
 .deploy-dot.claude.on { background: #d97757; }
 .deploy-dot.kiro.on { background: #7c3aed; }
+.deploy-dot.trae.on { background: #ec4899; }
+.deploy-dot.qoder.on { background: #f59e0b; }
 
 /* ===== Editor main ===== */
 .editor-main {

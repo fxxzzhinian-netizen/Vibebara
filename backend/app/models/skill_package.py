@@ -28,6 +28,8 @@ class SkillPackage(Base):
     deployed_windsurf: Mapped[bool] = mapped_column(Boolean, default=False)
     deployed_claude: Mapped[bool] = mapped_column(Boolean, default=False)
     deployed_kiro: Mapped[bool] = mapped_column(Boolean, default=False)
+    deployed_trae: Mapped[bool] = mapped_column(Boolean, default=False)
+    deployed_qoder: Mapped[bool] = mapped_column(Boolean, default=False)
     owner_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
     )

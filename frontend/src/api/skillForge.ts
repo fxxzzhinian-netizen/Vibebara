@@ -60,6 +60,8 @@ export interface InstalledAtStatus {
   windsurf: boolean
   claude: boolean
   kiro: boolean
+  trae: boolean
+  qoder: boolean
 }
 
 export interface UnifiedSkillPackage {

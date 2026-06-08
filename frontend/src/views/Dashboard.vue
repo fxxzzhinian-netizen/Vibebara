@@ -268,6 +268,8 @@ function originLabel(o: string): string {
   if (o === 'windsurf') return 'Windsurf'
   if (o === 'claude') return 'Claude Code'
   if (o === 'kiro') return 'Kiro'
+  if (o === 'trae') return 'Trae'
+  if (o === 'qoder') return 'Qoder'
   return '未知'
 }
 
@@ -360,6 +362,10 @@ function pathSegments(p: string) {
                 <span class="dot-label">A</span>
                 <span :class="['dot', { active: pkg.installed_at.kiro }]" title="Kiro"></span>
                 <span class="dot-label">K</span>
+                <span :class="['dot', { active: pkg.installed_at.trae }]" title="Trae"></span>
+                <span class="dot-label">T</span>
+                <span :class="['dot', { active: pkg.installed_at.qoder }]" title="Qoder"></span>
+                <span class="dot-label">Q</span>
               </div>
               <div class="import-action">
                 <button
@@ -679,6 +685,8 @@ function pathSegments(p: string) {
 .origin-windsurf { background: rgba(6, 182, 212, 0.12); color: #06b6d4; }
 .origin-claude { background: rgba(217, 119, 87, 0.12); color: #d97757; }
 .origin-kiro { background: rgba(124, 58, 237, 0.12); color: #7c3aed; }
+.origin-trae { background: rgba(236, 72, 153, 0.12); color: #ec4899; }
+.origin-qoder { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
 .origin-unknown { background: rgba(156, 163, 175, 0.15); color: var(--text-muted); }
 
 .skill-badges-row { display: flex; gap: 0.3rem; flex-shrink: 0; }

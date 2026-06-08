@@ -38,9 +38,11 @@ export function handleWriteSkill(
     tool !== "codex" &&
     tool !== "windsurf" &&
     tool !== "claude" &&
-    tool !== "kiro"
+    tool !== "kiro" &&
+    tool !== "trae" &&
+    tool !== "qoder"
   ) {
-    throw new AgentError("UNSUPPORTED_TOOL", "tool 必须为 cursor、codex、windsurf、claude 或 kiro");
+    throw new AgentError("UNSUPPORTED_TOOL", "tool 必须为 cursor、codex、windsurf、claude、kiro、trae 或 qoder");
   }
   const scope = input?.scope;
   if (scope !== "project" && scope !== "platform") {

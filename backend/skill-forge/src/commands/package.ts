@@ -1,5 +1,6 @@
 import path from "node:path";
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { detectOrigin, type DetectResult } from "../adapters/detect.js";
 import { importSkill } from "./import.js";
 import { exists, readFile } from "../utils/fs.js";
@@ -24,6 +25,8 @@ export interface PackageResult {
     windsurf: boolean;
     claude: boolean;
     kiro: boolean;
+    trae: boolean;
+    qoder: boolean;
   };
 }
 
@@ -83,6 +86,26 @@ function getKiroSkillsDir(): string {
   return path.join(home, ".kiro", "skills");
 }
 
+// Trae 全局目录自动探测：优先 ~/.trae（国际版），否则 ~/.trae-cn（国内版），
+// 都不存在回退 ~/.trae。与 adapters/trae.ts 的 resolveTraeSkillsDir 口径一致。
+function getTraeSkillsDir(): string {
+  const home =
+    process.env["HOME"] || process.env["USERPROFILE"] || "";
+  const intl = path.join(home, ".trae");
+  const cn = path.join(home, ".trae-cn");
+  if (existsSync(intl)) return path.join(intl, "skills");
+  if (existsSync(cn)) return path.join(cn, "skills");
+  return path.join(intl, "skills");
+}
+
+// Qoder 全局目录统一为 ~/.qoder/skills（无国内/国际分叉，无须探测）。
+// 与 adapters/qoder.ts 的 resolveQoderSkillsDir 口径一致。
+function getQoderSkillsDir(): string {
+  const home =
+    process.env["HOME"] || process.env["USERPROFILE"] || "";
+  return path.join(home, ".qoder", "skills");
+}
+
 export async function packageSkill(
   skillDir: string,
 ): Promise<PackageResult> {
@@ -113,6 +136,8 @@ export async function packageSkill(
   const windsurfDir = getWindsurfSkillsDir();
   const claudeDir = getClaudeSkillsDir();
   const kiroDir = getKiroSkillsDir();
+  const traeDir = getTraeSkillsDir();
+  const qoderDir = getQoderSkillsDir();
 
   const installedAt = {
     cursor: await exists(path.join(cursorDir, id, "SKILL.md")),
@@ -120,6 +145,8 @@ export async function packageSkill(
     windsurf: await exists(path.join(windsurfDir, id, "SKILL.md")),
     claude: await exists(path.join(claudeDir, id, "SKILL.md")),
     kiro: await exists(path.join(kiroDir, id, "SKILL.md")),
+    trae: await exists(path.join(traeDir, id, "SKILL.md")),
+    qoder: await exists(path.join(qoderDir, id, "SKILL.md")),
   };
 
   return {

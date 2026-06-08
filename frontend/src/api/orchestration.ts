@@ -214,6 +214,8 @@ function asTool(t: string): ToolType {
   if (t === 'windsurf') return 'windsurf'
   if (t === 'claude') return 'claude'
   if (t === 'kiro') return 'kiro'
+  if (t === 'trae') return 'trae'
+  if (t === 'qoder') return 'qoder'
   return 'cursor'
 }
 
@@ -566,15 +568,15 @@ export async function getPlatformInstalledStatus(): Promise<
   Record<string, InstalledAtStatus>
 > {
   const map: Record<string, InstalledAtStatus> = {}
-  let dirs: { cursor: string; codex: string; windsurf: string; claude: string; kiro: string }
+  let dirs: { cursor: string; codex: string; windsurf: string; claude: string; kiro: string; trae: string; qoder: string }
   try {
     const h = await localAgent.health()
     dirs = h.platformSkillDirs
   } catch {
     return map
   }
-  // 扫描五个平台目录；每个包的 installedAt 已对各平台目录各自探测，直接汇总即可。
-  for (const dir of [dirs.cursor, dirs.codex, dirs.windsurf, dirs.claude, dirs.kiro]) {
+  // 扫描七个平台目录；每个包的 installedAt 已对各平台目录各自探测，直接汇总即可。
+  for (const dir of [dirs.cursor, dirs.codex, dirs.windsurf, dirs.claude, dirs.kiro, dirs.trae, dirs.qoder]) {
     if (!dir) continue
     try {
       const res = await localAgent.scan({ rootDir: dir })
@@ -585,6 +587,8 @@ export async function getPlatformInstalledStatus(): Promise<
           windsurf: p.installedAt.windsurf,
           claude: p.installedAt.claude,
           kiro: p.installedAt.kiro,
+          trae: p.installedAt.trae,
+          qoder: p.installedAt.qoder,
         }
       }
     } catch {

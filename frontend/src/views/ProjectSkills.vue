@@ -32,7 +32,7 @@ const showAddSkill = ref(false)
 const addError = ref('')
 const showDeployModal = ref(false)
 const deploySkillId = ref('')
-const deployTool = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro'>('cursor')
+const deployTool = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'>('cursor')
 const deployPath = ref('')
 const deployOverwrite = ref(false)
 const deployToGlobal = ref(false)
@@ -366,7 +366,7 @@ function findDeploymentById(deploymentId: string): UserSkillDeploymentInfo | nul
 async function maybePullToGlobal(deploymentId: string) {
   const dep = findDeploymentById(deploymentId)
   if (!dep) return
-  const tool = dep.tool_type as 'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro'
+  const tool = dep.tool_type as 'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'
   let isGlobal = false
   try {
     const installed = await getPlatformInstalledStatus()
@@ -597,6 +597,8 @@ function goBack() {
               <option value="windsurf">Windsurf</option>
               <option value="claude">Claude Code</option>
               <option value="kiro">Kiro</option>
+              <option value="trae">Trae</option>
+              <option value="qoder">Qoder</option>
             </select>
           </div>
 

@@ -6,8 +6,15 @@
 
 export type LocalAgentApiVersion = "local-agent/v1";
 
-/** 支持的工具平台（对应后端 SUPPORTED_TOOLS = {"cursor","codex","windsurf","claude","kiro"}） */
-export type ToolType = "cursor" | "codex" | "windsurf" | "claude" | "kiro";
+/** 支持的工具平台（对应后端 SUPPORTED_TOOLS = {"cursor","codex","windsurf","claude","kiro","trae","qoder"}） */
+export type ToolType =
+  | "cursor"
+  | "codex"
+  | "windsurf"
+  | "claude"
+  | "kiro"
+  | "trae"
+  | "qoder";
 
 /** 部署落点：项目目录 or 平台目录（~/.cursor/skills 等） */
 export type DeployScope = "project" | "platform";
@@ -26,7 +33,7 @@ export type LocalAgentErrorCode =
   | "NOT_A_DIRECTORY" // 400 期望目录但不是目录
   | "INSTALL_EXISTS" // 409 install 目录已存在且未 overwrite
   | "IO_ERROR" // 500 读写失败
-  | "UNSUPPORTED_TOOL" // 400 tool 非 cursor/codex/windsurf/claude/kiro
+  | "UNSUPPORTED_TOOL" // 400 tool 非 cursor/codex/windsurf/claude/kiro/trae/qoder
   | "BAD_REQUEST"; // 400 参数缺失/非法
 
 export interface LocalAgentError {
@@ -76,6 +83,8 @@ export interface HealthResponse extends LocalAgentSuccessBase {
     windsurf: string;
     claude: string;
     kiro: string;
+    trae: string;
+    qoder: string;
   };
 }
 
@@ -113,6 +122,8 @@ export interface InstalledAtStatus {
   windsurf: boolean;
   claude: boolean;
   kiro: boolean;
+  trae: boolean;
+  qoder: boolean;
 }
 
 export interface UnifiedSkillPackage {

@@ -34,6 +34,8 @@ class InstalledAtStatus(BaseModel):
     windsurf: bool = False
     claude: bool = False
     kiro: bool = False
+    trae: bool = False
+    qoder: bool = False
 
 
 class UnifiedSkillPackage(BaseModel):
@@ -102,6 +104,8 @@ class NativeSkillItem(BaseModel):
     deployed_windsurf: bool = False
     deployed_claude: bool = False
     deployed_kiro: bool = False
+    deployed_trae: bool = False
+    deployed_qoder: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

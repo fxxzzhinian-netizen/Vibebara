@@ -5,6 +5,8 @@ import { CodexAdapter } from "../adapters/codex.js";
 import { WindsurfAdapter } from "../adapters/windsurf.js";
 import { ClaudeAdapter } from "../adapters/claude.js";
 import { KiroAdapter } from "../adapters/kiro.js";
+import { TraeAdapter } from "../adapters/trae.js";
+import { QoderAdapter } from "../adapters/qoder.js";
 import { buildSkill, type Target } from "./build.js";
 import { copyDir, ensureDir } from "../utils/fs.js";
 
@@ -13,6 +15,8 @@ function adapterFor(target: string): Adapter {
   if (target === "windsurf") return new WindsurfAdapter();
   if (target === "claude") return new ClaudeAdapter();
   if (target === "kiro") return new KiroAdapter();
+  if (target === "trae") return new TraeAdapter();
+  if (target === "qoder") return new QoderAdapter();
   return new CursorAdapter();
 }
 

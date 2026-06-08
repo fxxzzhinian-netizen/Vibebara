@@ -7,17 +7,28 @@ import { CodexAdapter } from "../adapters/codex.js";
 import { WindsurfAdapter } from "../adapters/windsurf.js";
 import { ClaudeAdapter } from "../adapters/claude.js";
 import { KiroAdapter } from "../adapters/kiro.js";
+import { TraeAdapter } from "../adapters/trae.js";
+import { QoderAdapter } from "../adapters/qoder.js";
 import { UnifiedSkillSchema } from "../schema/unified.js";
 import { ensureDir, copyDir, writeFile } from "../utils/fs.js";
 import { dumpYaml } from "../utils/yaml.js";
 
-export type MigrateTarget = "cursor" | "codex" | "windsurf" | "claude" | "kiro";
+export type MigrateTarget =
+  | "cursor"
+  | "codex"
+  | "windsurf"
+  | "claude"
+  | "kiro"
+  | "trae"
+  | "qoder";
 
 function adapterFor(target: MigrateTarget): Adapter {
   if (target === "codex") return new CodexAdapter();
   if (target === "windsurf") return new WindsurfAdapter();
   if (target === "claude") return new ClaudeAdapter();
   if (target === "kiro") return new KiroAdapter();
+  if (target === "trae") return new TraeAdapter();
+  if (target === "qoder") return new QoderAdapter();
   return new CursorAdapter();
 }
 
