@@ -32,6 +32,9 @@ const actionError = ref('')
 const projectError = ref('')
 const settingsSaving = ref(false)
 const teamSkills = ref<NativeSkillItem[]>([])
+// 区分“真的没有 Skill”与“加载失败（慢/弱网/全局 VPN 抖动超时）”：
+// 失败时不要把列表清空成“暂无”，而是提示可重试，避免掩盖真实错误。
+const teamSkillsError = ref(false)
 
 // —— 新增 Skill 到团队仓库 ——
 type AddMethod = 'personal' | 'local' | 'link'
@@ -133,6 +136,7 @@ async function selectTeam(teamId: string) {
   // 切换瞬间清空上一个团队的项目/Skill，避免网络返回前右侧串味
   projectStore.projects = []
   teamSkills.value = []
+  teamSkillsError.value = false
   // 团队详情/成员、项目列表、团队 Skill 三类数据相互独立 —— 并行拉取。
   // 后端单请求延迟约 4.6s，原先串行会叠加到 ~18s（表现为右侧长时间空白）。
   // 各调用内部已各自带乱序保护，故 Promise.all 不会相互覆盖。
@@ -148,12 +152,26 @@ async function loadTeamSkills(teamId: string) {
     const res = await listNativeSkills('team')
     // 乱序保护：返回时若已切到别的团队，丢弃本次结果
     if (teamStore.currentTeamId !== teamId) return
-    teamSkills.value = res.success
-      ? res.skills.filter((s) => s.team_id === teamId)
-      : []
+    if (res.success) {
+      teamSkills.value = res.skills.filter((s) => s.team_id === teamId)
+      teamSkillsError.value = false
+    } else {
+      // 后端返回失败：标记错误，但不要把已有/乐观插入的卡片清空成“暂无”
+      teamSkillsError.value = true
+    }
   } catch {
-    if (teamStore.currentTeamId === teamId) teamSkills.value = []
+    // 网络失败（后端慢、弱网，或全局 VPN 把国内云流量绕境外导致超时/抖动）：
+    // 保留现有列表并标记加载失败，避免把“加载失败”误显示为“该团队暂无 Skill”。
+    if (teamStore.currentTeamId === teamId) teamSkillsError.value = true
   }
+}
+
+/** 乐观插入/更新一条团队 Skill 卡片：导入成功后即便随后的刷新失败也能立即显示。 */
+function upsertTeamSkill(skill: NativeSkillItem) {
+  if (skill.team_id !== teamStore.currentTeamId) return
+  const i = teamSkills.value.findIndex((s) => s.id === skill.id)
+  if (i >= 0) teamSkills.value[i] = skill
+  else teamSkills.value.unshift(skill)
 }
 
 function openAddSkill() {
@@ -214,6 +232,8 @@ async function confirmAddFromPersonal() {
   try {
     const res = await copySkillToTeam(teamStore.currentTeamId, selectedPersonalId.value)
     if (res.success) {
+      // 乐观插入：导入已在云端落库成功，即使随后的刷新因慢/弱网/VPN 失败，卡片也能立即显示
+      if (res.skill) upsertTeamSkill(res.skill)
       await finishAddSkill('已从个人仓库导入到团队仓库')
     } else {
       addSkillError.value = res.error || '导入失败'
@@ -267,8 +287,13 @@ async function confirmAddFromLocal() {
     for (const path of selectedScanPaths.value) {
       const pkg = scannedPackages.value.find((p) => p.source_path === path)
       const res = await importLocalSkillToTeam(teamId, path, pkg?.origin)
-      if (res.success) okCount += 1
-      else failed.push(`${pkg?.display_name || pkg?.name || path}：${res.error || '失败'}`)
+      if (res.success) {
+        okCount += 1
+        // 乐观插入：即使随后的刷新失败，导入成功的卡片也能立即显示
+        if (res.skill) upsertTeamSkill(res.skill)
+      } else {
+        failed.push(`${pkg?.display_name || pkg?.name || path}：${res.error || '失败'}`)
+      }
     }
     if (failed.length) {
       await loadTeamSkills(teamId)
@@ -495,6 +520,15 @@ function logout() {
                 <span class="hash" :title="s.content_hash">{{ s.content_hash?.slice(0, 8) || '--' }}</span>
               </div>
             </div>
+          </div>
+          <div v-else-if="teamSkillsError" class="empty-hint load-error">
+            团队 Skill 加载失败（网络较慢或不稳定，如开启了全局 VPN 请尝试关闭或为本服务设置直连）。
+            <button
+              class="link-btn"
+              @click="teamStore.currentTeamId && loadTeamSkills(teamStore.currentTeamId)"
+            >
+              点击重试
+            </button>
           </div>
           <div v-else class="empty-hint">该团队暂无 Skill</div>
 
@@ -1113,6 +1147,10 @@ function logout() {
   color: #555;
   font-size: 13px;
   margin-top: 32px;
+}
+
+.empty-hint.load-error {
+  color: #d9a441;
 }
 
 .empty-center {
