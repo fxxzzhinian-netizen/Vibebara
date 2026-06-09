@@ -12,7 +12,7 @@ from sqlalchemy import delete, func, select
 from app.core.database import async_session_factory
 from app.models.project import Project, ProjectSkill, UserSkillDeployment
 from app.models.skill_change_log import SkillChangeLog
-from app.models.skill_package import SkillPackage
+from app.models.skill_package import TeamSkill
 from app.models.team import Team
 from app.models.user import User
 from app.services.content_transfer import (
@@ -56,11 +56,24 @@ def _project_to_dict(project: Project, skill_count: int = 0) -> Dict[str, Any]:
     }
 
 
+def _compute_store_hash(prefix: str) -> str:
+    """对象存储前缀内容哈希。
+
+    用于平台 Store 内容（store_path 现为对象键前缀）；与 `_compute_content_hash`
+    （本地 install 目录）同口径，仅数据来源改为对象列举。
+    """
+    if not prefix:
+        return ""
+    from app.services.object_store import get_object_store
+
+    return get_object_store().compute_prefix_hash(prefix)
+
+
 def _compute_content_hash(store_path: str) -> str:
     # R2 收敛（M0 §7.2）：排序键统一为「相对 root 的 POSIX 路径字符串的
     # UTF-8 字节序」，大小写敏感、不做 normcase、分隔符恒为 '/'。
-    # 必须与 native_skill_store._compute_dir_hash 位级一致，否则跨平台/
-    # 中文名会导致 dirty 误判。
+    # 必须与 native_skill_store / 本地代理位级一致，否则跨平台/中文名会导致 dirty 误判。
+    # 注：本函数仅用于**本地 install 目录**；平台 Store（对象存储前缀）用 _compute_store_hash。
     root = Path(store_path)
     if not root.exists():
         return ""
@@ -289,9 +302,9 @@ async def add_skill_to_project(
         if not project:
             return {"success": False, "error": "Project not found"}
 
-        pkg = await session.get(SkillPackage, skill_id)
+        pkg = await session.get(TeamSkill, skill_id)
         if not pkg:
-            return {"success": False, "error": f"Skill '{skill_id}' not found"}
+            return {"success": False, "error": f"Skill '{skill_id}' not found（项目仅能关联团队仓库 Skill，请先「放入团队」）"}
         if pkg.team_id and pkg.team_id != project.team_id:
             return {"success": False, "error": "Skill belongs to another team"}
 
@@ -304,10 +317,7 @@ async def add_skill_to_project(
         if existing.scalar_one_or_none():
             return {"success": False, "error": "Skill already added to project"}
 
-        latest_hash = _compute_content_hash(pkg.store_path) if pkg.store_path else ""
-        pkg.scope = "team"
-        pkg.team_id = project.team_id
-        pkg.project_id = None
+        latest_hash = _compute_store_hash(pkg.store_path) if pkg.store_path else ""
         pkg.content_hash = latest_hash
 
         session.add(
@@ -376,8 +386,8 @@ async def list_project_skills(
 ) -> List[Dict[str, Any]]:
     async with async_session_factory() as session:
         result = await session.execute(
-            select(ProjectSkill, SkillPackage)
-            .join(SkillPackage, SkillPackage.id == ProjectSkill.skill_id)
+            select(ProjectSkill, TeamSkill)
+            .join(TeamSkill, TeamSkill.id == ProjectSkill.skill_id)
             .where(ProjectSkill.project_id == project_id)
             .order_by(ProjectSkill.created_at.desc())
         )
@@ -434,7 +444,7 @@ async def deploy_project_skill(
     if scope == "platform":
         async with async_session_factory() as session:
             project = await session.get(Project, project_id)
-            pkg = await session.get(SkillPackage, skill_id)
+            pkg = await session.get(TeamSkill, skill_id)
             if not project or not pkg:
                 return {"success": False, "error": "Project or skill not found"}
             ref = await session.scalar(
@@ -463,7 +473,7 @@ async def deploy_project_skill(
 
     async with async_session_factory() as session:
         project = await session.get(Project, project_id)
-        pkg = await session.get(SkillPackage, skill_id)
+        pkg = await session.get(TeamSkill, skill_id)
         if not project or not pkg:
             return {"success": False, "error": "Project or skill not found"}
 
@@ -480,7 +490,7 @@ async def deploy_project_skill(
         if install_path.exists() and not overwrite:
             return {"success": False, "error": "Install path exists; pass overwrite=true"}
 
-        repo_hash = _compute_content_hash(pkg.store_path) if pkg.store_path else ""
+        repo_hash = _compute_store_hash(pkg.store_path) if pkg.store_path else ""
         pkg.content_hash = repo_hash
         ref.content_hash = repo_hash
 
@@ -612,7 +622,7 @@ async def resume_tracking_deployment(
             return {"success": False, "error": "Deployment is already tracking"}
 
         project = await session.get(Project, deployment.project_id)
-        pkg = await session.get(SkillPackage, deployment.team_skill_id)
+        pkg = await session.get(TeamSkill, deployment.team_skill_id)
         ref = await session.scalar(
             select(ProjectSkill).where(
                 ProjectSkill.project_id == deployment.project_id,
@@ -644,7 +654,7 @@ async def resume_tracking_deployment(
                 "error": "本地部署目录缺失，请重新部署",
             }
 
-        team_hash = _compute_content_hash(pkg.store_path) if pkg.store_path else ""
+        team_hash = _compute_store_hash(pkg.store_path) if pkg.store_path else ""
         local_changed = current_local_hash != base_installed_hash
         repo_advanced = bool(base_repo_hash) and base_repo_hash != team_hash
 
@@ -695,7 +705,7 @@ async def promote_deployment(
             return {"success": False, "error": "Cannot promote another user's deployment"}
 
         project = await session.get(Project, deployment.project_id)
-        pkg = await session.get(SkillPackage, deployment.team_skill_id)
+        pkg = await session.get(TeamSkill, deployment.team_skill_id)
         ref = await session.scalar(
             select(ProjectSkill).where(
                 ProjectSkill.project_id == deployment.project_id,
@@ -705,7 +715,7 @@ async def promote_deployment(
         if not project or not pkg or not ref:
             return {"success": False, "error": "Project skill relation missing"}
 
-        team_hash = _compute_content_hash(pkg.store_path) if pkg.store_path else ""
+        team_hash = _compute_store_hash(pkg.store_path) if pkg.store_path else ""
         local_hash = _compute_content_hash(deployment.install_path)
         if not local_hash:
             deployment.status = "missing"
@@ -727,17 +737,16 @@ async def promote_deployment(
     async with async_session_factory() as session:
         deployment = await session.get(UserSkillDeployment, deployment_id)
         project = await session.get(Project, deployment.project_id)
-        pkg = await session.get(SkillPackage, deployment.team_skill_id)
+        pkg = await session.get(TeamSkill, deployment.team_skill_id)
         ref = await session.scalar(
             select(ProjectSkill).where(
                 ProjectSkill.project_id == deployment.project_id,
                 ProjectSkill.skill_id == deployment.team_skill_id,
             )
         )
-        promoted_hash = _compute_content_hash(pkg.store_path) if pkg and pkg.store_path else ""
+        promoted_hash = _compute_store_hash(pkg.store_path) if pkg and pkg.store_path else ""
         if pkg:
-            pkg.scope = "team"
-            pkg.team_id = project.team_id if project else pkg.team_id
+            # 拆表后 pkg 即团队表行，team_id 已固定，无需再翻转 scope。
             pkg.content_hash = promoted_hash
         if ref:
             ref.version += 1
@@ -913,9 +922,9 @@ async def mark_skill_deployments_outdated(skill_id: str, editor_user_id: str) ->
     本函数只负责推进部署实例的同步状态。
     """
     async with async_session_factory() as session:
-        pkg = await session.get(SkillPackage, skill_id)
+        pkg = await session.get(TeamSkill, skill_id)
         latest_hash = (
-            _compute_content_hash(pkg.store_path) if pkg and pkg.store_path else ""
+            _compute_store_hash(pkg.store_path) if pkg and pkg.store_path else ""
         )
 
         refs = (
@@ -980,7 +989,7 @@ async def push_deployment(
             }
 
         project = await session.get(Project, deployment.project_id)
-        pkg = await session.get(SkillPackage, deployment.team_skill_id)
+        pkg = await session.get(TeamSkill, deployment.team_skill_id)
         team = await session.get(Team, project.team_id) if project else None
         if not project or not pkg:
             return {"success": False, "error": "Project or skill not found"}
@@ -1041,7 +1050,7 @@ async def push_deployment(
         change_items = diff_abstract_packages(base_pkg, current_pkg)
         summary = summarize_changes(change_items)
 
-        team_hash = _compute_content_hash(pkg.store_path) if pkg.store_path else ""
+        team_hash = _compute_store_hash(pkg.store_path) if pkg.store_path else ""
         conflict = bool(deployment.repo_hash and deployment.repo_hash != team_hash)
 
         # 冲突：团队仓库在本次部署后被他人推送过，拦截本次推送
@@ -1095,7 +1104,7 @@ async def push_deployment(
     async with async_session_factory() as session:
         deployment = await session.get(UserSkillDeployment, deployment_id)
         project = await session.get(Project, deployment.project_id)
-        pkg = await session.get(SkillPackage, skill_id)
+        pkg = await session.get(TeamSkill, skill_id)
         ref = await session.scalar(
             select(ProjectSkill).where(
                 ProjectSkill.project_id == deployment.project_id,
@@ -1103,10 +1112,9 @@ async def push_deployment(
             )
         )
 
-        promoted_hash = _compute_content_hash(pkg.store_path) if pkg and pkg.store_path else ""
+        promoted_hash = _compute_store_hash(pkg.store_path) if pkg and pkg.store_path else ""
         if pkg:
-            pkg.scope = "team"
-            pkg.team_id = project.team_id if project else pkg.team_id
+            # 拆表后 pkg 即团队表行，team_id 已固定，无需再翻转 scope。
             pkg.content_hash = promoted_hash
         new_version = deployment.repo_version + 1
         if ref:
@@ -1235,7 +1243,7 @@ async def pull_update_deployment(
             return {"success": False, "error": "Deployment tracking is disabled"}
 
         project = await session.get(Project, deployment.project_id)
-        pkg = await session.get(SkillPackage, deployment.team_skill_id)
+        pkg = await session.get(TeamSkill, deployment.team_skill_id)
         ref = await session.scalar(
             select(ProjectSkill).where(
                 ProjectSkill.project_id == deployment.project_id,
@@ -1282,14 +1290,14 @@ async def pull_update_deployment(
     async with async_session_factory() as session:
         deployment = await session.get(UserSkillDeployment, deployment_id)
         project = await session.get(Project, deployment.project_id)
-        pkg = await session.get(SkillPackage, skill_id)
+        pkg = await session.get(TeamSkill, skill_id)
         ref = await session.scalar(
             select(ProjectSkill).where(
                 ProjectSkill.project_id == deployment.project_id,
                 ProjectSkill.skill_id == skill_id,
             )
         )
-        team_hash = _compute_content_hash(pkg.store_path) if pkg and pkg.store_path else ""
+        team_hash = _compute_store_hash(pkg.store_path) if pkg and pkg.store_path else ""
 
         deployment.repo_version = ref.version if ref else deployment.repo_version
         deployment.repo_hash = team_hash
@@ -1369,7 +1377,7 @@ def _assemble_artifact(
     - resources 从 Store 归集（含二进制，base64 inline）；
     - abstract_snapshot 在临时目录重建「contents + 资源」后 parse_native_skill 直接
       生成（M0 §3.1 / 分歧 D4 选项 A），临时目录用完即删；
-    - repo_hash = _compute_content_hash(store_path)（M1 收敛算法，与本地代理位级一致）。
+    - repo_hash = _compute_store_hash(store_path)（M1 收敛算法，与本地代理位级一致）。
     """
     contents: Dict[str, str] = {}
     for out in build_outputs or []:
@@ -1398,7 +1406,7 @@ def _assemble_artifact(
         "tool": tool,
         "contents": contents,
         "resources": resources,
-        "repo_hash": _compute_content_hash(store_path),
+        "repo_hash": _compute_store_hash(store_path),
         "repo_version": repo_version,
         "abstract_snapshot": abstract_snapshot,
     }
@@ -1416,7 +1424,7 @@ async def _build_artifact_payload(
         return {"success": False, "error": "tool must be cursor, codex, windsurf, claude, kiro, trae or qoder"}
 
     async with async_session_factory() as session:
-        pkg = await session.get(SkillPackage, skill_id)
+        pkg = await session.get(TeamSkill, skill_id)
         if not pkg or not pkg.store_path:
             return {"success": False, "error": f"Skill '{skill_id}' not found"}
         store_path = pkg.store_path
@@ -1443,7 +1451,7 @@ async def build_project_skill_artifact(
     """
     async with async_session_factory() as session:
         project = await session.get(Project, project_id)
-        pkg = await session.get(SkillPackage, skill_id)
+        pkg = await session.get(TeamSkill, skill_id)
         if not project or not pkg:
             return {"success": False, "error": "Project or skill not found"}
         ref = await session.scalar(
@@ -1537,7 +1545,7 @@ async def register_deployment(
 
     async with async_session_factory() as session:
         project = await session.get(Project, project_id)
-        pkg = await session.get(SkillPackage, skill_id)
+        pkg = await session.get(TeamSkill, skill_id)
         if not project or not pkg:
             return {"success": False, "error": "Project or skill not found"}
         ref = await session.scalar(
@@ -1709,7 +1717,7 @@ async def push_deployment_content(
             }
 
         project = await session.get(Project, deployment.project_id)
-        pkg = await session.get(SkillPackage, deployment.team_skill_id)
+        pkg = await session.get(TeamSkill, deployment.team_skill_id)
         if not project or not pkg:
             return {"success": False, "error": "Project or skill not found"}
 
@@ -1781,7 +1789,7 @@ async def push_deployment_content(
         change_items = diff_abstract_packages(base_pkg, current_pkg)
         summary = summarize_changes(change_items)
 
-        team_hash = _compute_content_hash(store_path) if store_path else ""
+        team_hash = _compute_store_hash(store_path) if store_path else ""
         conflict = bool(repo_hash_at_deploy and repo_hash_at_deploy != team_hash)
 
         # 冲突：团队仓库在本次部署后被他人推送过，拦截本次推送
@@ -1833,7 +1841,7 @@ async def push_deployment_content(
     async with async_session_factory() as session:
         deployment = await session.get(UserSkillDeployment, deployment_id)
         project = await session.get(Project, deployment.project_id)
-        pkg = await session.get(SkillPackage, skill_id)
+        pkg = await session.get(TeamSkill, skill_id)
         ref = await session.scalar(
             select(ProjectSkill).where(
                 ProjectSkill.project_id == deployment.project_id,
@@ -1841,10 +1849,9 @@ async def push_deployment_content(
             )
         )
 
-        promoted_hash = _compute_content_hash(pkg.store_path) if pkg and pkg.store_path else ""
+        promoted_hash = _compute_store_hash(pkg.store_path) if pkg and pkg.store_path else ""
         if pkg:
-            pkg.scope = "team"
-            pkg.team_id = project.team_id if project else pkg.team_id
+            # 拆表后 pkg 即团队表行，team_id 已固定，无需再翻转 scope。
             pkg.content_hash = promoted_hash
         new_version = deployment.repo_version + 1
         if ref:
@@ -1972,7 +1979,7 @@ async def get_changes_since(
         skill_map: Dict[str, str] = {}
         if skill_ids:
             skills_result = await session.execute(
-                select(SkillPackage).where(SkillPackage.id.in_(skill_ids))
+                select(TeamSkill).where(TeamSkill.id.in_(skill_ids))
             )
             for skill in skills_result.scalars().all():
                 skill_map[skill.id] = skill.display_name or skill.id

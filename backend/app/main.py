@@ -87,15 +87,14 @@ async def lifespan(app: FastAPI):
     print("  [启动] 检查预设用户...")
     await _seed_default_users()
 
-    # Native Skill Store 初始化（集中存储 → DB 同步，云/本地共用）
-    print(f"  [启动] 初始化 Native Skill Store: {settings.SKILL_STORE_DIR}")
+    # Native Skill Store 初始化（对象存储 → DB 同步，云/本地共用）
+    print(f"  [启动] 初始化 Native Skill Store: backend={settings.STORAGE_BACKEND}")
     await NativeSkillStore.init(settings.SKILL_STORE_DIR)
 
     if is_cloud:
         # 云端模式：不主动扫描"用户本地目录"，不轮询本地部署 dirty。
-        # 仅保留 Store 同步/广播（FileWatcher 的 store 监控）。
+        # STORAGE_BACKEND=cos 时 store 无本地 FS 事件，FileWatcher 会自动跳过监控。
         print("  [启动] cloud 模式：跳过本地 Skill 扫描与本地部署轮询")
-        print(f"  [启动] 启动 Store 监控（仅同步/广播）: {settings.SKILL_STORE_DIR}")
         await FileWatcherService.start(
             settings.SKILL_STORE_DIR, watch_deployments=False
         )

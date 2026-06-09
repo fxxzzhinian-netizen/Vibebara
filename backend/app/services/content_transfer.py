@@ -108,39 +108,44 @@ def _encode_bytes(data: bytes) -> Dict[str, str]:
 
 
 def collect_store_resources(store_path: str) -> List[Dict[str, Any]]:
-    """归集 Store 目录下 scripts/references/assets 资源为 CloudResourceItem 列表。
+    """归集 Store 前缀下 scripts/references/assets 资源为 CloudResourceItem 列表。
 
-    - 仅纳入这三类资源子目录（与 deploy() 落盘复制范围一致）；root 下的
+    - `store_path` 为对象存储键前缀（如 skills/team/foo-team-abc）。
+    - 仅纳入这三类资源子目录（与 deploy() 落盘复制范围一致）；前缀下的
       skill.config.yaml / SKILL.md / LICENSE 不属于 install 资源，不下发。
-    - 排序键用「相对 store_path 的 POSIX 路径 UTF-8 字节序」，与 hash 收敛口径一致，
-      保证产物顺序稳定（M0 §7.2）。
+    - 排序键用「相对前缀的 POSIX 路径 UTF-8 字节序」，与 hash 收敛口径一致（M0 §7.2）。
     - 默认 transfer=inline；大资源切 url 留后续（M2 决议⑥，契约已预留字段）。
     """
-    root = Path(store_path)
+    from app.services.object_store import get_object_store
+
+    store = get_object_store()
     items: List[Dict[str, Any]] = []
-    if not root.is_dir():
+    if not store_path:
         return items
-    for category in RESOURCE_CATEGORIES:
-        sub = root / category
-        if not sub.is_dir():
+    base = store_path.rstrip("/") + "/"
+    keys = sorted(
+        (
+            k for k in store.list(base)
+            if "/" in k[len(base):]
+            and k[len(base):].split("/", 1)[0] in RESOURCE_CATEGORIES
+        ),
+        key=lambda k: k[len(base):].encode("utf-8"),
+    )
+    for k in keys:
+        rel = k[len(base):]
+        data = store.get_bytes(k)
+        if data is None:
             continue
-        files = sorted(
-            (p for p in sub.rglob("*") if p.is_file()),
-            key=lambda p: p.relative_to(root).as_posix().encode("utf-8"),
+        enc = _encode_bytes(data)
+        items.append(
+            {
+                "path": rel,
+                "transfer": "inline",
+                "encoding": enc["encoding"],
+                "content": enc["content"],
+                "size": len(data),
+            }
         )
-        for f in files:
-            rel = f.relative_to(root).as_posix()
-            data = f.read_bytes()
-            enc = _encode_bytes(data)
-            items.append(
-                {
-                    "path": rel,
-                    "transfer": "inline",
-                    "encoding": enc["encoding"],
-                    "content": enc["content"],
-                    "size": len(data),
-                }
-            )
     return items
 
 

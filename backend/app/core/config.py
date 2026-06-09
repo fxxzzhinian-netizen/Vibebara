@@ -81,8 +81,22 @@ class Settings(BaseSettings):
     # 不再隐含 Path.home()，Windows/Linux 通用。
     COWORK_DATA_DIR: str = ""
     SKILL_SCAN_DIR: str = ""
-    # 平台原生 skill 集中存储目录。空 → {data_dir}/skills。
+    # 平台原生 skill 集中存储目录。空 → {data_dir}/skills。仅 STORAGE_BACKEND=local 使用。
     SKILL_STORE_DIR: str = ""
+
+    # ------------------------------------------------------------------
+    # 对象存储（Skill 持久化后端）
+    # ------------------------------------------------------------------
+    # "local" = 本地文件系统（开发默认，键映射到 COWORK_DATA_DIR 下）；
+    # "cos"   = 腾讯云 COS 对象存储（生产，需配 COS_* 凭证）。
+    STORAGE_BACKEND: Literal["local", "cos"] = "local"
+    COS_BUCKET: str = ""          # 形如 vibebara-1327732770（含 AppId）
+    COS_REGION: str = ""          # 形如 ap-chengdu
+    COS_SECRET_ID: str = ""       # 经环境变量注入，勿入库/前端/git
+    COS_SECRET_KEY: str = ""
+    COS_PREFIX: str = ""          # 桶内统一前缀（多环境共享一桶时区分），默认空
+    # 启动时按 COS 前缀列举重建 DB 索引（_sync_from_filesystem）。skill 多时可关，信任 DB。
+    SKILL_STORE_SYNC_ON_START: bool = True
 
     LLM_BASE_URL: str = "https://api.gptsapi.net"
     LLM_API_KEY: str = ""

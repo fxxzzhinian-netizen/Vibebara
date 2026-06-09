@@ -67,19 +67,10 @@ async def init_db() -> None:
 
 async def _migrate_add_columns() -> None:
     """为已有表补充新增列（幂等，列已存在则跳过）"""
+    # 注：个人/团队 Skill 已从单表 skill_packages 拆为 personal_skills / team_skills
+    # 两张物理表，新表由 create_all 直接建出完整列，无需在此增量补列。
     migrations = [
         ("teams", "auto_skill_hot_update", "TINYINT(1) NOT NULL DEFAULT 0"),
-        ("skill_packages", "scope", "VARCHAR(16) NOT NULL DEFAULT 'personal'"),
-        ("skill_packages", "team_id", "VARCHAR(36) NULL"),
-        ("skill_packages", "source_skill_id", "VARCHAR(64) NULL"),
-        ("skill_packages", "content_hash", "VARCHAR(64) NOT NULL DEFAULT ''"),
-        ("skill_packages", "owner_id", "VARCHAR(36) NULL"),
-        ("skill_packages", "project_id", "VARCHAR(36) NULL"),
-        ("skill_packages", "deployed_windsurf", "TINYINT(1) NOT NULL DEFAULT 0"),
-        ("skill_packages", "deployed_claude", "TINYINT(1) NOT NULL DEFAULT 0"),
-        ("skill_packages", "deployed_kiro", "TINYINT(1) NOT NULL DEFAULT 0"),
-        ("skill_packages", "deployed_trae", "TINYINT(1) NOT NULL DEFAULT 0"),
-        ("skill_packages", "deployed_qoder", "TINYINT(1) NOT NULL DEFAULT 0"),
         ("skill_change_log", "team_id", "VARCHAR(36) NULL"),
         ("skill_change_log", "deployment_id", "VARCHAR(36) NULL"),
         ("skill_change_log", "source", "VARCHAR(32) NOT NULL DEFAULT 'team_repo'"),

@@ -11,6 +11,8 @@ import {
 
 export interface NativeSkillItem {
   id: string
+  // 自然名：个人 Skill 即 id；团队 Skill 为去团队后缀的自然名（id 为团队代理键）。
+  name?: string
   display_name: string
   description: string
   short_description: string

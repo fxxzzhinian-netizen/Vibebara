@@ -8,18 +8,17 @@ SkillVersionService — 团队 Skill 的「版本快照」服务（创建 / 列�
 所有 Skill 内容读写仍由 NativeSkillStore 负责，本服务只管版本快照与回滚编排。
 """
 
+import hashlib
 import json
 import logging
-import shutil
 import uuid
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import delete as sa_delete, func, select
 
 from app.core.config import settings
 from app.core.database import async_session_factory
-from app.models.skill_package import SkillPackage
+from app.models.skill_package import TeamSkill
 from app.models.skill_version import SkillVersion
 from app.models.user import User
 
@@ -28,21 +27,43 @@ logger = logging.getLogger(__name__)
 _RESOURCE_DIRS = ("scripts", "references", "assets")
 
 
-def _versions_root() -> Path:
-    """版本资源快照根目录（与 Skill Store 同级的 {data_dir}/skill_versions）。"""
-    return Path(settings.SKILL_STORE_DIR).parent / "skill_versions"
+def _version_prefix(skill_id: str, version_id: str) -> str:
+    """版本资源快照对象前缀（skill_versions/{skill_id}/{version_id}）。"""
+    return f"skill_versions/{skill_id}/{version_id}"
 
 
-def _snapshot_dir(skill_id: str, version_id: str) -> Path:
-    return _versions_root() / skill_id / version_id
+def _scan_store_resource_hashes(prefix: str) -> Dict[str, str]:
+    """扫描对象前缀下 scripts/references/assets，返回 {相对路径: sha256}。"""
+    from app.services.object_store import get_object_store
+
+    store = get_object_store()
+    result: Dict[str, str] = {}
+    base = prefix.rstrip("/") + "/"
+    for key in store.list(base):
+        rel = key[len(base):]
+        if "/" not in rel or rel.split("/", 1)[0] not in _RESOURCE_DIRS:
+            continue
+        data = store.get_bytes(key)
+        if data is None:
+            continue
+        result[rel] = hashlib.sha256(data).hexdigest()
+    return result
 
 
-def _copy_resources(src_dir: Path, dst_dir: Path) -> None:
-    """把 src_dir 下的 scripts/references/assets 复制到 dst_dir（保持结构）。"""
-    for cat in _RESOURCE_DIRS:
-        src_sub = src_dir / cat
-        if src_sub.is_dir() and any(src_sub.iterdir()):
-            shutil.copytree(str(src_sub), str(dst_dir / cat), dirs_exist_ok=True)
+def _copy_store_resources(src_prefix: str, dst_prefix: str) -> None:
+    """把 src_prefix 下 scripts/references/assets 资源逐对象复制到 dst_prefix。"""
+    from app.services.object_store import get_object_store
+
+    store = get_object_store()
+    src_base = src_prefix.rstrip("/") + "/"
+    dst_base = dst_prefix.rstrip("/") + "/"
+    for key in store.list(src_base):
+        rel = key[len(src_base):]
+        if "/" not in rel or rel.split("/", 1)[0] not in _RESOURCE_DIRS:
+            continue
+        data = store.get_bytes(key)
+        if data is not None:
+            store.put_bytes(dst_base + rel, data)
 
 
 class SkillVersionService:
@@ -76,7 +97,6 @@ class SkillVersionService:
         （不抛错，避免阻断推送/保存主流程）。
         """
         from app.services.native_skill_store import NativeSkillStore
-        from app.services.skill_diff_service import _scan_resource_hashes
 
         detail = await NativeSkillStore.get_by_id(skill_id)
         if detail is None:
@@ -88,19 +108,19 @@ class SkillVersionService:
         db = detail.get("db") or {}
         content_hash = db.get("content_hash") or ""
         team_id = db.get("team_id")
-        store_path = Path(detail.get("store_path") or "")
+        store_prefix = detail.get("store_path") or ""
 
         version_id = str(uuid.uuid4())
 
-        # 资源文件字节快照落盘 + 清单（路径 -> sha256）。失败不阻断建版本。
+        # 资源字节快照写对象存储 + 清单（路径 -> sha256）。失败不阻断建版本。
         resources_manifest: Dict[str, str] = {}
         try:
-            if store_path.is_dir():
-                resources_manifest = _scan_resource_hashes(store_path)
+            if store_prefix:
+                resources_manifest = _scan_store_resource_hashes(store_prefix)
                 if resources_manifest:
-                    snap = _snapshot_dir(skill_id, version_id)
-                    snap.mkdir(parents=True, exist_ok=True)
-                    _copy_resources(store_path, snap)
+                    _copy_store_resources(
+                        store_prefix, _version_prefix(skill_id, version_id)
+                    )
         except Exception as e:
             logger.warning(f"[SkillVersion] 资源快照失败 skill='{skill_id}': {e}")
             resources_manifest = {}
@@ -175,60 +195,51 @@ class SkillVersionService:
         复用网页编辑保存的同步语义：写盘 → upsert → 记项目动态 → 标记成员部署
         outdated/conflict → 落一条 restore 版本。
         """
-        from app.services.native_skill_store import (
-            NativeSkillStore,
-            _read_yaml,
-            _write_yaml,
-        )
+        from app.services.native_skill_store import NativeSkillStore
         from app.services.skill_diff_service import (
-            _scan_resource_hashes,
             diff_abstract_packages,
             summarize_changes,
         )
         from app.services.skill_sync_service import SkillSyncService
         from app.services.project_service import mark_skill_deployments_outdated
+        from app.services.object_store import get_object_store
 
         async with async_session_factory() as session:
             ver = await session.get(SkillVersion, version_id)
             if ver is None or ver.skill_id != skill_id:
                 raise FileNotFoundError("版本不存在")
-            pkg = await session.get(SkillPackage, skill_id)
+            pkg = await session.get(TeamSkill, skill_id)
             if pkg is None:
                 raise FileNotFoundError(f"Skill '{skill_id}' not found")
             base_hash = pkg.content_hash or ""
-            store_path = pkg.store_path
+            store_prefix = pkg.store_path
+            team_id = pkg.team_id
+            team_name = pkg.name
             from_seq = ver.seq
             snapshot_config = json.loads(ver.config_json or "{}")
             snapshot_vibeh = ver.vibeh_content or ""
 
-        skill_dir = Path(store_path)
-        config_path = skill_dir / "skill.config.yaml"
-        vibeh_path = skill_dir / "SKILL.md"
-        if not config_path.exists():
+        if not NativeSkillStore._store_exists(store_prefix):
             raise FileNotFoundError(f"Skill '{skill_id}' store missing")
 
-        old_config = _read_yaml(config_path)
-        old_vibeh = (
-            vibeh_path.read_text(encoding="utf-8") if vibeh_path.exists() else ""
-        )
-        old_res = _scan_resource_hashes(skill_dir)
+        old_config = NativeSkillStore._read_store_config(store_prefix)
+        old_vibeh = NativeSkillStore._read_store_vibeh(store_prefix)
+        old_res = _scan_store_resource_hashes(store_prefix)
 
-        # 完整覆盖写盘（config + 正文）
-        _write_yaml(config_path, snapshot_config)
-        vibeh_path.write_text(snapshot_vibeh, encoding="utf-8")
+        # 完整覆盖写对象存储（config + 正文）
+        NativeSkillStore._write_store_config(store_prefix, snapshot_config)
+        NativeSkillStore._write_store_vibeh(store_prefix, snapshot_vibeh)
 
-        # 资源文件还原：清空当前 scripts/references/assets，再从版本快照目录拷回。
-        snap = _snapshot_dir(skill_id, version_id)
+        # 资源还原：清空当前 scripts/references/assets，再从版本快照前缀拷回。
+        store = get_object_store()
         for cat in _RESOURCE_DIRS:
-            target = skill_dir / cat
-            if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-        if snap.is_dir():
-            _copy_resources(snap, skill_dir)
-        new_res = _scan_resource_hashes(skill_dir)
+            store.delete_prefix(f"{store_prefix.rstrip('/')}/{cat}")
+        _copy_store_resources(_version_prefix(skill_id, version_id), store_prefix)
+        new_res = _scan_store_resource_hashes(store_prefix)
 
         row = await NativeSkillStore._upsert_db(
-            skill_id, snapshot_config, str(skill_dir)
+            skill_id, snapshot_config, store_prefix,
+            scope="team", team_id=team_id, name=team_name,
         )
         new_hash = row.content_hash or ""
 
@@ -296,9 +307,9 @@ class SkillVersionService:
                 sa_delete(SkillVersion).where(SkillVersion.skill_id == skill_id)
             )
             await session.commit()
-        snap_root = _versions_root() / skill_id
-        if snap_root.exists():
-            shutil.rmtree(snap_root, ignore_errors=True)
+        from app.services.object_store import get_object_store
+
+        get_object_store().delete_prefix(f"skill_versions/{skill_id}")
 
     @staticmethod
     def _row_to_dict(

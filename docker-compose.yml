@@ -48,11 +48,16 @@ services:
       JWT_SECRET: ${JWT_SECRET:?请在同目录 .env 设置 JWT_SECRET}
       # 联调期放开 CORS（含 Electron null Origin）。正式环境收紧为具体来源。
       ALLOW_ORIGIN_REGEX: ".*"
+      # 对象存储后端：Skill 持久化改用腾讯云 COS（不再用本地磁盘卷）。
+      # 详见 docs/cos-storage-migration.md。密钥务必经 .env 注入，勿入 git。
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-cos}
+      COS_BUCKET: ${COS_BUCKET:-vibebara-1327732770}
+      COS_REGION: ${COS_REGION:-ap-chengdu}
+      COS_SECRET_ID: ${COS_SECRET_ID:?请在同目录 .env 设置 COS_SECRET_ID}
+      COS_SECRET_KEY: ${COS_SECRET_KEY:?请在同目录 .env 设置 COS_SECRET_KEY}
+      COS_PREFIX: ${COS_PREFIX:-}
     ports:
       - "8000:8000"
-    volumes:
-      # 平台原生 skill 集中存储持久化（默认 COWORK_DATA_DIR=/app/data）
-      - skill-store:/app/data
     depends_on:
       mysql:
         condition: service_healthy
@@ -60,4 +65,3 @@ services:
 
 volumes:
   mysql-data:
-  skill-store:

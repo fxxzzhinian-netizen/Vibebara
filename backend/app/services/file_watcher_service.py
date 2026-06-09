@@ -35,24 +35,30 @@ class FileWatcherService:
             False（cloud）= 仅启动 Store 监控（同步/广播），不轮询用户本地部署目录。
             部署 dirty 检测在方案 B 中下沉给本地代理 WS /local/watch（见 M0 §3.6）。
         """
+        from app.core.config import settings
+
         cls._store_dir = store_dir
         cls._stop_event = asyncio.Event()
 
-        store_path = Path(store_dir)
-        if not store_path.is_dir():
-            logger.warning(
-                f"[FileWatcher] 监视目录不存在，跳过启动: {store_dir}"
-            )
-            return
+        # 对象存储为 COS 时无本地 FS 变更事件，跳过 store 文件监控；
+        # store→DB 同步改由应用内显式调用（create/update/import 等）触发。
+        watch_store = settings.STORAGE_BACKEND != "cos"
+        if watch_store:
+            store_path = Path(store_dir)
+            if store_path.is_dir():
+                cls._task = asyncio.create_task(cls._watch_loop())
+            else:
+                logger.warning(
+                    f"[FileWatcher] 监视目录不存在，跳过 store 监控: {store_dir}"
+                )
 
-        cls._task = asyncio.create_task(cls._watch_loop())
         if watch_deployments:
             cls._deployment_task = asyncio.create_task(cls._deployment_poll_loop())
-            logger.info(f"[FileWatcher] 已启动（含部署轮询），监视目录: {store_dir}")
-        else:
-            logger.info(
-                f"[FileWatcher] 已启动（仅 Store 监控，不轮询本地部署），目录: {store_dir}"
-            )
+
+        logger.info(
+            f"[FileWatcher] 已启动 store_watch={watch_store and bool(cls._task)} "
+            f"deploy_poll={watch_deployments} backend={settings.STORAGE_BACKEND}"
+        )
 
     @classmethod
     async def stop(cls) -> None:
@@ -116,11 +122,19 @@ class FileWatcherService:
 
     @classmethod
     def _extract_skill_id(cls, file_path: Path) -> Optional[str]:
-        """从文件路径中提取 skill_id（store_dir 的直接子目录名）"""
+        """从文件路径中提取 skill_id。
+
+        拆表后 store 目录按仓库分层：`personal/{id}/...` 或 `team/{id}/...`，
+        故命名空间下 id 在 parts[1]；兼容旧扁平布局 `{id}/...`（id 在 parts[0]）。
+        """
         try:
             store = Path(cls._store_dir)
             rel = file_path.relative_to(store)
             parts = rel.parts
+            if parts and parts[0] in ("personal", "team"):
+                if len(parts) >= 3:
+                    return parts[1]
+                return None
             if len(parts) >= 2:
                 return parts[0]
         except (ValueError, IndexError):
@@ -137,7 +151,9 @@ class FileWatcherService:
             return False
 
         parts = rel.parts
-        if len(parts) < 2:
+        # 命名空间布局需 scope/id/文件 三段；旧扁平布局需 id/文件 两段。
+        min_len = 3 if (parts and parts[0] in ("personal", "team")) else 2
+        if len(parts) < min_len:
             return False
 
         if any(part in IGNORED_DIRS for part in parts):
@@ -162,12 +178,11 @@ class FileWatcherService:
         )
         from app.services.skill_sync_service import SkillSyncService
 
-        skill_dir = Path(cls._store_dir) / skill_id
-        config_path = skill_dir / "skill.config.yaml"
-
-        if not config_path.exists():
+        skill_dir, scope = NativeSkillStore._resolve_dir(skill_id)
+        if skill_dir is None:
             logger.debug(f"[FileWatcher] skill '{skill_id}' 配置不存在，跳过")
             return
+        config_path = skill_dir / "skill.config.yaml"
 
         try:
             config = _read_yaml(config_path)
@@ -176,7 +191,17 @@ class FileWatcherService:
                 config["resources"] = resources
                 _write_yaml(config_path, config)
 
-            await NativeSkillStore._upsert_db(skill_id, config, str(skill_dir))
+            if scope == "team":
+                await NativeSkillStore._upsert_db(
+                    skill_id, config, str(skill_dir), scope="team",
+                    team_id=config.get("team_id"),
+                    source_skill_id=config.get("source_skill_id"),
+                    name=config.get("name") or NativeSkillStore._strip_team_suffix(skill_id),
+                )
+            else:
+                await NativeSkillStore._upsert_db(
+                    skill_id, config, str(skill_dir), scope="personal"
+                )
 
             await SkillSyncService.on_skill_changed(
                 skill_id=skill_id,

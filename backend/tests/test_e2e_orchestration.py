@@ -44,7 +44,7 @@ from sqlalchemy import delete, select  # noqa: E402
 from app.core.database import async_session_factory, engine  # noqa: E402
 from app.models.project import Project, ProjectSkill, UserSkillDeployment  # noqa: E402
 from app.models.skill_change_log import SkillChangeLog  # noqa: E402
-from app.models.skill_package import SkillPackage  # noqa: E402
+from app.models.skill_package import PersonalSkill, TeamSkill  # noqa: E402
 from app.models.team import Team, TeamMember  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.services import project_service  # noqa: E402
@@ -133,16 +133,19 @@ async def ensure_tables() -> None:
 
 async def cleanup(ids: dict) -> None:
     async with async_session_factory() as s:
-        if ids.get("skill_id"):
-            await s.execute(delete(SkillChangeLog).where(SkillChangeLog.skill_id == ids["skill_id"]))
-            await s.execute(delete(UserSkillDeployment).where(UserSkillDeployment.team_skill_id == ids["skill_id"]))
-            await s.execute(delete(ProjectSkill).where(ProjectSkill.skill_id == ids["skill_id"]))
+        tsid = ids.get("team_skill_id")
+        if tsid:
+            await s.execute(delete(SkillChangeLog).where(SkillChangeLog.skill_id == tsid))
+            await s.execute(delete(UserSkillDeployment).where(UserSkillDeployment.team_skill_id == tsid))
+            await s.execute(delete(ProjectSkill).where(ProjectSkill.skill_id == tsid))
         if ids.get("project_id"):
             await s.execute(delete(UserSkillDeployment).where(UserSkillDeployment.project_id == ids["project_id"]))
             await s.execute(delete(ProjectSkill).where(ProjectSkill.project_id == ids["project_id"]))
             await s.execute(delete(SkillChangeLog).where(SkillChangeLog.project_id == ids["project_id"]))
+        if tsid:
+            await s.execute(delete(TeamSkill).where(TeamSkill.id == tsid))
         if ids.get("skill_id"):
-            await s.execute(delete(SkillPackage).where(SkillPackage.id == ids["skill_id"]))
+            await s.execute(delete(PersonalSkill).where(PersonalSkill.id == ids["skill_id"]))
         if ids.get("project_id"):
             await s.execute(delete(Project).where(Project.id == ids["project_id"]))
         if ids.get("team_id"):
@@ -190,22 +193,29 @@ async def run_e2e(store_dir: str, project_dir: str) -> None:
             s.add(Project(id=ids["project_id"], team_id=ids["team_id"], name="E2E Proj", created_by=ids["user_id"]))
             await s.commit()
 
-        # --- 0b. 创建 store skill（写真实 store 目录 + SkillPackage），补资源后关联到项目 ---
+        # --- 0b. 创建个人 skill（personal_skills），补资源后复制到团队仓库（team_skills），
+        # 再把团队 skill 关联到项目（拆表后项目仅能关联团队仓库 Skill）---
         await NativeSkillStore.create(
             {"name": ids["skill_id"], "description": "e2e demo skill"},
             vibeh_content="# e2e\n\n演示技能正文。\n",
             owner_id=ids["user_id"],
         )
-        skill_store = Path(store_dir) / ids["skill_id"]
+        skill_store = Path(store_dir) / "personal" / ids["skill_id"]
         (skill_store / "scripts" / "run.py").write_bytes(b"print('e2e v1')\n")
         # 二进制资源：验证 base64 inline 忠实落盘
         (skill_store / "assets" / "icon.png").write_bytes(bytes(range(256)) * 2)
-        res = await project_service.add_skill_to_project(ids["project_id"], ids["skill_id"], ids["user_id"])
+        team_skill = await NativeSkillStore.copy_to_team(
+            ids["skill_id"], ids["team_id"], ids["user_id"]
+        )
+        ids["team_skill_id"] = team_skill["id"]
+        res = await project_service.add_skill_to_project(
+            ids["project_id"], ids["team_skill_id"], ids["user_id"]
+        )
         assert res.get("success"), res
 
         # =============== ① deploy ===============
         art = await project_service.build_project_skill_artifact(
-            ids["project_id"], ids["skill_id"], ids["user_id"], "cursor"
+            ids["project_id"], ids["team_skill_id"], ids["user_id"], "cursor"
         )
         assert art.get("success"), art
         assert "SKILL.md" in art["contents"], art["contents"].keys()
@@ -216,7 +226,7 @@ async def run_e2e(store_dir: str, project_dir: str) -> None:
 
         status, w = agent_post("/local/write-skill", {
             "deployPath": project_dir, "scope": "project", "tool": "cursor",
-            "skillId": ids["skill_id"], "contents": art["contents"],
+            "skillId": ids["team_skill_id"], "contents": art["contents"],
             "resources": art["resources"], "overwrite": True, "ensureGitignore": True,
         })
         assert status == 200 and w.get("ok"), (status, w)
@@ -235,7 +245,7 @@ async def run_e2e(store_dir: str, project_dir: str) -> None:
         assert ".cursor/skills/" in (Path(project_dir) / ".gitignore").read_text(encoding="utf-8")
 
         reg = await project_service.register_deployment(
-            project_id=ids["project_id"], skill_id=ids["skill_id"], user_id=ids["user_id"],
+            project_id=ids["project_id"], skill_id=ids["team_skill_id"], user_id=ids["user_id"],
             tool="cursor", deploy_path=project_dir, install_path=install_path,
             installed_hash=installed_hash_1, repo_hash=repo_hash_1, repo_version=art["repo_version"],
             abstract_snapshot=art["abstract_snapshot"], overwrite=True,
@@ -268,7 +278,7 @@ async def run_e2e(store_dir: str, project_dir: str) -> None:
         async with async_session_factory() as s:
             ps = await s.scalar(select(ProjectSkill).where(
                 ProjectSkill.project_id == ids["project_id"],
-                ProjectSkill.skill_id == ids["skill_id"]))
+                ProjectSkill.skill_id == ids["team_skill_id"]))
             new_version = ps.version
         assert new_version >= 2, f"push 后 ProjectSkill.version 应推进, got {new_version}"
         results.append(("push", f"change_items={len(push['change_items'])}, repo_version→{new_version}, broadcast skill.pushed"))
@@ -280,7 +290,7 @@ async def run_e2e(store_dir: str, project_dir: str) -> None:
 
         status, w2 = agent_post("/local/write-skill", {
             "deployPath": project_dir, "scope": "project", "tool": "cursor",
-            "skillId": ids["skill_id"], "contents": art2["contents"],
+            "skillId": ids["team_skill_id"], "contents": art2["contents"],
             "resources": art2["resources"], "overwrite": True, "ensureGitignore": True,
         })
         assert status == 200 and w2.get("ok"), (status, w2)
@@ -308,14 +318,14 @@ async def run_e2e(store_dir: str, project_dir: str) -> None:
         # =============== 安全：鉴权 + 路径白名单 ===============
         status_noauth, b_noauth = agent_post("/local/write-skill", {
             "deployPath": project_dir, "scope": "project", "tool": "cursor",
-            "skillId": ids["skill_id"], "contents": {"SKILL.md": "x"}, "resources": [], "overwrite": True,
+            "skillId": ids["team_skill_id"], "contents": {"SKILL.md": "x"}, "resources": [], "overwrite": True,
         }, token=None)
         assert status_noauth == 401 and b_noauth["error"]["code"] == "UNAUTHORIZED", (status_noauth, b_noauth)
 
         outside = str(Path(tempfile.gettempdir()) / ("e2e-outside-" + suffix))
         status_forbid, b_forbid = agent_post("/local/write-skill", {
             "deployPath": outside, "scope": "project", "tool": "cursor",
-            "skillId": ids["skill_id"], "contents": {"SKILL.md": "x"}, "resources": [], "overwrite": True,
+            "skillId": ids["team_skill_id"], "contents": {"SKILL.md": "x"}, "resources": [], "overwrite": True,
         })
         assert status_forbid == 403 and b_forbid["error"]["code"] == "WRITE_ROOT_FORBIDDEN", (status_forbid, b_forbid)
         results.append(("security", "缺令牌→401 UNAUTHORIZED；白名单外路径→403 WRITE_ROOT_FORBIDDEN"))

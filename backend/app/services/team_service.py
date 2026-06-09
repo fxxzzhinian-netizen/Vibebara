@@ -13,7 +13,7 @@ from sqlalchemy import delete, func, select
 from app.core.database import async_session_factory
 from app.models.project import Project, ProjectSkill, UserSkillDeployment
 from app.models.skill_change_log import SkillChangeLog
-from app.models.skill_package import SkillPackage
+from app.models.skill_package import TeamSkill
 from app.models.team import Team, TeamMember
 from app.models.user import User
 from app.services.team_sync_service import TeamSyncService
@@ -145,7 +145,7 @@ async def delete_team(team_id: str, user_id: str = "system") -> bool:
         # 团队 Skill 包（含平台侧 store 目录，提交后再删盘）
         team_skills = (
             await session.execute(
-                select(SkillPackage).where(SkillPackage.team_id == team_id)
+                select(TeamSkill).where(TeamSkill.team_id == team_id)
             )
         ).scalars().all()
         team_skill_ids = [s.id for s in team_skills]
@@ -205,7 +205,7 @@ async def delete_team(team_id: str, user_id: str = "system") -> bool:
 
         # 4) 团队 Skill 包（team_id FK 无级联，必须先于团队删除）
         await session.execute(
-            delete(SkillPackage).where(SkillPackage.team_id == team_id)
+            delete(TeamSkill).where(TeamSkill.team_id == team_id)
         )
 
         # 5) 项目 → 成员 → 团队

@@ -22,7 +22,7 @@ from sqlalchemy import select
 from app.core.database import async_session_factory
 from app.models.project import ProjectSkill
 from app.models.skill_change_log import SkillChangeLog
-from app.models.skill_package import SkillPackage
+from app.models.skill_package import PersonalSkill, TeamSkill
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -93,7 +93,10 @@ class SkillSyncService:
                 ps.project_id: ps for ps in result.scalars().all()
             }
 
-            pkg = await session.get(SkillPackage, skill_id)
+            pkg = (
+                await session.get(PersonalSkill, skill_id)
+                or await session.get(TeamSkill, skill_id)
+            )
             latest_hash = cls._compute_hash(pkg.store_path) if pkg and pkg.store_path else ""
 
             for project_id in project_ids:
@@ -176,7 +179,10 @@ class SkillSyncService:
     @classmethod
     async def _get_skill_display_name(cls, skill_id: str) -> str:
         async with async_session_factory() as session:
-            pkg = await session.get(SkillPackage, skill_id)
+            pkg = (
+                await session.get(PersonalSkill, skill_id)
+                or await session.get(TeamSkill, skill_id)
+            )
             if pkg and pkg.display_name:
                 return pkg.display_name
         return skill_id
@@ -191,7 +197,8 @@ class SkillSyncService:
             )
             project_ids = list(result.scalars().all())
 
-            pkg = await session.get(SkillPackage, skill_id)
+            # 仅团队 Skill 可能带遗留 project_id；个人 Skill 不参与项目。
+            pkg = await session.get(TeamSkill, skill_id)
             if pkg and pkg.project_id:
                 project_ids.append(pkg.project_id)
 

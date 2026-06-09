@@ -91,9 +91,14 @@ const ideScanLoading = ref(false)
 const ideScanned = ref(false)
 const ideGroups = ref<IdeSkillGroup[]>([])
 const selectedIdePaths = ref<string[]>([])
+// 个人仓库已有 id 集合：用于标记「已存在」并默认不勾选（勾选 = 覆盖，不勾选 = 跳过）。
+const personalIdSet = ref<Set<string>>(new Set())
 const ideAllPaths = computed(() =>
   ideGroups.value.flatMap((g) => g.packages.map((p) => p.source_path)),
 )
+function existsInPersonal(p: UnifiedSkillPackage): boolean {
+  return personalIdSet.value.has(p.id)
+}
 
 const addSkillError = ref('')
 const addSkillLoading = ref(false)
@@ -123,6 +128,7 @@ function resetIdeScan() {
   ideScanLoading.value = false
   ideGroups.value = []
   selectedIdePaths.value = []
+  personalIdSet.value = new Set()
 }
 
 function resetAll() {
@@ -392,11 +398,21 @@ async function scanIde() {
   ideGroups.value = []
   selectedIdePaths.value = []
   try {
+    // 先取个人仓库已有 id，用于标记「已存在」并默认跳过（避免误覆盖）。
+    try {
+      const pres = await listNativeSkills('personal')
+      personalIdSet.value = new Set(pres.success ? pres.skills.map((s) => s.id) : [])
+    } catch {
+      personalIdSet.value = new Set()
+    }
     const res = await scanIdeGlobalSkills()
     ideScanned.value = true
     if (res.success) {
       ideGroups.value = res.groups
-      selectedIdePaths.value = res.groups.flatMap((g) => g.packages.map((p) => p.source_path))
+      // 默认仅勾选个人仓库中尚不存在的项；已存在项默认不勾选（用户可勾选以覆盖）。
+      selectedIdePaths.value = res.groups.flatMap((g) =>
+        g.packages.filter((p) => !existsInPersonal(p)).map((p) => p.source_path),
+      )
     } else {
       addSkillError.value = res.error || '检索失败'
     }
@@ -629,7 +645,8 @@ async function confirmAddFromIde() {
         <!-- 从 IDE 工具导入：检索各 IDE 全局目录 → 勾选导入 -->
         <div v-else-if="addMethod === 'ide'" class="method-body">
           <p class="hint">
-            从本机已安装的 IDE（Cursor / Codex 等）全局 Skill 目录检索，勾选后导入到个人仓库。
+            从本机已安装的 IDE（Cursor / Codex 等）全局 Skill 目录检索，勾选后以快照导入到个人仓库（不跟踪）。
+            个人仓库已有同名的标记为「已存在」，默认不勾选——勾选则覆盖；团队仓库同名的会作为独立副本导入。
           </p>
 
           <div v-if="ideScanLoading" class="ide-loading">
@@ -673,6 +690,7 @@ async function confirmAddFromIde() {
                       <span class="pi-name">
                         {{ p.display_name || p.name }}
                         <span class="origin-badge">{{ TOOL_LABELS[g.tool] }}</span>
+                        <span v-if="existsInPersonal(p)" class="exists-badge" title="个人仓库已存在同名 Skill，勾选将覆盖">已存在 · 勾选将覆盖</span>
                       </span>
                       <span class="pi-desc">{{ p.description || p.short_description || '暂无描述' }}</span>
                       <span class="pi-path">{{ p.source_path }}</span>
@@ -991,6 +1009,17 @@ async function confirmAddFromIde() {
   border-radius: 8px;
   background: #2a2a3e;
   color: #8b9cf7;
+  font-size: 11px;
+  vertical-align: middle;
+}
+
+.exists-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.16);
+  color: #f59e0b;
   font-size: 11px;
   vertical-align: middle;
 }

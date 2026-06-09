@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from app.api.auth import get_current_user_id
 from app.core.database import async_session_factory
-from app.models.skill_package import SkillPackage
+from app.models.skill_package import PersonalSkill, TeamSkill
 from app.models.team import TeamMember
 from app.schemas.project import BuildArtifactRequest, BuildArtifactResponse
 from app.schemas.skill_forge import (
@@ -128,10 +128,10 @@ async def update_skill(
     try:
         # 团队（平台）仓库 Skill：任意团队成员均可编辑，非成员拒绝。
         async with async_session_factory() as session:
-            row = await session.get(SkillPackage, skill_id)
-        if row is not None and row.scope == "team":
+            team_row = await session.get(TeamSkill, skill_id)
+        if team_row is not None:
             team_ids = await _user_team_ids(user_id)
-            if row.team_id not in team_ids:
+            if team_row.team_id not in team_ids:
                 return {
                     "success": False,
                     "error": "无权编辑该团队 Skill（非团队成员）",
@@ -403,14 +403,16 @@ async def preview_skill(
 async def _assert_team_skill_editable(skill_id: str, user_id: str) -> None:
     """版本回滚等写操作的鉴权：团队 Skill 需团队成员；个人 Skill 需本人。"""
     async with async_session_factory() as session:
-        row = await session.get(SkillPackage, skill_id)
-    if row is None:
-        raise FileNotFoundError(f"Skill '{skill_id}' not found")
-    if row.scope == "team":
-        if row.team_id not in await _user_team_ids(user_id):
+        team_row = await session.get(TeamSkill, skill_id)
+        personal_row = None if team_row else await session.get(PersonalSkill, skill_id)
+    if team_row is not None:
+        if team_row.team_id not in await _user_team_ids(user_id):
             raise PermissionError("无权操作该团队 Skill（非团队成员）")
-    elif row.owner_id and row.owner_id != user_id:
-        raise PermissionError("无权操作他人的个人 Skill")
+    elif personal_row is not None:
+        if personal_row.owner_id and personal_row.owner_id != user_id:
+            raise PermissionError("无权操作他人的个人 Skill")
+    else:
+        raise FileNotFoundError(f"Skill '{skill_id}' not found")
 
 
 @api_router.get("/{skill_id}/versions", response_model=SkillVersionListResponse)

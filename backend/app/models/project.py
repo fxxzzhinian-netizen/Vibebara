@@ -42,7 +42,7 @@ class ProjectSkill(Base):
         String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     skill_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("skill_packages.id", ondelete="CASCADE"), index=True
+        String(64), ForeignKey("team_skills.id", ondelete="CASCADE"), index=True
     )
     added_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -71,7 +71,7 @@ class UserSkillDeployment(Base):
         String(36), ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     team_skill_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("skill_packages.id", ondelete="CASCADE"), index=True
+        String(64), ForeignKey("team_skills.id", ondelete="CASCADE"), index=True
     )
     skill_name: Mapped[str] = mapped_column(String(128))
     tool_type: Mapped[str] = mapped_column(String(16))

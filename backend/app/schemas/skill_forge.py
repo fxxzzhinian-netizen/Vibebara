@@ -87,6 +87,8 @@ class MigrateResponse(BaseModel):
 
 class NativeSkillItem(BaseModel):
     id: str
+    # 自然名：个人 Skill 即 id；团队 Skill 为去团队后缀的自然名（id 为团队代理键）。
+    name: str = ""
     display_name: str = ""
     description: str = ""
     short_description: str = ""
