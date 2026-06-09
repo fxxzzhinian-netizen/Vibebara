@@ -11,7 +11,7 @@ import {
   importToNativeStore,
   type NativeSkillItem,
 } from '@/api/skillStore'
-import { rescanSkills, type UnifiedSkillPackage } from '@/api/skillForge'
+import { rescanSkills, scanIdeGlobalSkills, type UnifiedSkillPackage, type IdeSkillGroup } from '@/api/skillForge'
 import FolderPicker from '@/components/FolderPicker.vue'
 
 // 共享「新建/新增 Skill」模态：个人仓库（SkillForge）与团队仓库（Teams）共用。
@@ -45,11 +45,22 @@ const methods = computed<{ id: AddMethod; label: string; disabled?: boolean }[]>
     { id: 'manual', label: '手动新建' },
     { id: 'link', label: '从链接导入' },
     { id: 'local', label: '从本地文件夹' },
-    { id: 'ide', label: '从 IDE 工具导入', disabled: true },
+    { id: 'ide', label: '从 IDE 工具导入' },
   ]
 })
 
 const addMethod = ref<AddMethod>('manual')
+
+/** IDE 工具展示名（分组标题 / origin 徽标）。 */
+const TOOL_LABELS: Record<IdeSkillGroup['tool'], string> = {
+  cursor: 'Cursor',
+  codex: 'Codex',
+  windsurf: 'Windsurf',
+  claude: 'Claude Code',
+  kiro: 'Kiro',
+  trae: 'Trae',
+  qoder: 'Qoder',
+}
 
 // —— 手动新建（仅 personal）——
 const manualName = ref('')
@@ -75,6 +86,15 @@ const urlSourceUrl = ref('')
 const urlScannedPackages = ref<UnifiedSkillPackage[]>([])
 const selectedUrlPaths = ref<string[]>([])
 
+// —— 从 IDE 工具导入（检索各 IDE 全局目录 → 勾选导入；仅桌面/编排模式）——
+const ideScanLoading = ref(false)
+const ideScanned = ref(false)
+const ideGroups = ref<IdeSkillGroup[]>([])
+const selectedIdePaths = ref<string[]>([])
+const ideAllPaths = computed(() =>
+  ideGroups.value.flatMap((g) => g.packages.map((p) => p.source_path)),
+)
+
 const addSkillError = ref('')
 const addSkillLoading = ref(false)
 
@@ -98,6 +118,13 @@ function resetUrlScan() {
   selectedUrlPaths.value = []
 }
 
+function resetIdeScan() {
+  ideScanned.value = false
+  ideScanLoading.value = false
+  ideGroups.value = []
+  selectedIdePaths.value = []
+}
+
 function resetAll() {
   manualName.value = ''
   manualDesc.value = ''
@@ -106,6 +133,7 @@ function resetAll() {
   linkUrl.value = ''
   resetLocalScan()
   resetUrlScan()
+  resetIdeScan()
   addSkillError.value = ''
   addSkillLoading.value = false
 }
@@ -125,6 +153,10 @@ function switchMethod(m: AddMethod, disabled?: boolean) {
   if (disabled) return
   addMethod.value = m
   addSkillError.value = ''
+  // 切到「从 IDE 工具导入」自动检索各 IDE 全局目录（对应「首先检索」）。
+  if (m === 'ide' && !ideScanned.value && !ideScanLoading.value) {
+    scanIde()
+  }
 }
 
 // 改变文件夹/链接后需重新解析
@@ -351,6 +383,71 @@ async function confirmAddFromUrl() {
     addSkillLoading.value = false
   }
 }
+
+// —— 从 IDE 工具导入：第一步检索各 IDE 全局目录 ——
+async function scanIde() {
+  addSkillError.value = ''
+  ideScanLoading.value = true
+  ideScanned.value = false
+  ideGroups.value = []
+  selectedIdePaths.value = []
+  try {
+    const res = await scanIdeGlobalSkills()
+    ideScanned.value = true
+    if (res.success) {
+      ideGroups.value = res.groups
+      selectedIdePaths.value = res.groups.flatMap((g) => g.packages.map((p) => p.source_path))
+    } else {
+      addSkillError.value = res.error || '检索失败'
+    }
+  } catch (e: any) {
+    ideScanned.value = true
+    addSkillError.value = e?.response?.data?.detail || e.message || '检索失败'
+  } finally {
+    ideScanLoading.value = false
+  }
+}
+
+function toggleIdeSelect(path: string) {
+  const i = selectedIdePaths.value.indexOf(path)
+  if (i >= 0) selectedIdePaths.value.splice(i, 1)
+  else selectedIdePaths.value.push(path)
+}
+
+// —— 从 IDE 工具导入：第二步顺序导入勾选项（origin=所属 IDE）——
+async function confirmAddFromIde() {
+  if (!selectedIdePaths.value.length) return
+  addSkillError.value = ''
+  addSkillLoading.value = true
+  let okCount = 0
+  const failed: string[] = []
+  const imported: NativeSkillItem[] = []
+  try {
+    // 按分组顺序逐个导入，与本地/链接 tab 体验一致。
+    for (const group of ideGroups.value) {
+      for (const pkg of group.packages) {
+        if (!selectedIdePaths.value.includes(pkg.source_path)) continue
+        const res = await importToNativeStore(pkg.source_path, group.tool)
+        if (res.success) {
+          okCount += 1
+          if (res.skill) imported.push(res.skill)
+        } else {
+          failed.push(`${pkg.display_name || pkg.name || pkg.source_path}：${res.error || '失败'}`)
+        }
+      }
+    }
+    if (failed.length) {
+      emit('done', { message: '', skills: imported })
+      addSkillError.value = `成功 ${okCount} 个，失败 ${failed.length} 个 — ${failed.join('；')}`
+    } else {
+      finishDone(`已从 IDE 导入 ${okCount} 个 Skill`, imported)
+    }
+  } catch (e: any) {
+    addSkillError.value = e?.response?.data?.detail || e.message || '导入失败'
+  } finally {
+    addSkillLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -529,10 +626,65 @@ async function confirmAddFromUrl() {
           </div>
         </div>
 
-        <!-- 从 IDE 工具导入（预留） -->
+        <!-- 从 IDE 工具导入：检索各 IDE 全局目录 → 勾选导入 -->
         <div v-else-if="addMethod === 'ide'" class="method-body">
-          <p class="hint">从已安装的 IDE 工具（Cursor / Codex 等）的本地 Skill 目录中导入。</p>
-          <div class="empty-hint" style="margin-top: 12px">该功能即将支持，敬请期待。</div>
+          <p class="hint">
+            从本机已安装的 IDE（Cursor / Codex 等）全局 Skill 目录检索，勾选后导入到个人仓库。
+          </p>
+
+          <div v-if="ideScanLoading" class="ide-loading">
+            <span class="spinner-sm"></span> 正在检索各 IDE 全局目录...
+          </div>
+
+          <div v-else-if="ideScanned" class="scan-result">
+            <div class="scan-result-head">
+              共检索到 {{ ideAllPaths.length }} 个 Skill（{{ ideGroups.length }} 个 IDE）
+              <button
+                v-if="ideAllPaths.length"
+                class="link-btn"
+                @click="
+                  selectedIdePaths =
+                    selectedIdePaths.length === ideAllPaths.length ? [] : [...ideAllPaths]
+                "
+              >
+                {{ selectedIdePaths.length === ideAllPaths.length ? '取消全选' : '全选' }}
+              </button>
+            </div>
+
+            <div v-if="ideGroups.length" class="ide-groups">
+              <div v-for="g in ideGroups" :key="g.tool" class="ide-group">
+                <div class="ide-group-head">
+                  <span class="ide-group-name">{{ TOOL_LABELS[g.tool] }}</span>
+                  <span class="ide-group-count">{{ g.packages.length }}</span>
+                </div>
+                <div class="scan-list">
+                  <label
+                    v-for="p in g.packages"
+                    :key="p.source_path"
+                    class="scan-item"
+                    :class="{ selected: selectedIdePaths.includes(p.source_path) }"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="selectedIdePaths.includes(p.source_path)"
+                      @change="toggleIdeSelect(p.source_path)"
+                    />
+                    <span class="pi-main">
+                      <span class="pi-name">
+                        {{ p.display_name || p.name }}
+                        <span class="origin-badge">{{ TOOL_LABELS[g.tool] }}</span>
+                      </span>
+                      <span class="pi-desc">{{ p.description || p.short_description || '暂无描述' }}</span>
+                      <span class="pi-path">{{ p.source_path }}</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div v-else-if="!addSkillError" class="empty-hint" style="margin-top: 12px">
+              未在本机各 IDE 全局目录发现可导入的 Skill（需包含 SKILL.md）
+            </div>
+          </div>
         </div>
 
         <div v-if="addSkillError" class="error-msg">{{ addSkillError }}</div>
@@ -593,6 +745,24 @@ async function confirmAddFromUrl() {
               @click="confirmAddFromUrl"
             >
               {{ addSkillLoading ? '导入中...' : `导入所选 (${selectedUrlPaths.length})` }}
+            </button>
+          </template>
+
+          <template v-else-if="addMethod === 'ide'">
+            <button
+              v-if="!ideScanned && !ideScanLoading"
+              class="btn-sm btn-primary"
+              @click="scanIde"
+            >
+              检索 IDE 目录
+            </button>
+            <button
+              v-else
+              class="btn-sm btn-primary"
+              :disabled="!selectedIdePaths.length || addSkillLoading || ideScanLoading"
+              @click="confirmAddFromIde"
+            >
+              {{ addSkillLoading ? '导入中...' : `导入所选 (${selectedIdePaths.length})` }}
             </button>
           </template>
         </div>
@@ -830,6 +1000,73 @@ async function confirmAddFromUrl() {
   color: #666;
   font-family: monospace;
   word-break: break-all;
+}
+
+/* —— 从 IDE 工具导入 —— */
+.ide-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: #aaa;
+}
+
+.ide-groups {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ide-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ide-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cdd3ff;
+  padding: 2px 0;
+  border-bottom: 1px solid #2a2a3e;
+}
+
+.ide-group-name {
+  letter-spacing: 0.02em;
+}
+
+.ide-group-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: #2a2a3e;
+  color: #8b9cf7;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.spinner-sm {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(91, 127, 255, 0.3);
+  border-top-color: #5b7fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .url-input-row {

@@ -1,7 +1,7 @@
 import apiClient from './client'
 import { isOrchestrationEnabled } from '@/runtime/config'
 import * as localAgent from './localAgent'
-import { migrateSkillOrchestrated } from './orchestration'
+import { migrateSkillOrchestrated, scanPlatformGlobalSkillsOrchestrated } from './orchestration'
 
 // --- 目录浏览 ---
 
@@ -174,4 +174,39 @@ export async function migrateSkill(
     { source_path: sourcePath, target_platform: targetPlatform },
   )
   return data
+}
+
+// --- 从 IDE 工具导入：检索各 IDE 全局目录 ---
+
+/** 一个 IDE 全局目录的检索分组（packages 已归一为 snake_case，复用本地/链接同款渲染）。 */
+export interface IdeSkillGroup {
+  tool: localAgent.ToolType
+  dir: string
+  packages: UnifiedSkillPackage[]
+}
+
+/**
+ * 检索本机各受支持 IDE 的全局 skill 目录并按 IDE 分组。
+ * 仅桌面（编排）模式可用——扫描用户 home 目录只能经本地代理；web 模式直接给出提示。
+ */
+export async function scanIdeGlobalSkills(): Promise<{
+  success: boolean
+  groups: IdeSkillGroup[]
+  error?: string
+}> {
+  if (!isOrchestrationEnabled()) {
+    return { success: false, groups: [], error: '该功能仅桌面客户端支持' }
+  }
+  try {
+    const raw = await scanPlatformGlobalSkillsOrchestrated()
+    const groups: IdeSkillGroup[] = raw.map((g) => ({
+      tool: g.tool,
+      dir: g.dir,
+      packages: g.packages.map(normalizeScanPackage),
+    }))
+    return { success: true, groups }
+  } catch (e) {
+    const err = e as { message?: string }
+    return { success: false, groups: [], error: err?.message || '检索失败' }
+  }
 }

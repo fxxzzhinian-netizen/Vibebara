@@ -19,6 +19,7 @@ import type {
   ResourcePayload,
   ToolType,
   FilePayload,
+  UnifiedSkillPackage,
 } from './localAgent'
 import type {
   SkillDeploymentResponse,
@@ -596,6 +597,41 @@ export async function getPlatformInstalledStatus(): Promise<
     }
   }
   return map
+}
+
+// ===================== 编排：检索各 IDE 全局目录 Skill（从 IDE 导入）=====================
+
+/** 一个 IDE 全局 skill 目录的检索结果分组。 */
+export interface IdeSkillGroup {
+  tool: ToolType
+  dir: string
+  packages: UnifiedSkillPackage[]
+}
+
+/**
+ * 检索本机各受支持 IDE 的全局 skill 目录（health.platformSkillDirs），逐目录 scan，
+ * 按 IDE 分组返回（仅保留含 skill 的目录）。
+ *
+ * 与 getPlatformInstalledStatus 同模式，但这里按 IDE 分组保留完整包列表用于导入选择；
+ * origin 以「扫描的是哪个 IDE 目录」为准（比 scan 自带的简化 origin 更准确），
+ * 导入时用 group.tool 作为 origin。
+ */
+export async function scanPlatformGlobalSkillsOrchestrated(): Promise<IdeSkillGroup[]> {
+  const h = await localAgent.health()
+  const dirs = h.platformSkillDirs
+  const order: ToolType[] = ['cursor', 'codex', 'windsurf', 'claude', 'kiro', 'trae', 'qoder']
+  const groups: IdeSkillGroup[] = []
+  for (const tool of order) {
+    const dir = dirs[tool]
+    if (!dir) continue
+    try {
+      const res = await localAgent.scan({ rootDir: dir })
+      if (res.packages.length) groups.push({ tool, dir, packages: res.packages })
+    } catch {
+      // 目录不存在/为空 → 跳过
+    }
+  }
+  return groups
 }
 
 // ===================== 编排：从本地文件夹导入（M0 §3.5）=====================
