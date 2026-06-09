@@ -54,7 +54,7 @@ export function useTeamSync(
     }
 
     const token = getToken()
-    const userId = localStorage.getItem('vibehub_user_id') || 'anonymous'
+    const userId = localStorage.getItem('vibebara_user_id') || 'anonymous'
     const url =
       cloudWsUrl(`/ws/team/${tid}`) +
       `?user_id=${encodeURIComponent(userId)}&token=${encodeURIComponent(token)}`

@@ -10,7 +10,7 @@ _BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-    APP_NAME: str = "VibeHub"
+    APP_NAME: str = "Vibebara"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = True
 
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
     # 桌面端来源（Electron）匹配：file:// 的 Origin 多为 "null"，app://、自定义 scheme
     # 需用正则匹配。默认空字符串=不启用（不影响本地开发）。
-    # 示例：^(app|vibehub|file)://.*$
+    # 示例：^(app|vibebara|file)://.*$
     ALLOW_ORIGIN_REGEX: str = ""
 
     ENABLED_ADAPTERS: List[str] = ["cursor", "copilot", "windsurf", "claude"]

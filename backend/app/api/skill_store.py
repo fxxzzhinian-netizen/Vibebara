@@ -438,7 +438,7 @@ async def get_skill_version(
     skill_id: str, version_id: str,
     user_id: str = Depends(get_current_user_id),
 ):
-    """查看某个历史版本的完整内容（config + VibeH 正文）。"""
+    """查看某个历史版本的完整内容（config + SKILL 正文）。"""
     try:
         await _assert_skill_accessible(skill_id, user_id)
         version = await SkillVersionService.get_version(version_id)

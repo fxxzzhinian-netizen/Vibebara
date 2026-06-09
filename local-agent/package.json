@@ -1,12 +1,12 @@
 {
-  "name": "@vibehub/local-agent",
+  "name": "@vibebara/local-agent",
   "version": "1.0.0",
-  "description": "VibeHub 桌面客户端本地代理 Local Agent — 纯 TS 薄代理，承接触达本地文件系统的能力（浏览/扫描/读文件夹/落盘/hash/监控）。仅监听 127.0.0.1，受配对令牌 + 可写根白名单约束。实现 local-agent/v1 契约。",
+  "description": "Vibebara 桌面客户端本地代理 Local Agent — 纯 TS 薄代理，承接触达本地文件系统的能力（浏览/扫描/读文件夹/落盘/hash/监控）。仅监听 127.0.0.1，受配对令牌 + 可写根白名单约束。实现 local-agent/v1 契约。",
   "license": "MIT",
   "private": true,
   "main": "dist/index.js",
   "bin": {
-    "vibehub-local-agent": "dist/index.js"
+    "vibebara-local-agent": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -20,7 +20,7 @@
     "node": ">=20"
   },
   "keywords": [
-    "vibehub",
+    "vibebara",
     "local-agent",
     "skill",
     "cursor",

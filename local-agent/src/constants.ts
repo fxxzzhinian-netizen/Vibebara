@@ -14,7 +14,7 @@ export const DEFAULT_PORT = 51873;
  * 固定常量、非随机，重启不失效，便于本地联调）。使用时会打印告警；paired=false。
  */
 export const DEV_DEFAULT_PAIRING_TOKEN =
-  "vibehub-dev-insecure-pairing-token-change-me";
+  "vibebara-dev-insecure-pairing-token-change-me";
 
 /** 配对令牌请求头名（M0 §5 / 契约 §1）。 */
 export const PAIRING_TOKEN_HEADER = "x-pairing-token";

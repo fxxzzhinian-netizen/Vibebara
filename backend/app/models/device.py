@@ -13,7 +13,7 @@ class Device(Base):
     依据 `docs/方案B-桌面客户端迁移/M5-平台安装状态-多用户多机设计.md` §2.2 / §3：
       · 服务端在 `POST /devices/register` 时铸造规范 `id`（uuid4 = device_id），
         前端正式形态用它做平台安装态上报的设备维度键；
-      · `client_uuid` 为桌面壳本机持久 uuid（M5-a vibehub-device.json），仅作
+      · `client_uuid` 为桌面壳本机持久 uuid（M5-a vibebara-device.json），仅作
         「同机同用户」幂等再注册键，**不是鉴权凭证**；
       · `(user_id, client_uuid)` 唯一 → 同一用户在同一台机器只产生一行设备身份，
         同一台机器被不同账号登录则各自独立（多用户同机互不串扰）。
@@ -37,7 +37,7 @@ class Device(Base):
     user_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
-    # 本机持久 uuid（= M5-a vibehub-device.json 的 clientUuid）；幂等再注册键，非身份凭证。
+    # 本机持久 uuid（= M5-a vibebara-device.json 的 clientUuid）；幂等再注册键，非身份凭证。
     client_uuid: Mapped[str] = mapped_column(String(64), index=True)
     platform: Mapped[str] = mapped_column(String(16), default="")  # win32|darwin|linux
     hostname: Mapped[str | None] = mapped_column(String(128), nullable=True)

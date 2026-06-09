@@ -7,10 +7,10 @@ import path from "node:path";
  *
  * 策略：**内置默认 + 可由本机配置文件覆盖**。
  *   · 内置默认指向本机 cloud demo（DEPLOYMENT_MODE=cloud 后端）；
- *   · 用户可在 `<userData>/vibehub-desktop.config.json` 覆盖 cloudApiBase /
+ *   · 用户可在 `<userData>/vibebara-desktop.config.json` 覆盖 cloudApiBase /
  *     cloudWsBase / writableRoots，从本地 demo 平滑切到真实云端无需改壳代码。
- *   · 也支持环境变量覆盖（便于联调）：VIBEHUB_CLOUD_API_BASE / VIBEHUB_CLOUD_WS_BASE /
- *     VIBEHUB_WRITABLE_ROOTS（; 分隔）。
+ *   · 也支持环境变量覆盖（便于联调）：VIBEBARA_CLOUD_API_BASE / VIBEBARA_CLOUD_WS_BASE /
+ *     VIBEBARA_WRITABLE_ROOTS（; 分隔）。
  */
 
 export interface CloudConfig {
@@ -29,7 +29,7 @@ const BUILTIN_DEFAULTS: CloudConfig = {
 };
 
 function configFile(): string {
-  return path.join(app.getPath("userData"), "vibehub-desktop.config.json");
+  return path.join(app.getPath("userData"), "vibebara-desktop.config.json");
 }
 
 function splitRoots(raw: string | undefined): string[] {
@@ -65,14 +65,14 @@ export function loadCloudConfig(): CloudConfig {
   }
 
   // 2) 环境变量覆盖（联调优先级最高）
-  if (process.env.VIBEHUB_CLOUD_API_BASE) {
-    merged.cloudApiBase = process.env.VIBEHUB_CLOUD_API_BASE;
+  if (process.env.VIBEBARA_CLOUD_API_BASE) {
+    merged.cloudApiBase = process.env.VIBEBARA_CLOUD_API_BASE;
   }
-  if (process.env.VIBEHUB_CLOUD_WS_BASE) {
-    merged.cloudWsBase = process.env.VIBEHUB_CLOUD_WS_BASE;
+  if (process.env.VIBEBARA_CLOUD_WS_BASE) {
+    merged.cloudWsBase = process.env.VIBEBARA_CLOUD_WS_BASE;
   }
-  if (process.env.VIBEHUB_WRITABLE_ROOTS) {
-    merged.writableRoots = splitRoots(process.env.VIBEHUB_WRITABLE_ROOTS);
+  if (process.env.VIBEBARA_WRITABLE_ROOTS) {
+    merged.writableRoots = splitRoots(process.env.VIBEBARA_WRITABLE_ROOTS);
   }
 
   return merged;

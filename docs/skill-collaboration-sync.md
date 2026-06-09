@@ -116,12 +116,12 @@
 
 ## 5. 抽象层改动点（Diff）
 
-改动点基于**平台抽象包**（`skill.config.yaml` + `VibeH.md`）维度，而非 Cursor/Codex 原生文件维度：
+改动点基于**平台抽象包**（`skill.config.yaml` + `SKILL.md`）维度，而非 Cursor/Codex 原生文件维度：
 
 - `parse_native_skill(path)`：把原生 Skill 目录解析为内存抽象包（不写盘、不碰 DB）。
 - `diff_abstract_packages(base, current)` 产出 `change_items`：
   - `field`：标量/嵌套字段（如 `description`、`policy.auto_invoke`），含 `old`/`new` 与中文 `label`。
-  - `body`：`VibeH.md` 正文 `+N / -M` 行。
+  - `body`：`SKILL.md` 正文 `+N / -M` 行。
   - `resource`：`scripts/` `references/` `assets/` 文件 `added`/`removed`/`modified`。
 - 项目动态条目可展开显示明细，主行展示「{用户} 推送了 {skill}」+ 摘要。
 

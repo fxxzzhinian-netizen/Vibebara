@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 #   - 仅在未注入 JWT_SECRET 时使用；为「稳定常量」而非随机，保证后端重启后
 #     已签发的 token 不会全部失效（开发体验）。
 #   - 这是公开默认值，绝不可用于生产/cloud；cloud 模式使用时会打印显著告警。
-_DEV_DEFAULT_JWT_SECRET = "vibehub-dev-insecure-jwt-secret-change-me"
+_DEV_DEFAULT_JWT_SECRET = "vibebara-dev-insecure-jwt-secret-change-me"
 
 
 def _resolve_jwt_secret() -> str:

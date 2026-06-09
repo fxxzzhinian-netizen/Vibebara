@@ -21,7 +21,7 @@ async function handleLogin() {
   const res = await authStore.doLogin(username.value, password.value)
   loading.value = false
   if (res.success) {
-    localStorage.setItem('vibehub_user_id', authStore.user?.id || '')
+    localStorage.setItem('vibebara_user_id', authStore.user?.id || '')
     router.push('/')
   } else {
     error.value = res.error || '登录失败'
@@ -33,7 +33,7 @@ async function handleLogin() {
   <div class="login-page">
     <div class="login-card">
       <div class="login-header">
-        <h1>VibeHub</h1>
+        <h1>Vibebara</h1>
         <p>团队 Skill 协作平台</p>
       </div>
 

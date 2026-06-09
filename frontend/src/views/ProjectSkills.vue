@@ -670,7 +670,7 @@ function goBack() {
               <!-- 正文改动：逐行 + 替换行的行内高亮 -->
               <template v-else-if="item.kind === 'body'">
                 <div class="diff-block-head">
-                  正文 VibeH.md
+                  正文 VibeSkill.md
                   <span class="counts">
                     <span class="add">+{{ item.added_lines || 0 }}</span>
                     <span class="del">-{{ item.removed_lines || 0 }}</span>

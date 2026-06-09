@@ -2,7 +2,7 @@
 FileWatcherService — 监视 .skill-store/ 目录的文件变更并自动触发同步
 
 使用 watchfiles (基于 Rust 的高性能文件监控) 监视 SKILL_STORE_DIR，
-当 skill.config.yaml 或 VibeH.md 发生变更时自动同步到 DB 并广播事件。
+当 skill.config.yaml 或 SKILL.md 发生变更时自动同步到 DB 并广播事件。
 """
 
 import asyncio

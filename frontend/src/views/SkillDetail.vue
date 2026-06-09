@@ -238,7 +238,7 @@ function changeItemText(item: ChangeItem): string {
     return `${item.label || item.path}：${fmt(item.old)} → ${fmt(item.new)}`
   }
   if (item.kind === 'body') {
-    return `正文 VibeH.md  +${item.added_lines ?? 0} / -${item.removed_lines ?? 0} 行`
+    return `正文 VibeSkill.md  +${item.added_lines ?? 0} / -${item.removed_lines ?? 0} 行`
   }
   const verb =
     item.change === 'added' ? '新增' : item.change === 'removed' ? '删除' : '修改'
@@ -355,7 +355,7 @@ function timeAgo(ts: string | null | undefined): string {
     <template v-else>
       <nav class="tab-nav">
         <button :class="{ active: activeTab === 'basic' }" @click="activeTab = 'basic'">基本信息</button>
-        <button :class="{ active: activeTab === 'instructions' }" @click="activeTab = 'instructions'">VibeH 指令</button>
+        <button :class="{ active: activeTab === 'instructions' }" @click="activeTab = 'instructions'">SKILL 指令</button>
         <button :class="{ active: activeTab === 'policy' }" @click="activeTab = 'policy'">策略</button>
         <button :class="{ active: activeTab === 'deps' }" @click="activeTab = 'deps'">依赖</button>
         <button :class="{ active: activeTab === 'resources' }" @click="activeTab = 'resources'">资源</button>
@@ -394,9 +394,9 @@ function timeAgo(ts: string | null | undefined): string {
           </div>
         </section>
 
-        <!-- VibeH instructions -->
+        <!-- SKILL instructions -->
         <section v-else-if="activeTab === 'instructions'" class="section">
-          <label class="block-label">VibeH.md — 技能正文</label>
+          <label class="block-label">VibeSkill.md — 技能正文</label>
           <textarea
             v-if="editing"
             v-model="draftVibeh"
@@ -406,7 +406,7 @@ function timeAgo(ts: string | null | undefined): string {
             placeholder="# Skill Name&#10;&#10;## Overview&#10;..."
           ></textarea>
           <pre v-else-if="vibeh" class="doc-view">{{ vibeh }}</pre>
-          <div v-else class="empty-note">暂无 VibeH 指令内容</div>
+          <div v-else class="empty-note">暂无 SKILL 指令内容</div>
         </section>
 
         <!-- Policy -->
@@ -618,7 +618,7 @@ function timeAgo(ts: string | null | undefined): string {
             <div class="value pre">{{ (viewingVersion.config as any)?.description || '暂无描述' }}</div>
           </div>
           <div class="field">
-            <label>VibeH.md 正文</label>
+            <label>VibeSkill.md 正文</label>
             <pre class="ver-code">{{ viewingVersion.vibeh_content || '（空）' }}</pre>
           </div>
           <div class="field">

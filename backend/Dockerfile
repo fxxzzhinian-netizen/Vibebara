@@ -1,4 +1,4 @@
-# VibeHub 后端镜像（cloud 模式 / 方案 A：镜像内自构建 skill-forge dist）
+# Vibebara 后端镜像（cloud 模式 / 方案 A：镜像内自构建 skill-forge dist）
 #
 # 关键点：
 #   1. 后端在 cloud 模式下用子进程调 `node` 跑 skill-forge 桥，故镜像同时含 Python + Node 20。

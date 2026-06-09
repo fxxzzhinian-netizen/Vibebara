@@ -5,7 +5,7 @@
 > 状态：待确认（先评审本文档，确认无误后再改代码）
 > 关联文档：`team-project-skill-sync-plan.md`（同目录）、`../architecture.md`
 > 目标：
-> 1. 项目动态里具体展示一次 Skill 改动的"改动点"，且改动点以**平台抽象层**（抽象包 `skill.config.yaml` + `VibeH.md`）维度表达，而不是 Cursor/Codex 原生文件维度。
+> 1. 项目动态里具体展示一次 Skill 改动的"改动点"，且改动点以**平台抽象层**（抽象包 `skill.config.yaml` + `SKILL.md`）维度表达，而不是 Cursor/Codex 原生文件维度。
 > 2. 用户在本地修改部署实例后**不再自动同步**，必须在平台手动点击「推送」，平台才记录这次改动并写入动态。
 
 ---
@@ -22,7 +22,7 @@
 - 一次推送要计算出**结构化改动点列表**，例如：
   - `description`：旧值 → 新值
   - `policy.auto_invoke`：`true` → `false`
-  - `VibeH.md` 正文：+12 行 / -3 行
+  - `SKILL.md` 正文：+12 行 / -3 行
   - 新增脚本 `scripts/foo.py`
 - 改动点必须基于抽象包对比得出（把本地原生 Skill 反向解析为抽象包后再 diff），而不是直接 diff Cursor/Codex 原生文件。
 
@@ -79,7 +79,7 @@ def diff_abstract_packages(base: dict, current: dict) -> list[ChangeItem]
 |------|------|----------|
 | `field` | 标量/简单字段变化 | `{kind:"field", path:"description", label:"描述", old:"A", new:"B"}` |
 | `field` | 嵌套字段 | `{kind:"field", path:"policy.auto_invoke", label:"自动调用", old:true, new:false}` |
-| `body` | `VibeH.md` 正文变化 | `{kind:"body", path:"VibeH.md", added_lines:12, removed_lines:3}` |
+| `body` | `SKILL.md` 正文变化 | `{kind:"body", path:"SKILL.md", added_lines:12, removed_lines:3}` |
 | `resource` | 资源文件增删改 | `{kind:"resource", path:"scripts/foo.py", change:"added"\|"removed"\|"modified"}` |
 
 纳入对比的抽象层字段（白名单，避免噪音）：
@@ -88,7 +88,7 @@ def diff_abstract_packages(base: dict, current: dict) -> list[ChangeItem]
 - `policy.auto_invoke`
 - `metadata.version`、`metadata.tags`
 - `dependencies.tools`
-- `VibeH.md` 正文（行级 diff，统计 +/-；可选保存前 N 行 unified diff 文本供详情展开）
+- `SKILL.md` 正文（行级 diff，统计 +/-；可选保存前 N 行 unified diff 文本供详情展开）
 - 资源文件（按相对路径 + 文件 hash 判断 added/removed/modified）
 
 每个改动点带中文 `label`，前端直接展示。

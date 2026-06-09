@@ -26,7 +26,7 @@ interface DeviceFile {
 }
 
 function deviceFile(): string {
-  return path.join(app.getPath("userData"), "vibehub-device.json");
+  return path.join(app.getPath("userData"), "vibebara-device.json");
 }
 
 function readFileSafe(): Partial<DeviceFile> & { deviceId?: string } {

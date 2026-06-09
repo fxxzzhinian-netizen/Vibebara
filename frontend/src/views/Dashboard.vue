@@ -286,7 +286,7 @@ function pathSegments(p: string) {
 <template>
   <div class="dashboard">
     <header class="header">
-      <h1>VibeHub</h1>
+      <h1>Vibebara</h1>
       <p class="subtitle">AI 协作中台</p>
     </header>
 

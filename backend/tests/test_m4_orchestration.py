@@ -108,7 +108,7 @@ def test_collect_store_resources_structure():
         (store / "assets" / "icon.png").write_bytes(png)
         # 这些 root 文件不应被纳入资源
         (store / "skill.config.yaml").write_bytes(b"name: x\n")
-        (store / "VibeH.md").write_bytes(b"body\n")
+        (store / "SKILL.md").write_bytes(b"body\n")
         (store / "LICENSE").write_bytes(b"MIT\n")
 
         res = collect_store_resources(str(store))
@@ -133,7 +133,7 @@ def _make_store(d: Path) -> Path:
     (store / "scripts" / "run.py").write_text("print('go')\n", encoding="utf-8")
     (store / "assets" / "icon.png").write_bytes(bytes(range(64)))
     (store / "skill.config.yaml").write_text("name: demo\n", encoding="utf-8")
-    (store / "VibeH.md").write_text("body\n", encoding="utf-8")
+    (store / "SKILL.md").write_text("body\n", encoding="utf-8")
     return store
 
 

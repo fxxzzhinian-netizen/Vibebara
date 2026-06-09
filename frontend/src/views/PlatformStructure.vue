@@ -283,7 +283,7 @@ const fieldsForPlatform = computed(() => {
       <!-- Overview: field matrix -->
       <section v-if="activePlatform === 'overview'" class="overview-section">
         <div class="overview-intro">
-          <p>VibeHub 内部存储所有平台信息的<strong>并集</strong>，Skill 编辑器默认展示所有平台的<strong>交集</strong>（通用字段）。</p>
+          <p>Vibebara 内部存储所有平台信息的<strong>并集</strong>，Skill 编辑器默认展示所有平台的<strong>交集</strong>（通用字段）。</p>
           <p>以下矩阵展示每个字段在各平台的支持情况。</p>
         </div>
 

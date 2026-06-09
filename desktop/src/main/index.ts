@@ -14,7 +14,7 @@ import { loadCloudConfig } from "./userConfig";
 import { IPC, type RuntimeConfigPayload } from "../shared/types";
 
 /**
- * VibeHub 桌面壳主进程入口（方案 B M5-a）。
+ * Vibebara 桌面壳主进程入口（方案 B M5-a）。
  *
  * 启动顺序（注入时序关键，§5 风险「注入时序」）：
  *   1. 解析路径（local-agent 入口 / frontend 产物）；
@@ -117,7 +117,7 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    title: "VibeHub",
+    title: "Vibebara",
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "index.js"),
       contextIsolation: true,
@@ -126,7 +126,7 @@ function createWindow(): void {
     },
   });
 
-  const devUrl = process.env.VIBEHUB_DEV_SERVER_URL;
+  const devUrl = process.env.VIBEBARA_DEV_SERVER_URL;
   if (devUrl) {
     void mainWindow.loadURL(devUrl);
   } else {

@@ -3,7 +3,7 @@ skill_diff_service — 把原生 Skill 目录解析为内存抽象包，并与�
 生成"平台抽象层"维度的结构化改动点。
 
 不写盘、不碰 DB，供手动推送(push)流程计算 diff 使用。
-抽象包结构与 skill.config.yaml + VibeH.md 对齐：
+抽象包结构与 skill.config.yaml + SKILL.md 对齐：
     {
       "config": {...},        # name/description/ui/policy/metadata/dependencies
       "vibeh_body": "...",    # 正文 Markdown（来自 SKILL.md body）
@@ -177,7 +177,7 @@ def diff_abstract_packages(
 
     改动点 kind:
       - field：标量/简单字段变化 {path,label,old,new}
-      - body：VibeH.md 正文变化 {added_lines,removed_lines,diff,diff_truncated}
+      - body：SKILL.md 正文变化 {added_lines,removed_lines,diff,diff_truncated}
       - resource：资源文件增删改 {path,label,change}
     """
     items: List[Dict[str, Any]] = []
@@ -218,7 +218,7 @@ def diff_abstract_packages(
         items.append(
             {
                 "kind": "body",
-                "path": "VibeH.md",
+                "path": "SKILL.md",
                 "label": "正文",
                 "added_lines": added,
                 "removed_lines": removed,

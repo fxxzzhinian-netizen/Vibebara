@@ -3,7 +3,7 @@ SkillVersionService — 团队 Skill 的「版本快照」服务（创建 / 列�
 
 与 `skill_change_log`（每次推送都自动记一条审计流）的区别：
   - 版本是用户**显式选择**"更新版本序列号"时才落的一条**完整内容快照**；
-  - 快照含完整 config + VibeH 正文，可在 Skill 详情页查看历史与一键回滚。
+  - 快照含完整 config + SKILL 正文，可在 Skill 详情页查看历史与一键回滚。
 
 所有 Skill 内容读写仍由 NativeSkillStore 负责，本服务只管版本快照与回滚编排。
 """
@@ -70,7 +70,7 @@ class SkillVersionService:
         change_summary: str = "",
         change_items: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[Dict[str, Any]]:
-        """对当前 Skill 内容打一个版本快照（完整 config + VibeH 正文）。
+        """对当前 Skill 内容打一个版本快照（完整 config + SKILL 正文）。
 
         seq 在该 skill 维度单调递增（v1/v2/v3…）。Skill 不存在时返回 None
         （不抛错，避免阻断推送/保存主流程）。
@@ -203,7 +203,7 @@ class SkillVersionService:
 
         skill_dir = Path(store_path)
         config_path = skill_dir / "skill.config.yaml"
-        vibeh_path = skill_dir / "VibeH.md"
+        vibeh_path = skill_dir / "SKILL.md"
         if not config_path.exists():
             raise FileNotFoundError(f"Skill '{skill_id}' store missing")
 

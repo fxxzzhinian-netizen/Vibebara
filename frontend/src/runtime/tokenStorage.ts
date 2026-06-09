@@ -2,7 +2,7 @@
  * 登录 token 存储抽象（方案 B M5-a / §4.4「token 安全存储」）。
  *
  * 按形态选择存储后端：
- *   · 桌面形态（存在 __VIBEHUB_DESKTOP__ 桥）→ Electron safeStorage（OS 加密），
+ *   · 桌面形态（存在 __VIBEBARA_DESKTOP__ 桥）→ Electron safeStorage（OS 加密），
  *     经 preload 同步缓存读 / 异步加密落盘；
  *   · web 形态 → 沿用 localStorage（保持现状不变）。
  *
@@ -11,7 +11,7 @@
  */
 import { getDesktopBridge } from './desktopBridge'
 
-const TOKEN_KEY = 'vibehub_token'
+const TOKEN_KEY = 'vibebara_token'
 
 /** 同步取登录 token（拦截器/路由守卫需要同步值）。 */
 export function getToken(): string {

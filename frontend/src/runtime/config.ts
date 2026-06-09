@@ -1,5 +1,5 @@
 /**
- * VibeHub 渲染层运行时配置（方案 B / M4 前端分流）。
+ * Vibebara 渲染层运行时配置（方案 B / M4 前端分流）。
  *
  * 背景（M0 §1.1 / §9）：桌面客户端形态下，前端是**唯一编排者**，同时持有
  *   - 云端 Bearer Token（发给云端 FastAPI `/api/v1` + WSS）；
@@ -7,7 +7,7 @@
  * 这两套地址/令牌都需要在运行时确定，不能再硬编码 `window.location` 或 `/api/v1`。
  *
  * 配置来源优先级（高 → 低）：
- *   1. `window.__VIBEHUB_RUNTIME__`（M5 桌面壳通过 preload/contextBridge 注入真实值）；
+ *   1. `window.__VIBEBARA_RUNTIME__`（M5 桌面壳通过 preload/contextBridge 注入真实值）；
  *   2. Vite 环境变量 `import.meta.env.VITE_*`（构建期注入，便于灰度/分环境）；
  *   3. 安全默认值（web 灰度形态：云端走 `/api/v1` + Vite 代理；本地代理用 M3 dev 默认端口/令牌）。
  *
@@ -18,13 +18,13 @@
 
 export type AppMode = 'web' | 'desktop'
 
-export interface VibehubRuntimeConfig {
+export interface VibebaraRuntimeConfig {
   /** 运行形态：web 灰度 / desktop 桌面壳。 */
   mode: AppMode
   /** 云端 REST API 基址，axios baseURL。web 默认 `/api/v1`（经 Vite/反代）。 */
   cloudApiBase: string
   /**
-   * 云端 WebSocket 基址（不含路径），如 `wss://api.vibehub.example`。
+   * 云端 WebSocket 基址（不含路径），如 `wss://api.vibebara.example`。
    * 为空字符串时回退到 `window.location`（dev/同源部署兼容）。
    */
   cloudWsBase: string
@@ -54,9 +54,9 @@ export interface VibehubRuntimeConfig {
 
 // —— M3 本地代理 dev 默认（见 local-agent/src/constants.ts）——
 const DEV_LOCAL_AGENT_PORT = 51873
-const DEV_PAIRING_TOKEN = 'vibehub-dev-insecure-pairing-token-change-me'
+const DEV_PAIRING_TOKEN = 'vibebara-dev-insecure-pairing-token-change-me'
 
-const DEFAULTS: VibehubRuntimeConfig = {
+const DEFAULTS: VibebaraRuntimeConfig = {
   mode: 'web',
   cloudApiBase: '/api/v1',
   cloudWsBase: '',
@@ -69,20 +69,20 @@ const DEFAULTS: VibehubRuntimeConfig = {
 declare global {
   interface Window {
     /** M5 桌面壳注入的运行时配置（preload/contextBridge）。 */
-    __VIBEHUB_RUNTIME__?: Partial<VibehubRuntimeConfig>
+    __VIBEBARA_RUNTIME__?: Partial<VibebaraRuntimeConfig>
   }
 }
 
-function readInjected(): Partial<VibehubRuntimeConfig> {
-  if (typeof window !== 'undefined' && window.__VIBEHUB_RUNTIME__) {
-    return window.__VIBEHUB_RUNTIME__
+function readInjected(): Partial<VibebaraRuntimeConfig> {
+  if (typeof window !== 'undefined' && window.__VIBEBARA_RUNTIME__) {
+    return window.__VIBEBARA_RUNTIME__
   }
   return {}
 }
 
-function readEnv(): Partial<VibehubRuntimeConfig> {
+function readEnv(): Partial<VibebaraRuntimeConfig> {
   const env = import.meta.env as Record<string, string | undefined>
-  const out: Partial<VibehubRuntimeConfig> = {}
+  const out: Partial<VibebaraRuntimeConfig> = {}
   if (env.VITE_CLOUD_API_BASE) out.cloudApiBase = env.VITE_CLOUD_API_BASE
   if (env.VITE_CLOUD_WS_BASE) out.cloudWsBase = env.VITE_CLOUD_WS_BASE
   if (env.VITE_LOCAL_AGENT_BASE) out.localAgentBase = env.VITE_LOCAL_AGENT_BASE
@@ -100,7 +100,7 @@ function readEnv(): Partial<VibehubRuntimeConfig> {
   return out
 }
 
-let cached: VibehubRuntimeConfig | null = null
+let cached: VibebaraRuntimeConfig | null = null
 
 /**
  * 解析并缓存运行时配置。合并优先级：默认 < env < window 注入。
@@ -108,12 +108,12 @@ let cached: VibehubRuntimeConfig | null = null
  *   - 若只注入了 localAgentPort 未注入 base，则按端口重算 localAgentBase；
  *   - orchestration 未显式设置时，按 mode 推断（desktop → true）。
  */
-export function getRuntimeConfig(): VibehubRuntimeConfig {
+export function getRuntimeConfig(): VibebaraRuntimeConfig {
   if (cached) return cached
 
   const env = readEnv()
   const injected = readInjected()
-  const merged: VibehubRuntimeConfig = { ...DEFAULTS, ...env, ...injected }
+  const merged: VibebaraRuntimeConfig = { ...DEFAULTS, ...env, ...injected }
 
   // 端口注入但未给 base 时，按端口回推本地代理 base
   const baseExplicit =
@@ -157,7 +157,7 @@ export function getClientUuid(): string {
 
 /**
  * 注册成功后更新有效 deviceId（M5-b 任务①）。
- * 桌面壳已经桥回写 vibehub-device.json；此处同步前端缓存，使后续上报用规范 device_id。
+ * 桌面壳已经桥回写 vibebara-device.json；此处同步前端缓存，使后续上报用规范 device_id。
  */
 export function setDeviceId(deviceId: string): void {
   const cfg = getRuntimeConfig()

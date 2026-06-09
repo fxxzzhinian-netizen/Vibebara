@@ -24,7 +24,7 @@ describe("constantTimeCompare", () => {
 });
 
 describe("verifyPairingToken", () => {
-  const secret = "vibehub-pairing-secret-xyz";
+  const secret = "vibebara-pairing-secret-xyz";
 
   it("缺失令牌（undefined/null/空串）一律拒绝", () => {
     expect(verifyPairingToken(undefined, secret)).toBe(false);

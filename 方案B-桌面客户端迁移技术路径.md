@@ -1,6 +1,6 @@
 # 方案 B（桌面客户端）迁移技术路径
 
-> 本文解析 VibeHub 从「本机 localhost 单体」迁移到「桌面客户端」形态的主要技术路径、关键改造埋点（代码落点）、接口边界与分阶段实施计划。
+> 本文解析 Vibebara 从「本机 localhost 单体」迁移到「桌面客户端」形态的主要技术路径、关键改造埋点（代码落点）、接口边界与分阶段实施计划。
 >
 > 配套可视化评估见 Canvas：`方案 B 改造量评估`。本文为可落地的工程文档，所有埋点均标注到具体文件与函数。
 
@@ -29,7 +29,7 @@
 
 ### 1.2 协作平台的本质约束
 
-VibeHub 是**团队协作中台**：Skill 仓库、团队/项目关联、推送拉取、项目动态实时同步都依赖**集中的数据与广播**。因此：
+Vibebara 是**团队协作中台**：Skill 仓库、团队/项目关联、推送拉取、项目动态实时同步都依赖**集中的数据与广播**。因此：
 
 - **数据库** 和 **WebSocket 广播** 必须留在云端。
 - 只有**触达本地文件系统/本地进程**的能力需要下沉到用户机器。
@@ -118,7 +118,7 @@ VibeHub 是**团队协作中台**：Skill 仓库、团队/项目关联、推送�
 
 现状已有 HMAC token 框架（`auth_service.py:38-65`），但需强化：
 
-- JWT secret 当前默认绑定 `LLM_API_KEY` 或硬编码 `"vibehub-default-secret"`（`auth_service.py:20`）→ 改为独立强密钥、环境注入。
+- JWT secret 当前默认绑定 `LLM_API_KEY` 或硬编码 `"vibebara-default-secret"`（`auth_service.py:20`）→ 改为独立强密钥、环境注入。
 - WebSocket token 校验**可选**（`websocket/routes.py:38` 中 `if token and not verify_token` —— token 为空直接放行）→ 改为强制。
 - 前端 token 存 `localStorage`（`client.ts:11`、`useSkillSync.ts:66`）→ 桌面端改用安全存储（OS keychain / Electron safeStorage）。
 - 本地代理与云端的**设备配对**：代理需持有用户身份令牌，确保「云端下发的写盘指令」只作用于本人客户端。

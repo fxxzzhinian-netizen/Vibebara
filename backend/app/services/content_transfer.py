@@ -111,7 +111,7 @@ def collect_store_resources(store_path: str) -> List[Dict[str, Any]]:
     """归集 Store 目录下 scripts/references/assets 资源为 CloudResourceItem 列表。
 
     - 仅纳入这三类资源子目录（与 deploy() 落盘复制范围一致）；root 下的
-      skill.config.yaml / VibeH.md / LICENSE 不属于 install 资源，不下发。
+      skill.config.yaml / SKILL.md / LICENSE 不属于 install 资源，不下发。
     - 排序键用「相对 store_path 的 POSIX 路径 UTF-8 字节序」，与 hash 收敛口径一致，
       保证产物顺序稳定（M0 §7.2）。
     - 默认 transfer=inline；大资源切 url 留后续（M2 决议⑥，契约已预留字段）。

@@ -75,7 +75,7 @@ describe("KiroAdapter", () => {
       metadata: {
         license: "MIT",
         compatibility: "Requires Python 3.11+",
-        author: "vibehub",
+        author: "vibebara",
         version: "1.0.0",
       },
     });
@@ -89,7 +89,7 @@ describe("KiroAdapter", () => {
     expect(frontmatter["license"]).toBe("MIT");
     expect(frontmatter["compatibility"]).toBe("Requires Python 3.11+");
     expect(frontmatter["metadata"]).toEqual({
-      author: "vibehub",
+      author: "vibebara",
       version: "1.0.0",
     });
   });
@@ -100,7 +100,7 @@ describe("KiroAdapter", () => {
       description: "A test skill for Kiro",
       instructions: "# Test Skill\n\nDo the thing.",
       triggers: { disableModelInvocation: true },
-      metadata: { license: "MIT", surfaces: ["ide"], author: "vibehub" },
+      metadata: { license: "MIT", surfaces: ["ide"], author: "vibebara" },
       ui: { brandColor: "#3B82F6", defaultPrompt: "Use $test-skill" },
       claude: { allowedTools: "Read", model: "opus", context: "fork" },
     });

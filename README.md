@@ -1,6 +1,6 @@
-# VibeHub — AI 协作中台
+# Vibebara — AI 协作中台
 
-VibeHub 是一个面向 Vibe Coding 工具（Cursor / Codex 等）的 **Skill 协作平台**：在平台抽象层统一管理 Skill，支持团队 / 项目维度的 Skill 关联、本地部署、改动推送与拉取更新，并通过 WebSocket 实时同步「项目动态」。
+Vibebara 是一个面向 Vibe Coding 工具（Cursor / Codex 等）的 **Skill 协作平台**：在平台抽象层统一管理 Skill，支持团队 / 项目维度的 Skill 关联、本地部署、改动推送与拉取更新，并通过 WebSocket 实时同步「项目动态」。
 
 ## 产品形态
 
@@ -61,7 +61,7 @@ Vibebara/
 ### 1. 服务器：拉取构建（Linux，bash）
 
 ```bash
-cd vibehub                              # 进入仓库目录
+cd vibebara                              # 进入仓库目录
 git pull && docker compose up -d --build
 
 # 验证
@@ -75,8 +75,8 @@ curl http://localhost:8000/health       # {"status":"healthy",...}
 ### 2. 本机：启动桌面壳（PowerShell，连云端后端）
 
 ```powershell
-$env:VIBEHUB_CLOUD_API_BASE = "http://43.136.128.162:8000/api/v1"
-$env:VIBEHUB_CLOUD_WS_BASE  = "ws://43.136.128.162:8000"
+$env:VIBEBARA_CLOUD_API_BASE = "http://43.136.128.162:8000/api/v1"
+$env:VIBEBARA_CLOUD_WS_BASE  = "ws://43.136.128.162:8000"
 .\build-desktop.ps1 -NoBe
 ```
 
@@ -102,8 +102,8 @@ $env:VIBEHUB_CLOUD_WS_BASE  = "ws://43.136.128.162:8000"
 
 ```bash
 # 1. 拉取代码
-git clone https://github.com/fxxzzhinian-netizen/Vibebara.git vibehub
-cd vibehub
+git clone https://github.com/fxxzzhinian-netizen/Vibebara.git vibebara
+cd vibebara
 
 # 2. 配置环境变量（.env 与 docker-compose.yml 同目录，不进 git）
 echo "JWT_SECRET=$(python3 -c 'import secrets;print(secrets.token_urlsafe(48))')" >> .env
@@ -164,7 +164,7 @@ docker compose build --build-arg APT_MIRROR=mirrors.aliyun.com backend
 
 ## 桌面客户端开发与联调
 
-桌面壳是 VibeHub 的**唯一发布形态**，架构为「桌面壳 + 本地代理 + 云端后端」三层。
+桌面壳是 Vibebara 的**唯一发布形态**，架构为「桌面壳 + 本地代理 + 云端后端」三层。
 
 | 层 | 目录 | 说明 |
 | --- | --- | --- |
@@ -182,8 +182,8 @@ docker compose build --build-arg APT_MIRROR=mirrors.aliyun.com backend
 云端后端已在服务器部署后，开发者本机只需指定服务器地址：
 
 ```powershell
-$env:VIBEHUB_CLOUD_API_BASE = "http://服务器公网IP:8000/api/v1"
-$env:VIBEHUB_CLOUD_WS_BASE  = "ws://服务器公网IP:8000"
+$env:VIBEBARA_CLOUD_API_BASE = "http://服务器公网IP:8000/api/v1"
+$env:VIBEBARA_CLOUD_WS_BASE  = "ws://服务器公网IP:8000"
 .\build-desktop.ps1 -NoBe     # 不启动本地后端，直连云端
 ```
 
@@ -224,11 +224,11 @@ $env:VIBEHUB_CLOUD_WS_BASE  = "ws://服务器公网IP:8000"
 - **环境变量**（联调优先级最高）：
 
 ```powershell
-$env:VIBEHUB_CLOUD_API_BASE = "http://服务器IP:8000/api/v1"
-$env:VIBEHUB_CLOUD_WS_BASE  = "ws://服务器IP:8000"
+$env:VIBEBARA_CLOUD_API_BASE = "http://服务器IP:8000/api/v1"
+$env:VIBEBARA_CLOUD_WS_BASE  = "ws://服务器IP:8000"
 ```
 
-- **配置文件**：`%APPDATA%/@vibehub/desktop/vibehub-desktop.config.json`
+- **配置文件**：`%APPDATA%/@vibebara/desktop/vibebara-desktop.config.json`
 
 ```json
 {

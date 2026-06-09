@@ -9,7 +9,7 @@
 > - 所有字段命名 **camelCase**；时间为 ISO-8601 UTC 字符串。
 > - 鉴权：除 `GET /local/health` 外，所有端点需请求头 `X-Pairing-Token: <token>`。
 > - 内容类型：`application/json; charset=utf-8`。
-> - 这些类型也可直接抽到 `@vibehub/local-agent-contract` 共享包，云端无需依赖（云端只需镜像 §云端协作端点的 DTO）。
+> - 这些类型也可直接抽到 `@vibebara/local-agent-contract` 共享包，云端无需依赖（云端只需镜像 §云端协作端点的 DTO）。
 
 ---
 
@@ -227,7 +227,7 @@ export interface WriteSkillRequest {
   /** 资源文件（可含二进制）；空数组表示无资源 */
   resources: ResourcePayload[];
   overwrite?: boolean;          // 默认 false；目录已存在且 false → INSTALL_EXISTS
-  /** 仅 scope=project 生效：维护 deployPath/.gitignore 的 VibeHub 块 */
+  /** 仅 scope=project 生效：维护 deployPath/.gitignore 的 Vibebara 块 */
   ensureGitignore?: boolean;
 }
 

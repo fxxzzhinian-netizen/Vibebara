@@ -14,7 +14,7 @@ const sessionId = route.params.id as string
 // 未登录时回退随机 id（保持现状可用）。
 const userId = ref(
   authStore.user?.id ||
-    localStorage.getItem('vibehub_user_id') ||
+    localStorage.getItem('vibebara_user_id') ||
     'user-' + Math.random().toString(36).slice(2, 8),
 )
 

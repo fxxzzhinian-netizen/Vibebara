@@ -2,7 +2,7 @@
  * 主进程 ↔ 预加载脚本共享的类型与 IPC 通道常量（方案 B M5-a）。
  *
  * RuntimeConfigPayload 的字段**必须**与 `frontend/src/runtime/config.ts` 的
- * `VibehubRuntimeConfig` 保持一致——这是桌面壳注入渲染层的运行时契约。
+ * `VibebaraRuntimeConfig` 保持一致——这是桌面壳注入渲染层的运行时契约。
  *
  * M5-b 设备身份地基：
  *   · `clientUuid` = 本机持久 uuid（幂等再注册键，非鉴权凭证）；
@@ -10,7 +10,7 @@
  *     （登录注册后经桥回写规范 device_id，注入即更新）。
  */
 
-/** 注入到 window.__VIBEHUB_RUNTIME__ 的运行时配置（对齐前端 VibehubRuntimeConfig）。 */
+/** 注入到 window.__VIBEBARA_RUNTIME__ 的运行时配置（对齐前端 VibebaraRuntimeConfig）。 */
 export interface RuntimeConfigPayload {
   /** 桌面壳固定为 'desktop'（前端据此走桌面分支：orchestration=true）。 */
   mode: "desktop";
@@ -44,21 +44,21 @@ export interface LocalAgentChangePayload {
 /** IPC 通道名（main ↔ preload）。 */
 export const IPC = {
   /** 同步取运行时配置（preload sendSync，窗口加载前已就绪）。 */
-  RUNTIME_GET_SYNC: "vibehub:runtime-get-sync",
+  RUNTIME_GET_SYNC: "vibebara:runtime-get-sync",
   /** 同步取已持久化登录 token（preload 启动缓存用）。 */
-  TOKEN_GET_SYNC: "vibehub:token-get-sync",
+  TOKEN_GET_SYNC: "vibebara:token-get-sync",
   /** 异步写登录 token（safeStorage 加密落盘）。 */
-  TOKEN_SET: "vibehub:token-set",
+  TOKEN_SET: "vibebara:token-set",
   /** 异步清除登录 token。 */
-  TOKEN_CLEAR: "vibehub:token-clear",
+  TOKEN_CLEAR: "vibebara:token-clear",
   /** 列出可启动工具及可用状态。 */
-  LAUNCHER_LIST: "vibehub:launcher-list",
+  LAUNCHER_LIST: "vibebara:launcher-list",
   /** 启动指定工具。 */
-  LAUNCHER_LAUNCH: "vibehub:launcher-launch",
+  LAUNCHER_LAUNCH: "vibebara:launcher-launch",
   /** 异步回写云端铸造的规范 device_id（M5-b 注册后）。 */
-  DEVICE_PERSIST_ID: "vibehub:device-persist-id",
+  DEVICE_PERSIST_ID: "vibebara:device-persist-id",
   /** 主进程 → 渲染层推送：本地代理端口漂移（热更 localAgentBase）。 */
-  LOCAL_AGENT_CHANGED: "vibehub:local-agent-changed",
+  LOCAL_AGENT_CHANGED: "vibebara:local-agent-changed",
 } as const;
 
 export type LauncherToolId =

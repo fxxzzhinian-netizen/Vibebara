@@ -3,7 +3,7 @@
  *
  * 登录成功后，桌面形态下前端持 Bearer 调 `POST /devices/register {clientUuid,...}`：
  *   · 云端按 (user, clientUuid) 幂等 upsert、**服务端铸造** device_id 并返回；
- *   · 前端经桌面桥 persistDeviceId 把规范 device_id 回写 vibehub-device.json，
+ *   · 前端经桌面桥 persistDeviceId 把规范 device_id 回写 vibebara-device.json，
  *     并 setDeviceId 更新前端运行时缓存（后续平台安装态上报用规范 device_id）。
  *
  * 灰度安全：web 形态无 clientUuid（runtime.clientUuid 为空）→ 安全跳过（不注册、不报错）。
@@ -116,7 +116,7 @@ export async function ensureDeviceRegistered(): Promise<string | null> {
       return null
     }
     const deviceId = res.device.deviceId
-    // 经桥回写本机 vibehub-device.json.registeredDeviceId（主进程同时热更运行时）。
+    // 经桥回写本机 vibebara-device.json.registeredDeviceId（主进程同时热更运行时）。
     const bridge = getDesktopBridge()
     if (bridge?.persistDeviceId) {
       try {

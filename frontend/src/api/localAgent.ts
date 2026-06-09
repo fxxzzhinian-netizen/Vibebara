@@ -170,7 +170,7 @@ export interface WriteSkillRequest {
   /** 资源文件（可含二进制）；空数组表示无资源。 */
   resources: ResourcePayload[]
   overwrite?: boolean
-  /** 仅 scope=project 生效：维护 deployPath/.gitignore 的 VibeHub 块。 */
+  /** 仅 scope=project 生效：维护 deployPath/.gitignore 的 Vibebara 块。 */
   ensureGitignore?: boolean
 }
 

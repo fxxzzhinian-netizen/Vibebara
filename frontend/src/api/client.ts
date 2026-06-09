@@ -17,7 +17,7 @@ import { getDesktopBridge } from '@/runtime/desktopBridge'
  *     `X-Pairing-Token: <pairingToken>`（本机设备配对）。**绝不**携带 Bearer。
  *
  * 两套地址/令牌由 runtimeConfig 提供：web 灰度用安全默认（云端 `/api/v1` + Vite 代理、
- * 本地代理用 M3 dev 端口/令牌）；M5 桌面壳通过 window.__VIBEHUB_RUNTIME__ 注入真实值。
+ * 本地代理用 M3 dev 端口/令牌）；M5 桌面壳通过 window.__VIBEBARA_RUNTIME__ 注入真实值。
  */
 
 const runtime = getRuntimeConfig()

@@ -2,11 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * 维护 deployPath/.gitignore 的 VibeHub 块 —— 逐行复刻 backend
+ * 维护 deployPath/.gitignore 的 Vibebara 块 —— 逐行复刻 backend
  * project_service._ensure_gitignore（:81-94）：仅追加缺失行，不重写已有内容。
  */
 export const GITIGNORE_BLOCK = [
-  "# VibeHub local skill deployments",
+  "# Vibebara local skill deployments",
   ".cursor/skills/",
   ".codex/skills/",
   ".windsurf/skills/",

@@ -390,7 +390,7 @@ onMounted(() => {
       <div v-if="!store.currentId" class="empty-state">
         <div class="empty-icon">&#9881;</div>
         <p>选择左侧列表中的 Skill 开始编辑</p>
-        <p class="empty-sub">或新建一个 VibeHub 原生 Skill</p>
+        <p class="empty-sub">或新建一个 Vibebara 原生 Skill</p>
       </div>
 
       <!-- Loading -->
@@ -463,7 +463,7 @@ onMounted(() => {
         <!-- Tab nav -->
         <nav class="tab-nav">
           <button :class="{ active: activeTab === 'basic' }" @click="activeTab = 'basic'">基本信息</button>
-          <button :class="{ active: activeTab === 'instructions' }" @click="activeTab = 'instructions'">VibeH 指令</button>
+          <button :class="{ active: activeTab === 'instructions' }" @click="activeTab = 'instructions'">SKILL 指令</button>
           <button :class="{ active: activeTab === 'policy' }" @click="activeTab = 'policy'">策略</button>
           <button :class="{ active: activeTab === 'deps' }" @click="activeTab = 'deps'">依赖</button>
           <button :class="{ active: activeTab === 'resources' }" @click="activeTab = 'resources'">资源</button>
@@ -494,10 +494,10 @@ onMounted(() => {
             </div>
           </section>
 
-          <!-- VibeH Instructions -->
+          <!-- SKILL Instructions -->
           <section v-if="activeTab === 'instructions'" class="form-section full-width">
             <div class="form-row full">
-              <label>VibeH.md — 技能正文（纯 Markdown）</label>
+              <label>VibeSkill.md — 技能正文（纯 Markdown）</label>
               <textarea
                 :value="store.vibehContent"
                 @input="store.updateVibeh(($event.target as HTMLTextAreaElement).value)"

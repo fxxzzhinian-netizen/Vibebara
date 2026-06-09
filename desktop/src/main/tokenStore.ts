@@ -14,7 +14,7 @@ import path from "node:path";
  */
 
 function tokenFile(): string {
-  return path.join(app.getPath("userData"), "vibehub-token.bin");
+  return path.join(app.getPath("userData"), "vibebara-token.bin");
 }
 
 function encryptionAvailable(): boolean {

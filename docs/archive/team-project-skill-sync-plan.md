@@ -124,7 +124,7 @@
 部署时必须向目标项目 `.gitignore` 追加：
 
 ```gitignore
-# VibeHub local skill deployments
+# Vibebara local skill deployments
 .cursor/skills/
 .codex/skills/
 ```

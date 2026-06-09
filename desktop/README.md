@@ -1,7 +1,7 @@
-# VibeHub 桌面壳（Electron / 方案 B M5-a）
+# Vibebara 桌面壳（Electron / 方案 B M5-a）
 
 桌面客户端外壳：主进程拉起并守护本地代理 `local-agent`、生成并注入配对令牌、注入
-`window.__VIBEHUB_RUNTIME__` 运行时配置、用 `safeStorage` 安全存储登录 token、在本机
+`window.__VIBEBARA_RUNTIME__` 运行时配置、用 `safeStorage` 安全存储登录 token、在本机
 重做一键启动 launcher。渲染层复用 `../frontend/dist` 构建产物。
 
 > 设计与决策见 `docs/方案B-桌面客户端迁移/M5-实施计划.md`、落地与验证见
@@ -23,13 +23,13 @@ desktop/
     │   ├── localAgentManager.ts  # 子进程管理（端口/令牌/健康/重启/清理，仅 Node 内置）
     │   ├── portFinder.ts     # 探测空闲端口
     │   ├── pairing.ts        # 生成高熵配对令牌（与 security.py 兼容）
-    │   ├── runtimeConfig.ts  # 组装 window.__VIBEHUB_RUNTIME__ 负载
+    │   ├── runtimeConfig.ts  # 组装 window.__VIBEBARA_RUNTIME__ 负载
     │   ├── userConfig.ts     # 云端地址：内置默认 + 配置文件/env 覆盖
     │   ├── tokenStore.ts     # safeStorage 加密持久化登录 token
     │   ├── deviceId.ts       # device_id 预留（本机持久临时 uuid 占位）
     │   ├── launcher.ts       # cursor/codex-cli/codex-app 启动（重做 launcher.py）
     │   └── ipc.ts            # 注册 IPC 处理器
-    └── preload/index.ts      # contextBridge 注入 __VIBEHUB_RUNTIME__ / __VIBEHUB_DESKTOP__
+    └── preload/index.ts      # contextBridge 注入 __VIBEBARA_RUNTIME__ / __VIBEBARA_DESKTOP__
 ```
 
 ## 前置
@@ -46,7 +46,7 @@ npm install
 npm run build      # 编译 TS → dist-electron
 npm start          # 启动桌面壳（默认加载 ../frontend/dist/index.html）
 # 或指向 Vite dev server（前端 npm run dev 后）：
-#   $env:VIBEHUB_DEV_SERVER_URL = "http://localhost:5173"; npm start
+#   $env:VIBEBARA_DEV_SERVER_URL = "http://localhost:5173"; npm start
 ```
 
 `npm run dev` = 编译 + 启动。
@@ -62,10 +62,10 @@ npm run smoke:agent   # 验证本地代理拉起/配对令牌/崩溃重启/退�
 
 默认指向本机 cloud demo（`http://127.0.0.1:8000/api/v1`、`ws://127.0.0.1:8000`）。覆盖方式：
 
-- 配置文件：`<userData>/vibehub-desktop.config.json`（`cloudApiBase` / `cloudWsBase` / `writableRoots`）。
-- 环境变量（联调优先）：`VIBEHUB_CLOUD_API_BASE` / `VIBEHUB_CLOUD_WS_BASE` / `VIBEHUB_WRITABLE_ROOTS`（`;` 分隔）。
+- 配置文件：`<userData>/vibebara-desktop.config.json`（`cloudApiBase` / `cloudWsBase` / `writableRoots`）。
+- 环境变量（联调优先）：`VIBEBARA_CLOUD_API_BASE` / `VIBEBARA_CLOUD_WS_BASE` / `VIBEBARA_WRITABLE_ROOTS`（`;` 分隔）。
 
-`<userData>` 在 Windows 为 `%APPDATA%/@vibehub/desktop`（以 Electron app name 为准）。
+`<userData>` 在 Windows 为 `%APPDATA%/@vibebara/desktop`（以 Electron app name 为准）。
 
 ## 打包（M5-c）
 

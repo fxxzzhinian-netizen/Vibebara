@@ -27,7 +27,7 @@ from app.services.file_watcher_service import FileWatcherService
 def _print_startup_diagnostics():
     """打印启动诊断信息"""
     print("\n" + "=" * 60)
-    print("  VibeHub 后端 - 启动诊断")
+    print("  Vibebara 后端 - 启动诊断")
     print("=" * 60)
 
     # skill-forge bridge 检查

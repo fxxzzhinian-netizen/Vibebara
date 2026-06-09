@@ -90,7 +90,7 @@ describe("handleWriteSkill", () => {
     expect(res.installedHash).toHaveLength(64);
   });
 
-  it("ensureGitignore 在 deployPath 写入 VibeHub 块", () => {
+  it("ensureGitignore 在 deployPath 写入 Vibebara 块", () => {
     const deployPath = path.join(tmp, "proj-gi");
     fs.mkdirSync(deployPath, { recursive: true });
     const ctx = makeCtx([deployPath]);
@@ -108,7 +108,7 @@ describe("handleWriteSkill", () => {
       ctx,
     );
     const gi = fs.readFileSync(path.join(deployPath, ".gitignore"), "utf8");
-    expect(gi).toContain("# VibeHub local skill deployments");
+    expect(gi).toContain("# Vibebara local skill deployments");
     expect(gi).toContain(".cursor/skills/");
     expect(gi).toContain(".codex/skills/");
     expect(gi).toContain(".windsurf/skills/");

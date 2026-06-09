@@ -1,6 +1,6 @@
 # 方案 B · 桌面客户端「上线前 Checklist」
 
-> 本文是 VibeHub 桌面客户端（Electron 三层架构：桌面壳 + 本地代理 + 云端后端）**正式上线前的核对清单与发布 Runbook**。
+> 本文是 Vibebara 桌面客户端（Electron 三层架构：桌面壳 + 本地代理 + 云端后端）**正式上线前的核对清单与发布 Runbook**。
 >
 > 状态基线（截至本文）：M5-a 桌面壳骨架已完成；M5-b 仅落「设备身份地基」；**M5-c（打包/签名/自动更新）整体未完成**；生产云端硬化（HTTPS / 运维清单）未执行。功能联调可用，正式对外分发尚未就绪。
 >
@@ -53,7 +53,7 @@
 ### 2.1 传输层 HTTPS/TLS 🔴
 
 - [ ] 在后端前置反向代理（nginx / Caddy）做 TLS 终止，对外 `https://` + `wss://`（自动证书或商用证书）。
-- [ ] 桌面壳云端地址切到 `https://域名/api/v1` + `wss://域名`（环境变量或 `vibehub-desktop.config.json`）。
+- [ ] 桌面壳云端地址切到 `https://域名/api/v1` + `wss://域名`（环境变量或 `vibebara-desktop.config.json`）。
 - [ ] 确认 `ALLOW_ORIGIN_REGEX` 仍放行 Electron `file://`（Origin=`null`）。
 
 ### 2.2 密钥与鉴权 🔴

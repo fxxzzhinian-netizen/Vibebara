@@ -7,7 +7,7 @@
 
 ## 一、设计目标
 
-1. 定义一个**平台无关的抽象 Skill 包**格式（`skill.config.yaml` + `VibeH.md`），作为所有平台信息的**超集**
+1. 定义一个**平台无关的抽象 Skill 包**格式（`skill.config.yaml` + `SKILL.md`），作为所有平台信息的**超集**
 2. 针对每个目标平台，定义**严格的构建规则**——生成的产物必须 100% 符合该平台规范，不含任何其他平台的文件或字段
 3. 构建过程是**有损转换**——目标平台不支持的字段和文件会被精确丢弃
 4. 支持**反向导入**——从任意已支持平台（Cursor / Codex / Claude / Windsurf / Kiro）的原生 skill 解析为抽象包，这是平台核心能力
@@ -40,7 +40,7 @@
 ```
 my-skill/
 ├── skill.config.yaml           # 必需 — 统一配置（该抽象包副本的 source of truth）
-├── VibeH.md                    # 必需 — 技能正文（纯 Markdown，不含 frontmatter）
+├── SKILL.md                    # 必需 — 技能正文（纯 Markdown，不含 frontmatter）
 ├── scripts/                    # 可选
 │   ├── validate.py
 │   └── requirements.txt        # Python 依赖声明
@@ -164,7 +164,7 @@ metadata:
 
 | 文件 | 分类 | Cursor | Codex | Claude | Windsurf | Kiro | Trae | Qoder |
 |------|------|--------|-------|--------|----------|------|------|-------|
-| `VibeH.md` | 通用（合并入 SKILL.md） | 合并 | 合并 | 合并 | 合并 | 合并 | 合并 | 合并 |
+| `SKILL.md` | 通用（合并入 SKILL.md） | 合并 | 合并 | 合并 | 合并 | 合并 | 合并 | 合并 |
 | `skill.config.yaml` | 仅抽象包 | 丢弃 | 丢弃 | 丢弃 | 丢弃 | 丢弃 | 丢弃 | 丢弃 |
 | `scripts/*` | 通用 | 复制 | 复制 | 复制 | 复制 | 复制 | 复制 | 复制 |
 | `references/*` | 通用 | 复制 | 复制 | 复制 | 复制 | 复制 | 复制 | 复制 |
@@ -175,7 +175,7 @@ metadata:
 
 > Cursor 历史实现仅复制 `scripts/` 与 `references/`（不复制 `assets/`）。本设计统一约定：**五平台均复制 `assets/` 中的通用资源**（仅 Codex 额外保留图标文件）；该差异在 Cursor 适配器落地时一并对齐。
 
-判定规则：一个文件是否"平台特有"取决于它是否被 `skill.config.yaml` 中的**平台特有字段**（如 `ui.icon_small`）引用。被 `VibeH.md` 正文引用的文件始终视为通用。
+判定规则：一个文件是否"平台特有"取决于它是否被 `skill.config.yaml` 中的**平台特有字段**（如 `ui.icon_small`）引用。被 `SKILL.md` 正文引用的文件始终视为通用。
 
 ### 2.4 跨平台 frontmatter 字段兼容矩阵
 
@@ -202,7 +202,7 @@ metadata:
 
 > 设计原则：抽象包是超集，**写到任一平台只保留该平台支持的字段，其余精确丢弃**；导入时反向把平台原生字段还原到抽象层。
 
-### 2.5 `VibeH.md` — 技能正文
+### 2.5 `SKILL.md` — 技能正文
 
 纯 Markdown，**不含 YAML frontmatter**。这是技能的核心指令内容，构建时会被嵌入到各平台的 `SKILL.md` 中。
 
@@ -228,7 +228,7 @@ Run: `python scripts/validate.py`
 
 ```
 <output>/
-├── SKILL.md                    # 合成：frontmatter + VibeH.md
+├── SKILL.md                    # 合成：frontmatter + SKILL.md
 ├── scripts/                    # 原样复制
 ├── references/                 # 原样复制
 └── assets/                     # 仅复制通用资源（图标文件丢弃）
@@ -236,7 +236,7 @@ Run: `python scripts/validate.py`
 
 ### 3.2 生成 `SKILL.md`
 
-将 `skill.config.yaml` 的字段映射为 Cursor frontmatter + `VibeH.md` 正文：
+将 `skill.config.yaml` 的字段映射为 Cursor frontmatter + `SKILL.md` 正文：
 
 ```yaml
 ---
@@ -247,7 +247,7 @@ metadata:                             # 仅当 metadata.surfaces 有值时输出
   surfaces: ["{metadata.surfaces}"]
 ---
 
-{VibeH.md 原文}
+{SKILL.md 原文}
 ```
 
 ### 3.3 字段映射
@@ -276,7 +276,7 @@ metadata:                             # 仅当 metadata.surfaces 有值时输出
 | `openai.yaml` | Codex 特有 |
 | `LICENSE` / `LICENSE.txt` | Cursor 不需要 |
 | `skill.config.yaml` | 抽象包配置，非平台文件 |
-| `VibeH.md` | 已合并入 SKILL.md |
+| `SKILL.md` | 已合并入 SKILL.md |
 | `ui.icon_small` 引用的图标文件 | Cursor 无 UI 元数据 |
 | `ui.icon_large` 引用的图标文件 | Cursor 无 UI 元数据 |
 | `claude.*` 引用的字段 | Claude 专有 |
@@ -315,7 +315,7 @@ name: "{name}"
 description: "{description}"
 ---
 
-{VibeH.md 原文}
+{SKILL.md 原文}
 ```
 
 ### 4.3 生成 `agents/openai.yaml`
@@ -369,7 +369,7 @@ policy:                                            # 仅当 auto_invoke != true 
 | SKILL.md 中的 `metadata.surfaces` | Cursor 特有字段 |
 | SKILL.md 中的 `allowed-tools` / `model` / `context` / `hooks` 等 | Claude 特有字段 |
 | `skill.config.yaml` | 抽象包配置，非平台文件 |
-| `VibeH.md` | 已合并入 SKILL.md |
+| `SKILL.md` | 已合并入 SKILL.md |
 
 ### 4.6 部署目标
 
@@ -390,7 +390,7 @@ policy:                                            # 仅当 auto_invoke != true 
 
 ```
 <output>/
-├── SKILL.md                    # 合成：完整 frontmatter（标准 + Claude 扩展） + VibeH.md
+├── SKILL.md                    # 合成：完整 frontmatter（标准 + Claude 扩展） + SKILL.md
 ├── scripts/                    # 原样复制
 ├── references/                 # 原样复制
 └── assets/                     # 仅复制通用资源（图标文件丢弃）
@@ -427,7 +427,7 @@ hooks:                                # 仅当 claude.hooks 有值时输出（�
           command: "./scripts/validate.sh"
 ---
 
-{VibeH.md 原文}
+{SKILL.md 原文}
 ```
 
 > 所有字段都是「有值才输出」，最小产物退化为 `name` + `description`（与 Agent Skills 标准一致，Claude 也接受）。
@@ -470,7 +470,7 @@ hooks:                                # 仅当 claude.hooks 有值时输出（�
 | `LICENSE` / `LICENSE.txt` 文件 | Claude 用 frontmatter `license`，不落 LICENSE 文件 |
 | `ui.icon_*` 引用的图标文件 | Claude 无 UI 元数据 |
 | `skill.config.yaml` | 抽象包配置，非平台文件 |
-| `VibeH.md` | 已合并入 SKILL.md |
+| `SKILL.md` | 已合并入 SKILL.md |
 
 ### 5.5 部署目标
 
@@ -506,7 +506,7 @@ hooks:                                # 仅当 claude.hooks 有值时输出（�
 
 ```
 <output>/
-├── SKILL.md                    # 合成：极简 frontmatter（仅 name + description） + VibeH.md
+├── SKILL.md                    # 合成：极简 frontmatter（仅 name + description） + SKILL.md
 ├── scripts/                    # 原样复制（随技能激活加载）
 ├── references/                 # 原样复制
 └── assets/                     # 仅复制通用资源（图标文件丢弃）
@@ -524,7 +524,7 @@ name: "{name}"
 description: "{description}"
 ---
 
-{VibeH.md 原文}
+{SKILL.md 原文}
 ```
 
 ### 6.3 字段映射
@@ -551,7 +551,7 @@ description: "{description}"
 | `allowed-tools` / `model` / `context` / `hooks` 等 Claude 字段 | Claude 特有 |
 | `license` / `compatibility` / `metadata` frontmatter | Windsurf 未文档化字段 |
 | `LICENSE` / `LICENSE.txt` | Codex 特有 |
-| `skill.config.yaml` / `VibeH.md` | 抽象包文件 |
+| `skill.config.yaml` / `SKILL.md` | 抽象包文件 |
 | `ui.icon_*` 引用的图标文件 | Windsurf 无 UI 元数据 |
 
 ### 6.5 部署目标
@@ -580,7 +580,7 @@ description: "{description}"
 
 ```
 <output>/
-├── SKILL.md                    # 合成：标准 frontmatter（name + description + 可选 license/compatibility/metadata） + VibeH.md
+├── SKILL.md                    # 合成：标准 frontmatter（name + description + 可选 license/compatibility/metadata） + SKILL.md
 ├── scripts/                    # 原样复制（随技能激活加载）
 ├── references/                 # 原样复制
 └── assets/                     # 仅复制通用资源（图标文件丢弃）
@@ -603,7 +603,7 @@ metadata:                             # 仅当 author/version 有值时输出
   version: "{metadata.version}"
 ---
 
-{VibeH.md 原文}
+{SKILL.md 原文}
 ```
 
 > 所有可选字段「有值才输出」，最小产物退化为 `name` + `description`（与 Agent Skills 标准一致，Kiro 也接受）。
@@ -637,7 +637,7 @@ metadata:                             # 仅当 author/version 有值时输出
 | `allowed-tools` / `model` / `effort` / `context` / `agent` / `hooks` / `user-invocable` 等 Claude 字段 | Claude 特有 |
 | `LICENSE` / `LICENSE.txt` 文件 | Kiro 用 frontmatter `license`，不落 LICENSE 文件 |
 | `ui.icon_*` 引用的图标文件 | Kiro 无 UI 元数据 |
-| `skill.config.yaml` / `VibeH.md` | 抽象包文件 |
+| `skill.config.yaml` / `SKILL.md` | 抽象包文件 |
 
 ### 7.5 部署目标
 
@@ -665,7 +665,7 @@ metadata:                             # 仅当 author/version 有值时输出
 
 ```
 <output>/
-├── SKILL.md                    # 合成：极简 frontmatter（仅 name + description） + VibeH.md
+├── SKILL.md                    # 合成：极简 frontmatter（仅 name + description） + SKILL.md
 ├── scripts/                    # 原样复制（随技能激活加载）
 ├── references/                 # 原样复制
 └── assets/                     # 仅复制通用资源（图标文件丢弃）
@@ -683,7 +683,7 @@ name: "{name}"
 description: "{description}"
 ---
 
-{VibeH.md 原文}
+{SKILL.md 原文}
 ```
 
 ### 8.3 字段映射
@@ -710,7 +710,7 @@ description: "{description}"
 | `allowed-tools` / `model` / `context` / `hooks` 等 Claude 字段 | Claude 特有 |
 | `license` / `compatibility` / `metadata` frontmatter | Trae 未文档化字段 |
 | `LICENSE` / `LICENSE.txt` | Codex 特有 |
-| `skill.config.yaml` / `VibeH.md` | 抽象包文件 |
+| `skill.config.yaml` / `SKILL.md` | 抽象包文件 |
 | `ui.icon_*` 引用的图标文件 | Trae 无 UI 元数据 |
 
 ### 8.5 部署目标
@@ -747,7 +747,7 @@ description: "{description}"
 
 ```
 <output>/
-├── SKILL.md                    # 合成：极简 frontmatter（仅 name + description） + VibeH.md
+├── SKILL.md                    # 合成：极简 frontmatter（仅 name + description） + SKILL.md
 ├── scripts/                    # 原样复制（随技能激活加载）
 ├── references/                 # 原样复制
 └── assets/                     # 仅复制通用资源（图标文件丢弃）
@@ -765,7 +765,7 @@ name: "{name}"
 description: "{description}"
 ---
 
-{VibeH.md 原文}
+{SKILL.md 原文}
 ```
 
 ### 9.3 字段映射
@@ -792,7 +792,7 @@ description: "{description}"
 | `allowed-tools` / `model` / `context` / `hooks` 等 Claude 字段 | Claude 特有 |
 | `license` / `compatibility` / `metadata` frontmatter | Qoder 未文档化字段 |
 | `LICENSE` / `LICENSE.txt` | Codex 特有 |
-| `skill.config.yaml` / `VibeH.md` | 抽象包文件 |
+| `skill.config.yaml` / `SKILL.md` | 抽象包文件 |
 | `ui.icon_*` 引用的图标文件 | Qoder 无 UI 元数据 |
 
 ### 9.5 部署目标
@@ -811,7 +811,7 @@ description: "{description}"
 ### 10.1 正向构建（Build）
 
 ```
-skill.config.yaml + VibeH.md + resources/
+skill.config.yaml + SKILL.md + resources/
           │
           ▼
     ┌──────────────┐
@@ -846,7 +846,7 @@ skill.config.yaml + VibeH.md + resources/
 | 校验项 | 说明 | 失败行为 |
 |--------|------|----------|
 | Schema 校验 | `skill.config.yaml` 符合 Zod schema | 阻断构建，报错 |
-| `VibeH.md` 存在性 | 正文文件必须存在且非空 | 阻断构建，报错 |
+| `SKILL.md` 存在性 | 正文文件必须存在且非空 | 阻断构建，报错 |
 | 资源文件存在性 | `resources` 中声明的路径必须存在 | 阻断构建，报错 |
 | 依赖 skill 校验 | `dependencies.skills` 中的 skill 在目标平台是否已安装 | **警告**（不阻断） |
 | `name` 格式 | 小写 + 连字符，≤64 字符 | 阻断构建，报错 |
@@ -859,7 +859,7 @@ skill.config.yaml + VibeH.md + resources/
 
 ## 十一、反向导入（Import）— 平台核心能力
 
-从已有的 Cursor / Codex / Claude / Windsurf / Kiro / Trae / Qoder 原生 skill 目录，反向解析为抽象包（`skill.config.yaml` + `VibeH.md`）。
+从已有的 Cursor / Codex / Claude / Windsurf / Kiro / Trae / Qoder 原生 skill 目录，反向解析为抽象包（`skill.config.yaml` + `SKILL.md`）。
 
 ### 11.1 用户操作流程
 
@@ -879,7 +879,7 @@ skill.config.yaml + VibeH.md + resources/
           │
           ▼
     ┌──────────────┐
-    │   反向导入    │   解析 → 生成 skill.config.yaml + VibeH.md
+    │   反向导入    │   解析 → 生成 skill.config.yaml + SKILL.md
     │  （不补齐）   │   缺失字段标记为 incomplete，不调用 LLM
     └──────┬───────┘
            │
@@ -911,7 +911,7 @@ skill.config.yaml + VibeH.md + resources/
            │
            ▼
     ┌──────────────┐
-    │   merge &    │   合并为 skill.config.yaml + VibeH.md
+    │   merge &    │   合并为 skill.config.yaml + SKILL.md
     │   generate   │   标记 _import_meta.incomplete_fields
     └──────────────┘
 ```
@@ -975,7 +975,7 @@ flowchart TD
 | SKILL.md frontmatter `description` | `description` |
 | SKILL.md frontmatter `disable-model-invocation: true` | `policy.auto_invoke: false` |
 | SKILL.md frontmatter `metadata.surfaces` | `metadata.surfaces` |
-| SKILL.md body（frontmatter 之后） | `VibeH.md` |
+| SKILL.md body（frontmatter 之后） | `SKILL.md` |
 | `scripts/` 目录 | `resources.scripts` + 复制文件 |
 | `references/` 目录 | `resources.references` + 复制文件 |
 | `assets/` 目录 | `resources.assets` + 复制文件 |
@@ -987,7 +987,7 @@ flowchart TD
 |-----------------|-----------|
 | SKILL.md frontmatter `name` | `name` |
 | SKILL.md frontmatter `description` | `description` |
-| SKILL.md body（frontmatter 之后） | `VibeH.md` |
+| SKILL.md body（frontmatter 之后） | `SKILL.md` |
 | openai.yaml `interface.display_name` | `ui.display_name` |
 | openai.yaml `interface.short_description` | `ui.short_description` |
 | openai.yaml `interface.brand_color` | `ui.brand_color` |
@@ -1007,7 +1007,7 @@ flowchart TD
 |------------------|-----------|
 | SKILL.md frontmatter `name` | `name`（缺省时回退为目录名） |
 | SKILL.md frontmatter `description` | `description`（缺省时回退为正文首段） |
-| SKILL.md body（frontmatter 之后） | `VibeH.md` |
+| SKILL.md body（frontmatter 之后） | `SKILL.md` |
 | frontmatter `disable-model-invocation: true` | `policy.auto_invoke: false` |
 | frontmatter `license` | `metadata.license` |
 | frontmatter `compatibility` | `metadata.compatibility` |
@@ -1035,7 +1035,7 @@ flowchart TD
 |--------------------|-----------|
 | SKILL.md frontmatter `name` | `name` |
 | SKILL.md frontmatter `description` | `description` |
-| SKILL.md body（frontmatter 之后） | `VibeH.md` |
+| SKILL.md body（frontmatter 之后） | `SKILL.md` |
 | `scripts/` 目录 | `resources.scripts` + 复制文件 |
 | `references/` 目录 | `resources.references` + 复制文件 |
 | `assets/` 目录 | `resources.assets` + 复制文件 |
@@ -1052,7 +1052,7 @@ flowchart TD
 | SKILL.md frontmatter `license` | `metadata.license` |
 | SKILL.md frontmatter `compatibility` | `metadata.compatibility` |
 | SKILL.md frontmatter `metadata.author` / `metadata.version` | `metadata.author` / `metadata.version` |
-| SKILL.md body（frontmatter 之后） | `VibeH.md` |
+| SKILL.md body（frontmatter 之后） | `SKILL.md` |
 | `scripts/` 目录 | `resources.scripts` + 复制文件 |
 | `references/` 目录 | `resources.references` + 复制文件 |
 | `assets/` 目录 | `resources.assets` + 复制文件 |
@@ -1066,7 +1066,7 @@ flowchart TD
 |----------------|-----------|
 | SKILL.md frontmatter `name` | `name` |
 | SKILL.md frontmatter `description` | `description` |
-| SKILL.md body（frontmatter 之后） | `VibeH.md` |
+| SKILL.md body（frontmatter 之后） | `SKILL.md` |
 | `scripts/` 目录 | `resources.scripts` + 复制文件 |
 | `references/` 目录 | `resources.references` + 复制文件 |
 | `assets/` 目录 | `resources.assets` + 复制文件 |
@@ -1080,7 +1080,7 @@ flowchart TD
 |----------------|-----------|
 | SKILL.md frontmatter `name` | `name` |
 | SKILL.md frontmatter `description` | `description` |
-| SKILL.md body（frontmatter 之后） | `VibeH.md` |
+| SKILL.md body（frontmatter 之后） | `SKILL.md` |
 | `scripts/` 目录 | `resources.scripts` + 复制文件 |
 | `references/` 目录 | `resources.references` + 复制文件 |
 | `assets/` 目录 | `resources.assets` + 复制文件 |
@@ -1194,7 +1194,7 @@ _import_meta:
 部署时必须维护 `.gitignore`（与 `local-agent/src/gitignore.ts` 现状一致）：
 
 ```gitignore
-# VibeHub local skill deployments
+# Vibebara local skill deployments
 .cursor/skills/
 .codex/skills/
 .windsurf/skills/
@@ -1237,7 +1237,7 @@ _import_meta:
      │ 否        │ 是
      ▼           ▼
    直接构建   ┌──────────────┐
-   & 部署    │  调用 LLM API │   发送 name + description + VibeH.md 摘要
+   & 部署    │  调用 LLM API │   发送 name + description + SKILL.md 摘要
              └──────┬───────┘
                     │
                     ▼
@@ -1338,7 +1338,7 @@ claude:
 metadata:
   license: "MIT"
   compatibility: "Requires Python 3.11+"
-  author: "vibehub"
+  author: "vibebara"
   version: "1.0.0"
 
 resources:
@@ -1350,7 +1350,7 @@ resources:
     - path: "assets/sample-output.txt"
 ```
 
-**`VibeH.md`：**
+**`SKILL.md`：**
 
 ```markdown
 # Test Helper
@@ -1368,7 +1368,7 @@ Use this skill to confirm that a local skill loads correctly...
 
 ```
 test-helper/
-├── SKILL.md                    ← frontmatter(name + description + disable-model-invocation) + VibeH.md
+├── SKILL.md                    ← frontmatter(name + description + disable-model-invocation) + SKILL.md
 ├── scripts/
 │   └── self_check.py           ← 原样复制
 ├── references/
@@ -1400,7 +1400,7 @@ Use this skill to confirm that a local skill loads correctly...
 
 ```
 test-helper/
-├── SKILL.md                    ← frontmatter(name + description 仅两字段) + VibeH.md
+├── SKILL.md                    ← frontmatter(name + description 仅两字段) + SKILL.md
 ├── agents/
 │   └── openai.yaml             ← 从 ui + policy 生成
 ├── scripts/
@@ -1428,7 +1428,7 @@ policy:
 
 ```
 test-helper/
-├── SKILL.md                    ← 完整 frontmatter（标准 + claude 运行时字段） + VibeH.md
+├── SKILL.md                    ← 完整 frontmatter（标准 + claude 运行时字段） + SKILL.md
 ├── scripts/
 │   └── self_check.py           ← 原样复制
 ├── references/
@@ -1450,7 +1450,7 @@ disable-model-invocation: true
 license: MIT
 compatibility: "Requires Python 3.11+"
 metadata:
-  author: vibehub
+  author: vibebara
   version: "1.0.0"
 allowed-tools: Read, Grep, Glob
 model: sonnet
@@ -1471,7 +1471,7 @@ Use this skill to confirm that a local skill loads correctly...
 
 ```
 test-helper/
-├── SKILL.md                    ← frontmatter(name + description 仅两字段) + VibeH.md
+├── SKILL.md                    ← frontmatter(name + description 仅两字段) + SKILL.md
 ├── scripts/
 │   └── self_check.py           ← 原样复制
 ├── references/
@@ -1504,7 +1504,7 @@ Use this skill to confirm that a local skill loads correctly...
 
 ```
 test-helper/
-├── SKILL.md                    ← frontmatter(name + description + license + compatibility + metadata) + VibeH.md
+├── SKILL.md                    ← frontmatter(name + description + license + compatibility + metadata) + SKILL.md
 ├── scripts/
 │   └── self_check.py           ← 原样复制
 ├── references/
@@ -1525,7 +1525,7 @@ description: >-
 license: MIT
 compatibility: "Requires Python 3.11+"
 metadata:
-  author: vibehub
+  author: vibebara
   version: "1.0.0"
 ---
 
@@ -1542,7 +1542,7 @@ Use this skill to confirm that a local skill loads correctly...
 
 ```
 test-helper/
-├── SKILL.md                    ← frontmatter(name + description 仅两字段) + VibeH.md
+├── SKILL.md                    ← frontmatter(name + description 仅两字段) + SKILL.md
 ├── scripts/
 │   └── self_check.py           ← 原样复制
 ├── references/
@@ -1575,7 +1575,7 @@ Use this skill to confirm that a local skill loads correctly...
 
 ```
 test-helper/
-├── SKILL.md                    ← frontmatter(name + description 仅两字段) + VibeH.md
+├── SKILL.md                    ← frontmatter(name + description 仅两字段) + SKILL.md
 ├── scripts/
 │   └── self_check.py           ← 原样复制
 ├── references/
@@ -1615,7 +1615,7 @@ Use this skill to confirm that a local skill loads correctly...
 # 或
 ~/.cowork/teams/{team_id}/skills/{uuid}/ # 加入团队仓库时
 ├── skill.config.yaml           ← SKILL.md frontmatter（标准 + 运行时）→ metadata + claude 块
-├── VibeH.md                    ← SKILL.md body 部分提取
+├── SKILL.md                    ← SKILL.md body 部分提取
 ├── scripts/
 │   └── self_check.py           ← 原样复制
 ├── references/
@@ -1630,7 +1630,7 @@ Use this skill to confirm that a local skill loads correctly...
 
 | # | 决策 | 理由 |
 |---|------|------|
-| 1 | 正文文件名固定为 `VibeH.md` | 平台品牌标识，无需支持自定义 |
+| 1 | 正文文件名固定为 `SKILL.md` | 平台品牌标识，无需支持自定义 |
 | 2 | 抽象包是所有平台信息的超集 | 抽象包包含图标、LICENSE、Claude 运行时字段等所有平台可能用到的内容；构建时按目标平台严格过滤 |
 | 3 | 平台特有字段保留在抽象层 | 如 `metadata.surfaces`（Cursor）、`ui.*`（Codex）、`claude.*`（Claude），构建到不支持的平台时丢弃 |
 | 4 | 构建时校验依赖 skill 是否已安装 | 以警告形式提示，不阻断构建 |

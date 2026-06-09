@@ -86,7 +86,7 @@ describe("TraeAdapter", () => {
         license: "MIT",
         compatibility: "Requires Python 3.11+",
         surfaces: ["ide"],
-        author: "vibehub",
+        author: "vibebara",
         version: "1.0.0",
       },
       ui: { brandColor: "#3B82F6", defaultPrompt: "Use $test-skill" },

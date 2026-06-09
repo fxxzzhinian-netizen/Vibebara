@@ -1,8 +1,8 @@
-# VibeHub - AI 协作中台架构设计
+# Vibebara - AI 协作中台架构设计
 
 ## 项目定位
 
-不同终端用户使用不同的 Vibe Coding 工具（Cursor、Codex、GitHub Copilot、Windsurf 等）。VibeHub 以 `skill-forge` 作为统一 Skill 工具链，负责 Skill 的导入、抽象包管理、目标平台构建、部署、反向解析和项目实例同步。
+不同终端用户使用不同的 Vibe Coding 工具（Cursor、Codex、GitHub Copilot、Windsurf 等）。Vibebara 以 `skill-forge` 作为统一 Skill 工具链，负责 Skill 的导入、抽象包管理、目标平台构建、部署、反向解析和项目实例同步。
 
 ---
 

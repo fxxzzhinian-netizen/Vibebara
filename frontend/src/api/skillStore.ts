@@ -372,11 +372,17 @@ export interface UrlImportResponse {
   error?: string
 }
 
+// 链接导入由云端下载 + 解压整个仓库后再解析，耗时远超普通接口（尤其国内服务器
+// 拉取 github.com 可能较慢），需放宽 axios 默认 15s 超时，否则请求未完成即被前端中断。
+const URL_SCAN_TIMEOUT_MS = 180000
+const URL_IMPORT_TIMEOUT_MS = 180000
+
 /** 第一步：解析链接，返回缓存 token 与发现的可导入 Skill 列表。 */
 export async function scanUrlSkills(url: string): Promise<UrlSkillScanResponse> {
   const { data } = await apiClient.post<UrlSkillScanResponse>(
     '/skill-forge/store/import-url/scan',
     { url },
+    { timeout: URL_SCAN_TIMEOUT_MS },
   )
   return data
 }
@@ -401,6 +407,7 @@ export async function importUrlSkills(
       teamId: teamId ?? null,
       sourceUrl: sourceUrl ?? null,
     },
+    { timeout: URL_IMPORT_TIMEOUT_MS },
   )
   return data
 }

@@ -66,7 +66,7 @@ export function useSkillSync(
     }
 
     const token = getToken()
-    const userId = localStorage.getItem('vibehub_user_id') || 'anonymous'
+    const userId = localStorage.getItem('vibebara_user_id') || 'anonymous'
     // WS 云端化（M0 §9）：用 runtimeConfig 的云端 WS 基址；未配置时回退当前 host（dev/同源兼容）。
     const url =
       cloudWsUrl(`/ws/project/${pid}`) +

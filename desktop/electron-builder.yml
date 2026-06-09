@@ -1,11 +1,11 @@
-# VibeHub 桌面壳打包配置（方案 B M5-c 脚手架，Windows-first）。
+# Vibebara 桌面壳打包配置（方案 B M5-c 脚手架，Windows-first）。
 #
 # ⚠️ M5-a 阶段仅提供此配置骨架，打包/签名/自动更新的完整落地属 M5-c。
 # 使用前需在 devDependencies 安装 electron-builder，并将 local-agent/frontend 产物
 # 作为 extraResources 一并打入（与主进程 resolvePaths() 的 packaged 分支对齐）。
 
-appId: com.vibehub.desktop
-productName: VibeHub
+appId: com.vibebara.desktop
+productName: Vibebara
 directories:
   output: release
   buildResources: build
@@ -42,4 +42,4 @@ nsis:
 # 自动更新（M5-c）：electron-updater + 发布通道（generic / github）。
 # publish:
 #   provider: generic
-#   url: https://updates.vibehub.example/desktop/
+#   url: https://updates.vibebara.example/desktop/

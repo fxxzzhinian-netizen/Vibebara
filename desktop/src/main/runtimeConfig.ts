@@ -4,7 +4,7 @@ import type { CloudConfig } from "./userConfig";
 /**
  * 组装注入渲染层的运行时配置（方案 B M5-a，任务项 4）。
  *
- * 字段与 frontend/src/runtime/config.ts 的 VibehubRuntimeConfig 对齐：
+ * 字段与 frontend/src/runtime/config.ts 的 VibebaraRuntimeConfig 对齐：
  *   mode='desktop' → 前端 orchestration 推断为 true（此处显式置 true，双保险）；
  *   localAgentBase/Port = 主进程为本地代理分配的端口；
  *   pairingToken = 主进程生成的高熵令牌；

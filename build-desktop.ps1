@@ -1,4 +1,4 @@
-﻿# VibeHub Desktop - 一键构建 / 启动 / 打包（Windows PowerShell）
+﻿# Vibebara Desktop - 一键构建 / 启动 / 打包（Windows PowerShell）
 #
 # 默认行为（无参数）：构建三件套 → 拉起 cloud 模式后端 → 启动桌面壳。
 # 即：双击或执行本脚本就能跑起完整桌面客户端。
@@ -78,14 +78,14 @@ function Ensure-Backend-Venv {
 
 function Start-Backend {
     Ensure-Backend-Venv
-    $script = Join-Path $env:TEMP "vibehub-desktop-backend.ps1"
+    $script = Join-Path $env:TEMP "vibebara-desktop-backend.ps1"
     @"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-`$Host.UI.RawUI.WindowTitle = 'VibeHub Backend (cloud :8000)'
+`$Host.UI.RawUI.WindowTitle = 'Vibebara Backend (cloud :8000)'
 Set-Location '$backendDir'
 `$env:DEPLOYMENT_MODE = 'cloud'
 `$env:ALLOW_ORIGIN_REGEX = '.*'
-Write-Host 'VibeHub Backend (cloud) -> http://127.0.0.1:8000' -ForegroundColor Green
+Write-Host 'Vibebara Backend (cloud) -> http://127.0.0.1:8000' -ForegroundColor Green
 & '$venvPython' -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 Write-Host 'Backend stopped. Press any key...' -ForegroundColor Yellow
 `$null = `$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
@@ -96,12 +96,12 @@ Write-Host 'Backend stopped. Press any key...' -ForegroundColor Yellow
 }
 
 function Start-Frontend-Dev {
-    $script = Join-Path $env:TEMP "vibehub-desktop-frontend-dev.ps1"
+    $script = Join-Path $env:TEMP "vibebara-desktop-frontend-dev.ps1"
     @"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-`$Host.UI.RawUI.WindowTitle = 'VibeHub Frontend (Vite :5173)'
+`$Host.UI.RawUI.WindowTitle = 'Vibebara Frontend (Vite :5173)'
 Set-Location '$frontendDir'
-Write-Host 'VibeHub Frontend Dev -> http://localhost:5173' -ForegroundColor Green
+Write-Host 'Vibebara Frontend Dev -> http://localhost:5173' -ForegroundColor Green
 npm run dev
 "@ | Out-File -FilePath $script -Encoding UTF8
     Start-Process powershell -ArgumentList "-NoExit", "-File", $script
@@ -111,16 +111,16 @@ npm run dev
 
 function Start-Desktop([switch]$devMode) {
     if ($devMode) {
-        $env:VIBEHUB_DEV_SERVER_URL = "http://localhost:5173"
+        $env:VIBEBARA_DEV_SERVER_URL = "http://localhost:5173"
         Write-Host "  [桌面壳] 开发模式 → 加载 Vite dev server (热更新)" -ForegroundColor Magenta
     }
     Invoke-In $desktopDir { npm start } "electron start"
-    if ($devMode) { Remove-Item Env:\VIBEHUB_DEV_SERVER_URL -ErrorAction SilentlyContinue }
+    if ($devMode) { Remove-Item Env:\VIBEBARA_DEV_SERVER_URL -ErrorAction SilentlyContinue }
 }
 
 # ── 环境检查 ────────────────────────────────────────────────
 
-Write-Section "VibeHub 桌面客户端"
+Write-Section "Vibebara 桌面客户端"
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     Write-Host "  [ERROR] 未找到 Node.js，请安装 Node 20+" -ForegroundColor Red; exit 1
 }

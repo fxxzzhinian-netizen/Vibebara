@@ -19,7 +19,7 @@ export function registerIpc(deps: {
     event.returnValue = deps.getRuntimeConfig();
   });
 
-  // —— 设备身份回写（M5-b，异步）：登录注册后把规范 device_id 落 vibehub-device.json ——
+  // —— 设备身份回写（M5-b，异步）：登录注册后把规范 device_id 落 vibebara-device.json ——
   ipcMain.handle(IPC.DEVICE_PERSIST_ID, (_e: IpcMainInvokeEvent, deviceId: unknown) => {
     const id = typeof deviceId === "string" ? deviceId : "";
     return deps.persistDeviceId(id);

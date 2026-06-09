@@ -109,7 +109,7 @@ async def complete_skill_fields(
 
     Args:
         skill_config: 当前 skill.config.yaml 的内容（design-doc 格式）
-        body_preview: VibeH.md 正文的前 500 字符
+        body_preview: SKILL.md 正文的前 500 字符
         incomplete_fields: 需要补齐的字段路径列表，如 ["ui.display_name", "ui.short_description"]
 
     Returns:

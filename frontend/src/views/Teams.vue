@@ -488,7 +488,7 @@ function logout() {
     <header class="top-bar">
       <div class="top-bar-left">
         <button class="back-btn" @click="router.push('/')" title="返回主页">←</button>
-        <h2>VibeHub</h2>
+        <h2>Vibebara</h2>
       </div>
       <div class="user-info">
         <span>{{ authStore.user?.display_name || authStore.user?.username }}</span>

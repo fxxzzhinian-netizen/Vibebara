@@ -8,10 +8,10 @@ import { startServer } from "./server";
  * 本地代理入口 —— 解析配置 → 构建上下文 → 启动 127.0.0.1 HTTP+WS 服务。
  *
  * 配置注入（CLI > env > 默认）：
- *   --port=N                 / VIBEHUB_LOCAL_AGENT_PORT
- *   --pairing-token=...      / VIBEHUB_PAIRING_TOKEN（M5 由 Electron 主进程注入）
- *   --writable-root=PATH     / VIBEHUB_WRITABLE_ROOTS（; , 分隔，可重复）
- *   --max-body-mb=N          / VIBEHUB_LOCAL_AGENT_MAX_BODY_MB
+ *   --port=N                 / VIBEBARA_LOCAL_AGENT_PORT
+ *   --pairing-token=...      / VIBEBARA_PAIRING_TOKEN（M5 由 Electron 主进程注入）
+ *   --writable-root=PATH     / VIBEBARA_WRITABLE_ROOTS（; , 分隔，可重复）
+ *   --max-body-mb=N          / VIBEBARA_LOCAL_AGENT_MAX_BODY_MB
  */
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   if (!config.paired) {
     // eslint-disable-next-line no-console
     console.warn(
-      "[local-agent] ⚠️ 未注入配对令牌（VIBEHUB_PAIRING_TOKEN / --pairing-token），" +
+      "[local-agent] ⚠️ 未注入配对令牌（VIBEBARA_PAIRING_TOKEN / --pairing-token），" +
         "正在使用公开的开发默认令牌（不安全，仅限本地开发）。" +
         "生产由桌面主进程注入高熵 pairingSecret。",
     );

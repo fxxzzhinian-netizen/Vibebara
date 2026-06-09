@@ -75,7 +75,7 @@ describe("WindsurfAdapter", () => {
       description: "A test skill for Windsurf",
       instructions: "# Test Skill\n\nDo the thing.",
       triggers: { disableModelInvocation: true },
-      metadata: { license: "MIT", surfaces: ["ide"], author: "vibehub" },
+      metadata: { license: "MIT", surfaces: ["ide"], author: "vibebara" },
       ui: { brandColor: "#3B82F6", defaultPrompt: "Use $test-skill" },
       claude: { allowedTools: "Read", model: "opus", context: "fork" },
     });

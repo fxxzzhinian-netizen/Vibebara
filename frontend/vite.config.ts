@@ -6,7 +6,7 @@ import { resolve } from 'path'
 // 下面的 server.proxy 仅在 **本地开发（vite dev）** 生效，用于把同源的 `/api`、`/ws`
 // 转发到本地后端，避免 dev 跨域。**打包后（vite build）此配置不参与运行**——生产/桌面
 // 形态下，云端 API/WS 地址、本地代理地址与配对令牌一律由运行时配置 src/runtime/config.ts
-// 决定（web 灰度走 VITE_* 或默认；M5 桌面壳通过 window.__VIBEHUB_RUNTIME__ 注入真实值）。
+// 决定（web 灰度走 VITE_* 或默认；M5 桌面壳通过 window.__VIBEBARA_RUNTIME__ 注入真实值）。
 // 本地代理（127.0.0.1:PORT）不经过此代理，由 localAgentClient 直连。
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')

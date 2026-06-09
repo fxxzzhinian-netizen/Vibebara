@@ -29,13 +29,13 @@ desktop/
     │   ├── localAgentManager.ts  # 子进程管理（仅 Node 内置，无 electron 依赖 → 可单测）
     │   ├── portFinder.ts       # 探测空闲端口
     │   ├── pairing.ts          # 生成高熵配对令牌
-    │   ├── runtimeConfig.ts    # 组装 __VIBEHUB_RUNTIME__ 负载
+    │   ├── runtimeConfig.ts    # 组装 __VIBEBARA_RUNTIME__ 负载
     │   ├── userConfig.ts       # 云端地址：内置默认 + 配置文件/env 覆盖
     │   ├── tokenStore.ts       # safeStorage 加密持久化登录 token
     │   ├── deviceId.ts         # device_id 预留（本机持久临时 uuid 占位）
     │   ├── launcher.ts         # cursor/codex-cli/codex-app 启动（重做 launcher.py）
     │   └── ipc.ts              # 注册 IPC 处理器
-    └── preload/index.ts        # contextBridge 注入 __VIBEHUB_RUNTIME__ / __VIBEHUB_DESKTOP__
+    └── preload/index.ts        # contextBridge 注入 __VIBEBARA_RUNTIME__ / __VIBEBARA_DESKTOP__
 ```
 
 `package.json` 脚本：
@@ -43,7 +43,7 @@ desktop/
 | 脚本 | 作用 |
 | --- | --- |
 | `npm run build` | `tsc -p tsconfig.json` → `dist-electron/` |
-| `npm start` | `electron .`（加载 `../frontend/dist/index.html`；设 `VIBEHUB_DEV_SERVER_URL` 则指向 Vite dev server） |
+| `npm start` | `electron .`（加载 `../frontend/dist/index.html`；设 `VIBEBARA_DEV_SERVER_URL` 则指向 Vite dev server） |
 | `npm run dev` | 编译 + 启动 |
 | `npm run smoke:agent` | 本地代理进程管理 smoke（无 GUI） |
 | `pack:win` / `dist:win` | M5-c：electron-builder 打 Windows 包（需后续安装 electron-builder） |
@@ -55,14 +55,14 @@ desktop/
 ### 2.1 Electron 脚手架（任务 1）
 
 - 主进程 `src/main/index.ts` + 预加载 `src/preload/index.ts` + `BrowserWindow`。
-- 窗口加载：prod 加载 `frontend/dist/index.html`（`resolvePaths()` 按 `app.isPackaged` 区分 dev 项目根 / packaged `resourcesPath`）；dev 设 `VIBEHUB_DEV_SERVER_URL` 时 `loadURL` 指向 Vite dev server。
+- 窗口加载：prod 加载 `frontend/dist/index.html`（`resolvePaths()` 按 `app.isPackaged` 区分 dev 项目根 / packaged `resourcesPath`）；dev 设 `VIBEBARA_DEV_SERVER_URL` 时 `loadURL` 指向 Vite dev server。
 - `webPreferences`：`contextIsolation:true` + `nodeIntegration:false` + `sandbox:false`（preload 需 require 编译后的电子模块，渲染层无 Node 能力）。
 
 ### 2.2 本地代理进程管理（任务 2，`localAgentManager.ts`）
 
 - **拉起**：`spawn(process.execPath, [agentEntry, ...], { env: { ELECTRON_RUN_AS_NODE:'1', ... } })`——用 Electron 自带 Node 以纯 Node 模式跑 `local-agent/dist/index.js`，**用户机无需预装 node**。
 - **端口分配**：`portFinder.findFreePort(51873)` 优先用 local-agent dev 默认端口（便于诊断），占用则回退 OS 临时端口。
-- **令牌/端口/可写根注入（env）**：`VIBEHUB_PAIRING_TOKEN` / `VIBEHUB_LOCAL_AGENT_PORT` / `VIBEHUB_WRITABLE_ROOTS`（`;` 分隔），与 `local-agent/src/config.ts` 的 env 解析对齐。
+- **令牌/端口/可写根注入（env）**：`VIBEBARA_PAIRING_TOKEN` / `VIBEBARA_LOCAL_AGENT_PORT` / `VIBEBARA_WRITABLE_ROOTS`（`;` 分隔），与 `local-agent/src/config.ts` 的 env 解析对齐。
 - **健康探测**：轮询 `GET /local/health`（免令牌端点），就绪（`ok:true`）才返回；超时（默认 15s）抛错但不阻塞建窗（代理后台自重启）。
 - **崩溃自动重启**：子进程 `exit` 且非主动停止 → 退避重启（500ms→1s→2s→4s→8s），连续失败上限 10 次保护防风暴；重启后健康恢复则重置计数。
 - **退出清理**：`stop()` 同步置 `stopping=true` + `child.kill()`；主进程 `before-quit` / `will-quit` / `process exit` / SIGINT / SIGTERM 均挂 `shutdownAgent`，杜绝僵尸 node。
@@ -71,18 +71,18 @@ desktop/
 ### 2.3 配对令牌（任务 3，`pairing.ts`）
 
 - `generatePairingToken(32)` = `crypto.randomBytes(32).toString('base64url')`（43 字符），与 `local-agent/src/auth.ts`、`backend/app/core/security.py` 算法语义兼容（校验侧只做「非空 + 常量时间相等」）。
-- **主进程生成 → env 注入本地代理 + 经 preload 注入渲染层 `__VIBEHUB_RUNTIME__.pairingToken`**，符合 M2 决议④「主进程注入、云端不签发」。
+- **主进程生成 → env 注入本地代理 + 经 preload 注入渲染层 `__VIBEBARA_RUNTIME__.pairingToken`**，符合 M2 决议④「主进程注入、云端不签发」。
 
 ### 2.4 运行时配置注入（任务 4，`runtimeConfig.ts` + `preload/index.ts`）
 
-- 注入字段与 `frontend/src/runtime/config.ts` 的 `VibehubRuntimeConfig` **一致**：`mode='desktop'`、`cloudApiBase`、`cloudWsBase`、`localAgentBase`、`localAgentPort`、`pairingToken`、`orchestration=true`、`deviceId`。
-- 云端地址（决策 C）：内置默认指向本机 cloud demo（`http://127.0.0.1:8000/api/v1`、`ws://127.0.0.1:8000`），可由 `<userData>/vibehub-desktop.config.json` 或 env（`VIBEHUB_CLOUD_API_BASE` / `VIBEHUB_CLOUD_WS_BASE`）覆盖。
-- **注入时序**：主进程先组装 runtimeConfig + 注册 IPC，再建窗口；preload 用 `ipcRenderer.sendSync` 同步取已就绪配置后 `contextBridge.exposeInMainWorld('__VIBEHUB_RUNTIME__', cfg)`，确保窗口脚本读到时已就绪。
+- 注入字段与 `frontend/src/runtime/config.ts` 的 `VibebaraRuntimeConfig` **一致**：`mode='desktop'`、`cloudApiBase`、`cloudWsBase`、`localAgentBase`、`localAgentPort`、`pairingToken`、`orchestration=true`、`deviceId`。
+- 云端地址（决策 C）：内置默认指向本机 cloud demo（`http://127.0.0.1:8000/api/v1`、`ws://127.0.0.1:8000`），可由 `<userData>/vibebara-desktop.config.json` 或 env（`VIBEBARA_CLOUD_API_BASE` / `VIBEBARA_CLOUD_WS_BASE`）覆盖。
+- **注入时序**：主进程先组装 runtimeConfig + 注册 IPC，再建窗口；preload 用 `ipcRenderer.sendSync` 同步取已就绪配置后 `contextBridge.exposeInMainWorld('__VIBEBARA_RUNTIME__', cfg)`，确保窗口脚本读到时已就绪。
 
 ### 2.5 token 安全存储（任务 5，`tokenStore.ts` + 前端 `tokenStorage.ts`）
 
-- 桌面侧：`safeStorage`（Windows DPAPI）加密落盘 `<userData>/vibehub-token.bin`；加密不可用时回退明文并告警。
-- 暴露：preload 启动 `sendSync(TOKEN_GET_SYNC)` 同步缓存进渲染层；`__VIBEHUB_DESKTOP__.token.{getSync,set,clear}`，写时更新缓存 + 异步 `invoke` 加密落盘（解决「拦截器/路由守卫同步读」与「safeStorage 跨进程异步」的矛盾）。
+- 桌面侧：`safeStorage`（Windows DPAPI）加密落盘 `<userData>/vibebara-token.bin`；加密不可用时回退明文并告警。
+- 暴露：preload 启动 `sendSync(TOKEN_GET_SYNC)` 同步缓存进渲染层；`__VIBEBARA_DESKTOP__.token.{getSync,set,clear}`，写时更新缓存 + 异步 `invoke` 加密落盘（解决「拦截器/路由守卫同步读」与「safeStorage 跨进程异步」的矛盾）。
 - 前端：新增 `frontend/src/runtime/tokenStorage.ts`，桥存在→走桥，否则→localStorage。**web 形态保持不变**。
 
 ### 2.6 launcher 一键启动重做（任务 6，`launcher.ts` + `ipc.ts`）
@@ -94,8 +94,8 @@ desktop/
 
 ### 2.7 device_id 预留（任务 7，`deviceId.ts`）
 
-- `getOrCreateDeviceId()` 生成并持久化本机临时 uuid（`<userData>/vibehub-device.json`），注入 `runtimeConfig.deviceId` 与桥 `deviceId`。
-- **占位声明**：文件内 `note` 与代码注释均标注「最终设备身份/注册方案由『平台安装态多机持久化设计』定夺」，**未自创最终设备模型**。前端 `VibehubRuntimeConfig.deviceId?` 为可选预留，仅透传不做业务判断。
+- `getOrCreateDeviceId()` 生成并持久化本机临时 uuid（`<userData>/vibebara-device.json`），注入 `runtimeConfig.deviceId` 与桥 `deviceId`。
+- **占位声明**：文件内 `note` 与代码注释均标注「最终设备身份/注册方案由『平台安装态多机持久化设计』定夺」，**未自创最终设备模型**。前端 `VibebaraRuntimeConfig.deviceId?` 为可选预留，仅透传不做业务判断。
 
 ---
 
@@ -112,7 +112,7 @@ desktop/
 | `composables/useWebSocket.ts`、`useSkillSync.ts` | WS token 改 `getToken()` | web 行为等价 |
 | `api/launcher.ts` | `launchTool`/`listTools` 桥存在→IPC，否则→云端 | web 走 `/launcher`（不变） |
 
-> 未改 `local-agent/` 与后端任何实现。`vibehub_user_id`（非敏感）仍存 localStorage，未纳入安全存储。
+> 未改 `local-agent/` 与后端任何实现。`vibebara_user_id`（非敏感）仍存 localStorage，未纳入安全存储。
 
 ---
 
@@ -155,7 +155,7 @@ PASS  退出清理  stop() 后端口无响应（子进程已清理）
 }
 ```
 
-→ 渲染层读到 `window.__VIBEHUB_RUNTIME__`（`mode=desktop`、`orchestration=true`、云端地址、`localAgentBase`=分配端口、43 字符配对令牌、`deviceId`）；桌面桥 `__VIBEHUB_DESKTOP__` 的 token 同步读 + launcher IPC 列举（3 工具）均生效。前端 `getRuntimeConfig()` 将走 desktop 分支。
+→ 渲染层读到 `window.__VIBEBARA_RUNTIME__`（`mode=desktop`、`orchestration=true`、云端地址、`localAgentBase`=分配端口、43 字符配对令牌、`deviceId`）；桌面桥 `__VIBEBARA_DESKTOP__` 的 token 同步读 + launcher IPC 列举（3 工具）均生效。前端 `getRuntimeConfig()` 将走 desktop 分支。
 
 ### 4.4 cloud-demo deploy 编排闭环（最佳验证，`backend> python -m tests.test_e2e_orchestration`）
 
@@ -179,8 +179,8 @@ PASS  security  缺令牌→401 UNAUTHORIZED；白名单外路径→403 WRITE_RO
 
 ## 5. device_id 预留方式（小结）
 
-- 主进程 `deviceId.ts` 生成/持久化本机临时 uuid（`<userData>/vibehub-device.json`，含 `note` 占位声明）。
-- 注入 `runtimeConfig.deviceId` + 桥 `deviceId`；前端 `VibehubRuntimeConfig.deviceId?` 可选预留 + `getDeviceId()`。
+- 主进程 `deviceId.ts` 生成/持久化本机临时 uuid（`<userData>/vibebara-device.json`，含 `note` 占位声明）。
+- 注入 `runtimeConfig.deviceId` + 桥 `deviceId`；前端 `VibebaraRuntimeConfig.deviceId?` 可选预留 + `getDeviceId()`。
 - **不定型最终模型**：等「平台安装态多机持久化设计」定稿后替换为最终设备身份/注册方案。
 
 ---
@@ -189,7 +189,7 @@ PASS  security  缺令牌→401 UNAUTHORIZED；白名单外路径→403 WRITE_RO
 
 1. 起 cloud-demo 后端：`backend> set DEPLOYMENT_MODE=cloud` 后 `uvicorn app.main:app --host 127.0.0.1 --port 8000`（确保 MySQL 可连）。
 2. 构建前端：`frontend> npm run build`；构建本地代理：`local-agent> npm run build`。
-3. 起桌面壳：`desktop> npm run build && npm start`（云端默认即指向 127.0.0.1:8000；如需可在 `<userData>/vibehub-desktop.config.json` 覆盖，并按需在该配置或 `VIBEHUB_WRITABLE_ROOTS` 注入项目可写根）。
+3. 起桌面壳：`desktop> npm run build && npm start`（云端默认即指向 127.0.0.1:8000；如需可在 `<userData>/vibebara-desktop.config.json` 覆盖，并按需在该配置或 `VIBEBARA_WRITABLE_ROOTS` 注入项目可写根）。
 4. 壳内登录 → 浏览/选定项目目录（browse 即登记可写根）→ 部署 Skill，观察 deploy/push/pull 闭环与项目动态实时同步。
 
 ---

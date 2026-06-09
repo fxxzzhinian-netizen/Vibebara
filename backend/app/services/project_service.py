@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_TOOLS = {"cursor", "codex", "windsurf", "claude", "kiro", "trae", "qoder"}
 GITIGNORE_BLOCK = [
-    "# VibeHub local skill deployments",
+    "# Vibebara local skill deployments",
     ".cursor/skills/",
     ".codex/skills/",
     ".windsurf/skills/",

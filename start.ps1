@@ -1,4 +1,4 @@
-﻿# VibeHub - Startup Script (Windows PowerShell)
+﻿# Vibebara - Startup Script (Windows PowerShell)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -11,7 +11,7 @@ $venvPip = Join-Path $venvDir "Scripts\pip.exe"
 
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "   VibeHub - AI Collaboration Platform Launcher" -ForegroundColor Cyan
+Write-Host "   Vibebara - AI Collaboration Platform Launcher" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -72,9 +72,9 @@ Write-Host ""
 $backendScript = Join-Path $env:TEMP "cowork-backend-start.ps1"
 @"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-`$Host.UI.RawUI.WindowTitle = 'VibeHub - Backend (FastAPI :8000)'
+`$Host.UI.RawUI.WindowTitle = 'Vibebara - Backend (FastAPI :8000)'
 Write-Host '=========================================='  -ForegroundColor Cyan
-Write-Host '  VibeHub Backend (FastAPI)' -ForegroundColor Cyan
+Write-Host '  Vibebara Backend (FastAPI)' -ForegroundColor Cyan
 Write-Host '==========================================' -ForegroundColor Cyan
 Write-Host "  Dir:  $backendDir" -ForegroundColor Gray
 Write-Host '  URL:  http://localhost:8000' -ForegroundColor Green
@@ -103,9 +103,9 @@ Write-Host ""
 $frontendScript = Join-Path $env:TEMP "cowork-frontend-start.ps1"
 @"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-`$Host.UI.RawUI.WindowTitle = 'VibeHub - Frontend (Vite :5173)'
+`$Host.UI.RawUI.WindowTitle = 'Vibebara - Frontend (Vite :5173)'
 Write-Host '==========================================' -ForegroundColor Cyan
-Write-Host '  VibeHub Frontend (Vite)' -ForegroundColor Cyan
+Write-Host '  Vibebara Frontend (Vite)' -ForegroundColor Cyan
 Write-Host '==========================================' -ForegroundColor Cyan
 Write-Host "  Dir: $frontendDir" -ForegroundColor Gray
 Write-Host '  URL: http://localhost:5173' -ForegroundColor Green

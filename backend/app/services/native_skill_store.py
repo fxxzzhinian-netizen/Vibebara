@@ -3,7 +3,7 @@ NativeSkillStore — 平台原生 Skill 的 CRUD + 文件系统 + MySQL 索引
 
 存储格式遵循 docs/skill-forge-design.md 设计文档：
     skill.config.yaml   — 统一配置（design-doc 格式，嵌套 ui/policy/metadata）
-    VibeH.md            — 技能正文（纯 Markdown）
+    SKILL.md            — 技能正文（纯 Markdown）
     scripts/
     references/
     assets/
@@ -558,7 +558,7 @@ class NativeSkillStore:
                 config["resources"] = resources
                 _write_yaml(config_path, config)
 
-        vibeh_path = skill_dir / "VibeH.md"
+        vibeh_path = skill_dir / "SKILL.md"
         vibeh_content = ""
         if vibeh_path.exists():
             vibeh_content = vibeh_path.read_text(encoding="utf-8")
@@ -618,7 +618,7 @@ class NativeSkillStore:
 
         _write_yaml(skill_dir / "skill.config.yaml", config)
 
-        vibeh_path = skill_dir / "VibeH.md"
+        vibeh_path = skill_dir / "SKILL.md"
         if not body:
             body = f"# {skill_id}\n\n在此编写 Skill 指令。\n"
         vibeh_path.write_text(body, encoding="utf-8")
@@ -668,7 +668,7 @@ class NativeSkillStore:
 
         # 编辑前的原始内容快照（用于"是否有编辑/编辑了什么"的判定）
         config_old = _read_yaml(config_path)
-        vibeh_path = skill_dir / "VibeH.md"
+        vibeh_path = skill_dir / "SKILL.md"
         old_vibeh = vibeh_path.read_text(encoding="utf-8") if vibeh_path.exists() else ""
 
         # 在独立副本上应用本次编辑，便于与原始内容对比
@@ -715,7 +715,7 @@ class NativeSkillStore:
                 summarize_changes,
             )
 
-            # 网页编辑器仅改 config + VibeH 正文，不改动资源文件本身，
+            # 网页编辑器仅改 config + SKILL 正文，不改动资源文件本身，
             # 故资源哈希两侧一致（传空字典即可），改动点聚焦字段与正文。
             base_pkg = {"config": config_old, "vibeh_body": old_vibeh, "resources": {}}
             cur_pkg = {"config": config, "vibeh_body": new_vibeh, "resources": {}}
@@ -986,7 +986,7 @@ class NativeSkillStore:
         skill_dir.mkdir(parents=True, exist_ok=True)
         _write_yaml(skill_dir / "skill.config.yaml", config)
 
-        vibeh_path = skill_dir / "VibeH.md"
+        vibeh_path = skill_dir / "SKILL.md"
         vibeh_path.write_text(body, encoding="utf-8")
 
         for sub in ("scripts", "references", "assets"):
@@ -1186,7 +1186,7 @@ class NativeSkillStore:
         """
         skill_dir = Path(cls._store_dir) / skill_id
         config_path = skill_dir / "skill.config.yaml"
-        vibeh_path = skill_dir / "VibeH.md"
+        vibeh_path = skill_dir / "SKILL.md"
 
         if not config_path.exists():
             raise FileNotFoundError(f"Skill '{skill_id}' not found")
@@ -1216,7 +1216,7 @@ class NativeSkillStore:
 
     @classmethod
     async def _get_ts_yaml(cls, skill_id: str) -> str:
-        """读取 config + VibeH.md，转换为 TS bridge 期望的 YAML 格式"""
+        """读取 config + SKILL.md，转换为 TS bridge 期望的 YAML 格式"""
         skill_dir = Path(cls._store_dir) / skill_id
         config_path = skill_dir / "skill.config.yaml"
         if not config_path.exists():
@@ -1224,7 +1224,7 @@ class NativeSkillStore:
 
         config = _read_yaml(config_path)
 
-        vibeh_path = skill_dir / "VibeH.md"
+        vibeh_path = skill_dir / "SKILL.md"
         vibeh_content = ""
         if vibeh_path.exists():
             vibeh_content = vibeh_path.read_text(encoding="utf-8")

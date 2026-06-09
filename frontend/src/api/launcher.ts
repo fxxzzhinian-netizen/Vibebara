@@ -35,7 +35,7 @@ export interface ToolsResponse {
 
 /**
  * 启动工具：
- *   · 桌面形态（决策 D）→ 经 __VIBEHUB_DESKTOP__ 桥调用主进程 IPC（cloud 已下线 /launcher 路由）；
+ *   · 桌面形态（决策 D）→ 经 __VIBEBARA_DESKTOP__ 桥调用主进程 IPC（cloud 已下线 /launcher 路由）；
  *   · web 形态 → 沿用云端 /launcher/launch（local 模式后端仍挂载该路由）。
  */
 export async function launchTool(req: LaunchRequest): Promise<LaunchResponse> {

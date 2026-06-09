@@ -1,5 +1,5 @@
 #!/bin/bash
-# VibeHub - 统一启动脚本 (Linux/macOS)
+# Vibebara - 统一启动脚本 (Linux/macOS)
 # 后台进程启动前后端，彩色日志输出
 
 set -e
@@ -16,7 +16,7 @@ NC='\033[0m' # 无颜色
 
 echo ""
 echo -e "${CYAN}========================================================${NC}"
-echo -e "${CYAN}   VibeHub - AI 协作中台启动器${NC}"
+echo -e "${CYAN}   Vibebara - AI 协作中台启动器${NC}"
 echo -e "${CYAN}========================================================${NC}"
 echo ""
 

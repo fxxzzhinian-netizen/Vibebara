@@ -53,8 +53,9 @@ MAX_EXTRACT_FILES = 20000
 MAX_SCAN_DEPTH = 8
 # 缓存有效期：解析后 30 分钟内可导入，超时清理。
 CACHE_TTL_SECONDS = 30 * 60
-# 网络超时
-HTTP_TIMEOUT_SECONDS = 60.0
+# 网络超时（国内服务器拉取 github.com 可能较慢，给足读取时间；连接超时单独收紧）。
+HTTP_CONNECT_TIMEOUT_SECONDS = 15.0
+HTTP_TIMEOUT_SECONDS = 120.0
 GIT_TIMEOUT_SECONDS = 180
 
 _SKIP_DIRS = {
@@ -270,12 +271,13 @@ async def _download(url: str) -> Tuple[bytes, str]:
     """安全下载（手动跟随重定向并逐跳校验主机），返回 (内容字节, 最终 URL)。"""
     import httpx
 
+    timeout = httpx.Timeout(HTTP_TIMEOUT_SECONDS, connect=HTTP_CONNECT_TIMEOUT_SECONDS)
     current = url
     for _hop in range(6):
         _assert_url_safe(current)
-        async with httpx.AsyncClient(follow_redirects=False, timeout=HTTP_TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(follow_redirects=False, timeout=timeout) as client:
             async with client.stream(
-                "GET", current, headers={"User-Agent": "VibeHub-SkillImporter"}
+                "GET", current, headers={"User-Agent": "Vibebara-SkillImporter"}
             ) as resp:
                 if resp.is_redirect:
                     loc = resp.headers.get("location")

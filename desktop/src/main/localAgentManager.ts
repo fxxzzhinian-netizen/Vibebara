@@ -7,8 +7,8 @@ import http from "node:http";
  * 职责：
  *   · 以 Electron 自带 Node（ELECTRON_RUN_AS_NODE=1）拉起 local-agent/dist/index.js，
  *     无需用户机预装 node；
- *   · 通过 env 注入配对令牌（VIBEHUB_PAIRING_TOKEN）、端口（VIBEHUB_LOCAL_AGENT_PORT）、
- *     可写根（VIBEHUB_WRITABLE_ROOTS）；
+ *   · 通过 env 注入配对令牌（VIBEBARA_PAIRING_TOKEN）、端口（VIBEBARA_LOCAL_AGENT_PORT）、
+ *     可写根（VIBEBARA_WRITABLE_ROOTS）；
  *   · 启动后轮询 GET /local/health 直到就绪；
  *   · 子进程崩溃自动按退避重启（连续失败上限保护，避免重启风暴）；
  *   · 应用退出时同步清理子进程（无僵尸 node）。
@@ -121,11 +121,11 @@ export class LocalAgentManager {
       ...process.env,
       // 让 Electron 二进制以纯 Node 模式运行子脚本（无需用户机预装 node）。
       ELECTRON_RUN_AS_NODE: "1",
-      VIBEHUB_PAIRING_TOKEN: this.opts.pairingToken,
-      VIBEHUB_LOCAL_AGENT_PORT: String(this.opts.port),
+      VIBEBARA_PAIRING_TOKEN: this.opts.pairingToken,
+      VIBEBARA_LOCAL_AGENT_PORT: String(this.opts.port),
     };
     if (this.opts.writableRoots.length > 0) {
-      env.VIBEHUB_WRITABLE_ROOTS = this.opts.writableRoots.join(";");
+      env.VIBEBARA_WRITABLE_ROOTS = this.opts.writableRoots.join(";");
     }
 
     this.opts.onLog(

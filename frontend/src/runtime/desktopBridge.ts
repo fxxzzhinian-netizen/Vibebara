@@ -1,7 +1,7 @@
 /**
  * 桌面壳专有桥访问（方案 B M5-a）。
  *
- * M5 Electron 桌面壳通过 preload/contextBridge 在渲染层注入 `window.__VIBEHUB_DESKTOP__`，
+ * M5 Electron 桌面壳通过 preload/contextBridge 在渲染层注入 `window.__VIBEBARA_DESKTOP__`，
  * 提供 web 形态没有的本机能力：
  *   · token：登录 token 的安全存储（OS keychain / safeStorage，替代 localStorage）；
  *   · launcher：一键启动本机 Cursor / Codex（替代 cloud 已下线的 /launcher 路由）；
@@ -45,7 +45,7 @@ export interface LocalAgentChangePayload {
   localAgentPort: number
 }
 
-export interface VibehubDesktopBridge {
+export interface VibebaraDesktopBridge {
   mode: 'desktop'
   /** 有效设备标识（M5-b）：registeredDeviceId ?? clientUuid。 */
   deviceId: string
@@ -53,7 +53,7 @@ export interface VibehubDesktopBridge {
   clientUuid?: string
   /**
    * 回写云端铸造的规范 device_id（M5-b 任务①：登录注册后）。
-   * 主进程落 vibehub-device.json.registeredDeviceId + 热更运行时，返回有效 deviceId。
+   * 主进程落 vibebara-device.json.registeredDeviceId + 热更运行时，返回有效 deviceId。
    */
   persistDeviceId?(deviceId: string): Promise<string>
   /**
@@ -78,14 +78,14 @@ export interface VibehubDesktopBridge {
 declare global {
   interface Window {
     /** M5 桌面壳注入的桌面专有桥（web 形态下为 undefined）。 */
-    __VIBEHUB_DESKTOP__?: VibehubDesktopBridge
+    __VIBEBARA_DESKTOP__?: VibebaraDesktopBridge
   }
 }
 
 /** 取桌面专有桥；web 形态返回 null。 */
-export function getDesktopBridge(): VibehubDesktopBridge | null {
-  if (typeof window !== 'undefined' && window.__VIBEHUB_DESKTOP__) {
-    return window.__VIBEHUB_DESKTOP__
+export function getDesktopBridge(): VibebaraDesktopBridge | null {
+  if (typeof window !== 'undefined' && window.__VIBEBARA_DESKTOP__) {
+    return window.__VIBEBARA_DESKTOP__
   }
   return null
 }

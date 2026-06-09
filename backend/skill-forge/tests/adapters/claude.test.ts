@@ -75,7 +75,7 @@ describe("ClaudeAdapter", () => {
       metadata: {
         license: "MIT",
         compatibility: "Requires Node 20+",
-        author: "vibehub",
+        author: "vibebara",
         version: "2.0.0",
       },
       claude: {
@@ -101,7 +101,7 @@ describe("ClaudeAdapter", () => {
     expect(frontmatter["license"]).toBe("MIT");
     expect(frontmatter["compatibility"]).toBe("Requires Node 20+");
     expect(frontmatter["metadata"]).toEqual({
-      author: "vibehub",
+      author: "vibebara",
       version: "2.0.0",
     });
     expect(frontmatter["allowed-tools"]).toBe("Read, Grep, Glob");

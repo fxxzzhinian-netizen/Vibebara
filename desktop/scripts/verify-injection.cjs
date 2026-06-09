@@ -1,6 +1,6 @@
 /**
  * 注入生效验证（方案 B M5-a）：以 Electron 真正起一个隐藏窗口，加载最小页面并经
- * 同一 preload 注入，回读 window.__VIBEHUB_RUNTIME__ / window.__VIBEHUB_DESKTOP__，
+ * 同一 preload 注入，回读 window.__VIBEBARA_RUNTIME__ / window.__VIBEBARA_DESKTOP__，
  * 验证：运行时配置注入、桌面桥、token 同步读、launcher IPC 列举。
  *
  * 运行：node_modules\.bin\electron scripts\verify-injection.cjs
@@ -28,12 +28,12 @@ const AGENT_ENTRY = path.resolve(
 );
 
 const IPC = {
-  RUNTIME_GET_SYNC: "vibehub:runtime-get-sync",
-  TOKEN_GET_SYNC: "vibehub:token-get-sync",
-  TOKEN_SET: "vibehub:token-set",
-  TOKEN_CLEAR: "vibehub:token-clear",
-  LAUNCHER_LIST: "vibehub:launcher-list",
-  LAUNCHER_LAUNCH: "vibehub:launcher-launch",
+  RUNTIME_GET_SYNC: "vibebara:runtime-get-sync",
+  TOKEN_GET_SYNC: "vibebara:token-get-sync",
+  TOKEN_SET: "vibebara:token-set",
+  TOKEN_CLEAR: "vibebara:token-clear",
+  LAUNCHER_LIST: "vibebara:launcher-list",
+  LAUNCHER_LAUNCH: "vibebara:launcher-launch",
 };
 
 app.disableHardwareAcceleration();
@@ -101,8 +101,8 @@ async function run() {
   await win.loadURL("data:text/html,<html><body>verify</body></html>");
 
   const result = await win.webContents.executeJavaScript(`(async () => {
-    const r = window.__VIBEHUB_RUNTIME__;
-    const d = window.__VIBEHUB_DESKTOP__;
+    const r = window.__VIBEBARA_RUNTIME__;
+    const d = window.__VIBEBARA_DESKTOP__;
     const tools = d ? await d.launcher.listTools() : null;
     return {
       runtimeMode: r && r.mode,

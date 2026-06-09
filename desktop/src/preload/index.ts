@@ -4,9 +4,9 @@ import { contextBridge, ipcRenderer } from "electron";
  * 预加载脚本（方案 B M5-a，contextIsolation 下经 contextBridge 注入）。
  *
  * 向渲染层暴露两个全局：
- *   · window.__VIBEHUB_RUNTIME__  —— 运行时配置（对齐前端 VibehubRuntimeConfig），
+ *   · window.__VIBEBARA_RUNTIME__  —— 运行时配置（对齐前端 VibebaraRuntimeConfig），
  *     前端 getRuntimeConfig() 据此走桌面分支。窗口加载前主进程已就绪，sendSync 取值。
- *   · window.__VIBEHUB_DESKTOP__  —— 桌面专有桥：登录 token 安全存储 + launcher 一键启动 +
+ *   · window.__VIBEBARA_DESKTOP__  —— 桌面专有桥：登录 token 安全存储 + launcher 一键启动 +
  *     deviceId。前端按形态选择（web 形态无此对象 → 走 localStorage / 云端 /launcher）。
  *
  * IPC 通道名与 src/shared/types.ts 的 IPC 常量保持一致（此处用字面量，避免沙箱/打包期
@@ -14,14 +14,14 @@ import { contextBridge, ipcRenderer } from "electron";
  */
 
 const CH = {
-  RUNTIME_GET_SYNC: "vibehub:runtime-get-sync",
-  TOKEN_GET_SYNC: "vibehub:token-get-sync",
-  TOKEN_SET: "vibehub:token-set",
-  TOKEN_CLEAR: "vibehub:token-clear",
-  LAUNCHER_LIST: "vibehub:launcher-list",
-  LAUNCHER_LAUNCH: "vibehub:launcher-launch",
-  DEVICE_PERSIST_ID: "vibehub:device-persist-id",
-  LOCAL_AGENT_CHANGED: "vibehub:local-agent-changed",
+  RUNTIME_GET_SYNC: "vibebara:runtime-get-sync",
+  TOKEN_GET_SYNC: "vibebara:token-get-sync",
+  TOKEN_SET: "vibebara:token-set",
+  TOKEN_CLEAR: "vibebara:token-clear",
+  LAUNCHER_LIST: "vibebara:launcher-list",
+  LAUNCHER_LAUNCH: "vibebara:launcher-launch",
+  DEVICE_PERSIST_ID: "vibebara:device-persist-id",
+  LOCAL_AGENT_CHANGED: "vibebara:local-agent-changed",
 } as const;
 
 interface RuntimeConfigPayload {
@@ -49,14 +49,14 @@ const runtime =
 let tokenCache: string = (ipcRenderer.sendSync(CH.TOKEN_GET_SYNC) as string) || "";
 
 // 1) 运行时配置（前端 readInjected() 读取此对象）。
-contextBridge.exposeInMainWorld("__VIBEHUB_RUNTIME__", runtime ?? {});
+contextBridge.exposeInMainWorld("__VIBEBARA_RUNTIME__", runtime ?? {});
 
 // 2) 桌面专有桥。
-contextBridge.exposeInMainWorld("__VIBEHUB_DESKTOP__", {
+contextBridge.exposeInMainWorld("__VIBEBARA_DESKTOP__", {
   mode: "desktop",
   deviceId: runtime?.deviceId ?? "",
   clientUuid: runtime?.clientUuid ?? "",
-  // M5-b：登录注册后回写云端铸造的规范 device_id（异步落 vibehub-device.json）。
+  // M5-b：登录注册后回写云端铸造的规范 device_id（异步落 vibebara-device.json）。
   persistDeviceId: (deviceId: string): Promise<string> =>
     ipcRenderer.invoke(CH.DEVICE_PERSIST_ID, deviceId) as Promise<string>,
   // 任务②：订阅本地代理端口漂移热更（返回取消订阅函数）。
