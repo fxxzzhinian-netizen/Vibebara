@@ -1,21 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { useTeamStore } from '@/stores/teamStore'
 import { useProjectSyncStore } from '@/stores/projectSyncStore'
 import { useTeamSync } from '@/composables/useTeamSync'
-import {
-  listNativeSkills,
-  copySkillToTeam,
-  importLocalSkillToTeam,
-  scanLocalSkills,
-  scanUrlSkills,
-  importUrlSkills,
-  type NativeSkillItem,
-} from '@/api/skillStore'
-import type { UnifiedSkillPackage } from '@/api/skillForge'
-import FolderPicker from '@/components/FolderPicker.vue'
+import { listNativeSkills, type NativeSkillItem } from '@/api/skillStore'
+import AddSkillModal from '@/components/AddSkillModal.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -38,28 +29,8 @@ const teamSkills = ref<NativeSkillItem[]>([])
 // 失败时不要把列表清空成“暂无”，而是提示可重试，避免掩盖真实错误。
 const teamSkillsError = ref(false)
 
-// —— 新增 Skill 到团队仓库 ——
-type AddMethod = 'personal' | 'local' | 'link'
+// —— 新增 Skill 到团队仓库（弹窗内的方式/解析/导入逻辑见 AddSkillModal 组件）——
 const showAddSkill = ref(false)
-const addMethod = ref<AddMethod>('personal')
-const personalSkills = ref<NativeSkillItem[]>([])
-const selectedPersonalId = ref('')
-const localPath = ref('')
-// 本地导入两步：先解析文件夹得到 skill 列表，再勾选导入
-const scanLoading = ref(false)
-const scanned = ref(false)
-const scannedPackages = ref<UnifiedSkillPackage[]>([])
-const selectedScanPaths = ref<string[]>([])
-// 从链接引入两步：先解析链接得到 skill 列表（云端缓存返回 token），再勾选导入
-const linkUrl = ref('')
-const urlScanLoading = ref(false)
-const urlScanned = ref(false)
-const urlToken = ref('')
-const urlSourceUrl = ref('')
-const urlScannedPackages = ref<UnifiedSkillPackage[]>([])
-const selectedUrlPaths = ref<string[]>([])
-const addSkillError = ref('')
-const addSkillLoading = ref(false)
 const skillRepoMsg = ref('')
 let skillRepoMsgTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -184,59 +155,6 @@ function upsertTeamSkill(skill: NativeSkillItem) {
   else teamSkills.value.unshift(skill)
 }
 
-function openAddSkill() {
-  addMethod.value = 'personal'
-  selectedPersonalId.value = ''
-  localPath.value = ''
-  resetLocalScan()
-  resetUrlScan()
-  linkUrl.value = ''
-  addSkillError.value = ''
-  addSkillLoading.value = false
-  showAddSkill.value = true
-  loadPersonalSkills()
-}
-
-function resetLocalScan() {
-  scanned.value = false
-  scanLoading.value = false
-  scannedPackages.value = []
-  selectedScanPaths.value = []
-}
-
-function resetUrlScan() {
-  urlScanned.value = false
-  urlScanLoading.value = false
-  urlToken.value = ''
-  urlSourceUrl.value = ''
-  urlScannedPackages.value = []
-  selectedUrlPaths.value = []
-}
-
-function switchMethod(m: AddMethod) {
-  addMethod.value = m
-  addSkillError.value = ''
-}
-
-// 改变文件夹后需重新解析
-watch(localPath, () => {
-  if (scanned.value || scannedPackages.value.length) resetLocalScan()
-})
-
-// 改变链接后需重新解析
-watch(linkUrl, () => {
-  if (urlScanned.value || urlScannedPackages.value.length) resetUrlScan()
-})
-
-async function loadPersonalSkills() {
-  try {
-    const res = await listNativeSkills('personal')
-    personalSkills.value = res.success ? res.skills : []
-  } catch {
-    personalSkills.value = []
-  }
-}
-
 function flashSkillRepoMsg(msg: string) {
   skillRepoMsg.value = msg
   if (skillRepoMsgTimer) clearTimeout(skillRepoMsgTimer)
@@ -245,165 +163,14 @@ function flashSkillRepoMsg(msg: string) {
   }, 4000)
 }
 
-async function finishAddSkill(msg: string) {
-  showAddSkill.value = false
-  if (teamStore.currentTeamId) await loadTeamSkills(teamStore.currentTeamId)
-  flashSkillRepoMsg(msg)
-}
-
-async function confirmAddFromPersonal() {
-  if (!teamStore.currentTeamId || !selectedPersonalId.value) return
-  addSkillError.value = ''
-  addSkillLoading.value = true
-  try {
-    const res = await copySkillToTeam(teamStore.currentTeamId, selectedPersonalId.value)
-    if (res.success) {
-      // 乐观插入：导入已在云端落库成功，即使随后的刷新因慢/弱网/VPN 失败，卡片也能立即显示
-      if (res.skill) upsertTeamSkill(res.skill)
-      await finishAddSkill('已从个人仓库导入到团队仓库')
-    } else {
-      addSkillError.value = res.error || '导入失败'
-    }
-  } catch (e: any) {
-    addSkillError.value = e?.response?.data?.detail || e.message || '导入失败'
-  } finally {
-    addSkillLoading.value = false
-  }
-}
-
-// 第一步：解析所选文件夹，列出其中可导入的 skill
-async function scanLocalFolder() {
-  if (!teamStore.currentTeamId || !localPath.value.trim()) return
-  addSkillError.value = ''
-  scanLoading.value = true
-  scannedPackages.value = []
-  selectedScanPaths.value = []
-  try {
-    const res = await scanLocalSkills(teamStore.currentTeamId, localPath.value.trim())
-    if (res.success) {
-      scannedPackages.value = res.packages
-      scanned.value = true
-      // 默认全选，方便一次性导入
-      selectedScanPaths.value = res.packages.map((p) => p.source_path)
-    } else {
-      addSkillError.value = res.error || '解析失败'
-    }
-  } catch (e: any) {
-    addSkillError.value = e?.response?.data?.detail || e.message || '解析失败'
-  } finally {
-    scanLoading.value = false
-  }
-}
-
-function toggleScanSelect(path: string) {
-  const i = selectedScanPaths.value.indexOf(path)
-  if (i >= 0) selectedScanPaths.value.splice(i, 1)
-  else selectedScanPaths.value.push(path)
-}
-
-// 第二步：把勾选的 skill 导入团队仓库
-async function confirmAddFromLocal() {
-  if (!teamStore.currentTeamId || !selectedScanPaths.value.length) return
-  const teamId = teamStore.currentTeamId
-  addSkillError.value = ''
-  addSkillLoading.value = true
-  let okCount = 0
-  const failed: string[] = []
-  try {
-    for (const path of selectedScanPaths.value) {
-      const pkg = scannedPackages.value.find((p) => p.source_path === path)
-      const res = await importLocalSkillToTeam(teamId, path, pkg?.origin)
-      if (res.success) {
-        okCount += 1
-        // 乐观插入：即使随后的刷新失败，导入成功的卡片也能立即显示
-        if (res.skill) upsertTeamSkill(res.skill)
-      } else {
-        failed.push(`${pkg?.display_name || pkg?.name || path}：${res.error || '失败'}`)
-      }
-    }
-    if (failed.length) {
-      await loadTeamSkills(teamId)
-      addSkillError.value = `成功 ${okCount} 个，失败 ${failed.length} 个 — ${failed.join('；')}`
-    } else {
-      await finishAddSkill(`已从本地导入 ${okCount} 个 Skill 到团队仓库`)
-    }
-  } catch (e: any) {
-    addSkillError.value = e?.response?.data?.detail || e.message || '导入失败'
-  } finally {
-    addSkillLoading.value = false
-  }
-}
-
-// 第一步：解析链接（云端下载 + 发现可导入的 skill），返回 token 与列表
-async function scanLinkUrl() {
-  const url = linkUrl.value.trim()
-  if (!url) return
-  addSkillError.value = ''
-  urlScanLoading.value = true
-  urlScannedPackages.value = []
-  selectedUrlPaths.value = []
-  try {
-    const res = await scanUrlSkills(url)
-    if (res.success) {
-      urlToken.value = res.token
-      urlSourceUrl.value = res.source_url || url
-      urlScannedPackages.value = res.packages
-      urlScanned.value = true
-      // 默认全选，方便一次性导入
-      selectedUrlPaths.value = res.packages.map((p) => p.source_path)
-      if (!res.packages.length) {
-        addSkillError.value = '该链接下未发现可导入的 Skill（需包含 SKILL.md）'
-      }
-    } else {
-      addSkillError.value = res.error || '解析链接失败'
-    }
-  } catch (e: any) {
-    addSkillError.value = e?.response?.data?.detail || e?.response?.data?.error || e.message || '解析链接失败'
-  } finally {
-    urlScanLoading.value = false
-  }
-}
-
-function toggleUrlSelect(path: string) {
-  const i = selectedUrlPaths.value.indexOf(path)
-  if (i >= 0) selectedUrlPaths.value.splice(i, 1)
-  else selectedUrlPaths.value.push(path)
-}
-
-// 第二步：把勾选的 skill 从链接导入团队仓库
-async function confirmAddFromUrl() {
-  if (!teamStore.currentTeamId || !urlToken.value || !selectedUrlPaths.value.length) return
-  const teamId = teamStore.currentTeamId
-  addSkillError.value = ''
-  addSkillLoading.value = true
-  try {
-    const res = await importUrlSkills(
-      urlToken.value,
-      selectedUrlPaths.value,
-      'team',
-      teamId,
-      urlSourceUrl.value,
-    )
-    // token 是一次性的：云端导入后即释放缓存，无论成败都需重新解析才能再次导入
-    urlToken.value = ''
-    urlScanned.value = false
-    if (res.skills?.length) {
-      for (const s of res.skills) upsertTeamSkill(s)
-    }
-    const failed = (res.results || []).filter((r) => !r.success)
-    if (failed.length) {
-      await loadTeamSkills(teamId)
-      const detail = failed
-        .map((r) => `${r.source_path}：${r.error || '失败'}`)
-        .join('；')
-      addSkillError.value = `成功 ${res.imported} 个，失败 ${failed.length} 个 — ${detail}`
-    } else {
-      await finishAddSkill(`已从链接导入 ${res.imported} 个 Skill 到团队仓库`)
-    }
-  } catch (e: any) {
-    addSkillError.value = e?.response?.data?.detail || e?.response?.data?.error || e.message || '导入失败'
-  } finally {
-    addSkillLoading.value = false
+// AddSkillModal 完成回调：
+//   - message 非空（完整成功，模态已自行关闭）：乐观插卡 + 刷新列表 + 弹提示。
+//   - message 为空（部分失败，模态仍打开内联报错）：仅插入已成功的卡片。
+function onAddSkillDone(payload: { message: string; skills?: NativeSkillItem[] }) {
+  payload.skills?.forEach(upsertTeamSkill)
+  if (payload.message) {
+    if (teamStore.currentTeamId) void loadTeamSkills(teamStore.currentTeamId)
+    flashSkillRepoMsg(payload.message)
   }
 }
 
@@ -602,7 +369,7 @@ function logout() {
           <!-- 团队 Skill 仓库 -->
           <div class="section-header-row" style="margin-top: 32px">
             <div class="section-title">团队 Skill 仓库</div>
-            <button class="btn-sm btn-primary" @click="openAddSkill">新增 Skill</button>
+            <button class="btn-sm btn-primary" @click="showAddSkill = true">新增 Skill</button>
           </div>
           <div v-if="skillRepoMsg" class="success-msg">{{ skillRepoMsg }}</div>
           <div v-if="teamSkills.length" class="skill-grid">
@@ -711,226 +478,13 @@ function logout() {
       </div>
     </Teleport>
 
-    <!-- 新增 Skill 到团队仓库 -->
-    <Teleport to="body">
-      <div v-if="showAddSkill" class="modal-overlay" @click.self="showAddSkill = false">
-        <div class="modal add-skill-modal">
-          <h3>新增 Skill</h3>
-
-          <div class="method-tabs">
-            <button
-              class="method-tab"
-              :class="{ active: addMethod === 'personal' }"
-              @click="switchMethod('personal')"
-            >
-              从个人仓库导入
-            </button>
-            <button
-              class="method-tab"
-              :class="{ active: addMethod === 'local' }"
-              @click="switchMethod('local')"
-            >
-              从本地文件夹
-            </button>
-            <button
-              class="method-tab"
-              :class="{ active: addMethod === 'link' }"
-              @click="switchMethod('link')"
-            >
-              从链接引入
-            </button>
-          </div>
-
-          <!-- 方法一：从个人仓库导入 -->
-          <div v-if="addMethod === 'personal'" class="method-body">
-            <p class="hint">选择你个人仓库中的一个 Skill，复制一份放入当前团队仓库。</p>
-            <div v-if="personalSkills.length" class="personal-list">
-              <label
-                v-for="s in personalSkills"
-                :key="s.id"
-                class="personal-item"
-                :class="{ selected: selectedPersonalId === s.id }"
-              >
-                <input
-                  type="radio"
-                  name="personal-skill"
-                  :value="s.id"
-                  v-model="selectedPersonalId"
-                />
-                <span class="pi-main">
-                  <span class="pi-name">{{ s.display_name || s.id }}</span>
-                  <span class="pi-desc">{{ s.description || '暂无描述' }}</span>
-                </span>
-              </label>
-            </div>
-            <div v-else class="empty-hint" style="margin-top: 12px">
-              个人仓库暂无 Skill
-            </div>
-          </div>
-
-          <!-- 方法二：从本地文件夹选择（两步：先解析，再勾选导入） -->
-          <div v-else-if="addMethod === 'local'" class="method-body">
-            <p class="hint">
-              第一步：选择本地文件夹并解析；第二步：勾选解析出的 Skill 导入到团队仓库。
-            </p>
-            <FolderPicker v-model="localPath" placeholder="点击「浏览...」选择文件夹" />
-
-            <div v-if="scanned" class="scan-result">
-              <div class="scan-result-head">
-                解析到 {{ scannedPackages.length }} 个 Skill
-                <button
-                  v-if="scannedPackages.length"
-                  class="link-btn"
-                  @click="
-                    selectedScanPaths =
-                      selectedScanPaths.length === scannedPackages.length
-                        ? []
-                        : scannedPackages.map((p) => p.source_path)
-                  "
-                >
-                  {{ selectedScanPaths.length === scannedPackages.length ? '取消全选' : '全选' }}
-                </button>
-              </div>
-              <div v-if="scannedPackages.length" class="scan-list">
-                <label
-                  v-for="p in scannedPackages"
-                  :key="p.source_path"
-                  class="scan-item"
-                  :class="{ selected: selectedScanPaths.includes(p.source_path) }"
-                >
-                  <input
-                    type="checkbox"
-                    :checked="selectedScanPaths.includes(p.source_path)"
-                    @change="toggleScanSelect(p.source_path)"
-                  />
-                  <span class="pi-main">
-                    <span class="pi-name">
-                      {{ p.display_name || p.name }}
-                      <span class="origin-badge">{{ p.origin }}</span>
-                    </span>
-                    <span class="pi-desc">{{ p.description || p.short_description || '暂无描述' }}</span>
-                    <span class="pi-path">{{ p.source_path }}</span>
-                  </span>
-                </label>
-              </div>
-              <div v-else class="empty-hint" style="margin-top: 12px">
-                该文件夹下未发现可导入的 Skill（需包含 SKILL.md）
-              </div>
-            </div>
-          </div>
-
-          <!-- 方法三：从链接引入（两步：先解析链接，再勾选导入） -->
-          <div v-else class="method-body">
-            <p class="hint">
-              粘贴一个链接（GitHub / Gitee / GitLab 仓库，或 .zip / .tar.gz 归档），
-              自动解析其中的 Skill 后勾选导入。
-            </p>
-            <div class="url-input-row">
-              <input
-                v-model="linkUrl"
-                class="url-input"
-                placeholder="如 https://github.com/owner/repo 或 .../tree/main/skills/foo"
-                :disabled="urlScanLoading"
-                @keyup.enter="scanLinkUrl"
-              />
-            </div>
-
-            <div v-if="urlScanned" class="scan-result">
-              <div class="scan-result-head">
-                解析到 {{ urlScannedPackages.length }} 个 Skill
-                <button
-                  v-if="urlScannedPackages.length"
-                  class="link-btn"
-                  @click="
-                    selectedUrlPaths =
-                      selectedUrlPaths.length === urlScannedPackages.length
-                        ? []
-                        : urlScannedPackages.map((p) => p.source_path)
-                  "
-                >
-                  {{ selectedUrlPaths.length === urlScannedPackages.length ? '取消全选' : '全选' }}
-                </button>
-              </div>
-              <div v-if="urlScannedPackages.length" class="scan-list">
-                <label
-                  v-for="p in urlScannedPackages"
-                  :key="p.source_path"
-                  class="scan-item"
-                  :class="{ selected: selectedUrlPaths.includes(p.source_path) }"
-                >
-                  <input
-                    type="checkbox"
-                    :checked="selectedUrlPaths.includes(p.source_path)"
-                    @change="toggleUrlSelect(p.source_path)"
-                  />
-                  <span class="pi-main">
-                    <span class="pi-name">
-                      {{ p.display_name || p.name }}
-                      <span class="origin-badge">{{ p.origin }}</span>
-                    </span>
-                    <span class="pi-desc">{{ p.description || p.short_description || '暂无描述' }}</span>
-                    <span class="pi-path">{{ p.source_path === '.' ? '（仓库根目录）' : p.source_path }}</span>
-                  </span>
-                </label>
-              </div>
-              <div v-else class="empty-hint" style="margin-top: 12px">
-                该链接下未发现可导入的 Skill（需包含 SKILL.md）
-              </div>
-            </div>
-          </div>
-
-          <div v-if="addSkillError" class="error-msg">{{ addSkillError }}</div>
-
-          <div class="modal-actions">
-            <button class="btn-sm" @click="showAddSkill = false">取消</button>
-            <button
-              v-if="addMethod === 'personal'"
-              class="btn-sm btn-primary"
-              :disabled="!selectedPersonalId || addSkillLoading"
-              @click="confirmAddFromPersonal"
-            >
-              {{ addSkillLoading ? '导入中...' : '导入到团队' }}
-            </button>
-            <template v-else-if="addMethod === 'local'">
-              <button
-                v-if="!scanned"
-                class="btn-sm btn-primary"
-                :disabled="!localPath.trim() || scanLoading"
-                @click="scanLocalFolder"
-              >
-                {{ scanLoading ? '解析中...' : '解析文件夹' }}
-              </button>
-              <button
-                v-else
-                class="btn-sm btn-primary"
-                :disabled="!selectedScanPaths.length || addSkillLoading"
-                @click="confirmAddFromLocal"
-              >
-                {{ addSkillLoading ? '导入中...' : `导入所选 (${selectedScanPaths.length})` }}
-              </button>
-            </template>
-            <template v-else>
-              <button
-                v-if="!urlScanned"
-                class="btn-sm btn-primary"
-                :disabled="!linkUrl.trim() || urlScanLoading"
-                @click="scanLinkUrl"
-              >
-                {{ urlScanLoading ? '解析中...' : '解析链接' }}
-              </button>
-              <button
-                v-else
-                class="btn-sm btn-primary"
-                :disabled="!selectedUrlPaths.length || addSkillLoading"
-                @click="confirmAddFromUrl"
-              >
-                {{ addSkillLoading ? '导入中...' : `导入所选 (${selectedUrlPaths.length})` }}
-              </button>
-            </template>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <!-- 新增 Skill 到团队仓库（方式/解析/导入逻辑见共享组件 AddSkillModal） -->
+    <AddSkillModal
+      v-model="showAddSkill"
+      scope="team"
+      :team-id="teamStore.currentTeamId"
+      @done="onAddSkillDone"
+    />
   </div>
 </template>
 
@@ -1439,129 +993,6 @@ function logout() {
   margin-top: 20px;
 }
 
-.add-skill-modal {
-  width: 480px;
-}
-
-.method-tabs {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 16px;
-}
-
-.method-tab {
-  flex: 1;
-  padding: 8px 6px;
-  border: 1px solid #333;
-  border-radius: 8px;
-  background: #20202e;
-  color: #bbb;
-  font-size: 13px;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
-}
-
-.method-tab:hover:not(.disabled) {
-  background: #2a2a3e;
-}
-
-.method-tab.active {
-  border-color: #5b7fff;
-  background: #2a2a4a;
-  color: #fff;
-}
-
-.method-tab.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.method-body {
-  min-height: 80px;
-}
-
-.hint {
-  font-size: 13px;
-  color: #888;
-  margin: 0 0 12px;
-}
-
-.hint code {
-  background: #2a2a3e;
-  padding: 1px 6px;
-  border-radius: 4px;
-  color: #8b9cf7;
-  font-family: monospace;
-}
-
-.personal-list {
-  max-height: 280px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.personal-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid #2a2a3e;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.personal-item:hover {
-  background: #222236;
-}
-
-.personal-item.selected {
-  border-color: #5b7fff;
-  background: #2a2a4a;
-}
-
-.personal-item input {
-  margin-top: 3px;
-  accent-color: #5b7fff;
-}
-
-.pi-main {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.pi-name {
-  font-size: 14px;
-  color: #e0e0e0;
-}
-
-.pi-desc {
-  font-size: 12px;
-  color: #888;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
-}
-
-.scan-result {
-  margin-top: 14px;
-}
-
-.scan-result-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
-  color: #bbb;
-  margin-bottom: 8px;
-}
-
 .link-btn {
   background: none;
   border: none;
@@ -1573,86 +1004,5 @@ function logout() {
 
 .link-btn:hover {
   color: #aab4ff;
-}
-
-.scan-list {
-  max-height: 260px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.scan-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid #2a2a3e;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.scan-item:hover {
-  background: #222236;
-}
-
-.scan-item.selected {
-  border-color: #5b7fff;
-  background: #2a2a4a;
-}
-
-.scan-item input {
-  margin-top: 3px;
-  accent-color: #5b7fff;
-}
-
-.origin-badge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 0 6px;
-  border-radius: 8px;
-  background: #2a2a3e;
-  color: #8b9cf7;
-  font-size: 11px;
-  vertical-align: middle;
-}
-
-.pi-path {
-  font-size: 11px;
-  color: #666;
-  font-family: monospace;
-  word-break: break-all;
-}
-
-.url-input-row {
-  display: flex;
-  gap: 8px;
-}
-
-.url-input {
-  flex: 1;
-  padding: 9px 12px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  background: #262636;
-  color: #e0e0e0;
-  font-size: 13px;
-  outline: none;
-  box-sizing: border-box;
-}
-
-.url-input:focus {
-  border-color: #5b7fff;
-}
-
-.url-input::placeholder {
-  color: #666;
-}
-
-.url-input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 </style>

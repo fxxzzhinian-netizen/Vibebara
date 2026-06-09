@@ -3,18 +3,18 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSkillStore } from '@/stores/skillStore'
 import { useTeamStore } from '@/stores/teamStore'
-import { copySkillToTeam } from '@/api/skillStore'
+import { copySkillToTeam, type NativeSkillItem } from '@/api/skillStore'
 import { browseDirectory } from '@/api/skillForge'
 import { launchTool } from '@/api/launcher'
+import AddSkillModal from '@/components/AddSkillModal.vue'
 
 const router = useRouter()
 const store = useSkillStore()
 const teamStore = useTeamStore()
 
 const showCreateModal = ref(false)
-const newSkillName = ref('')
-const newSkillDesc = ref('')
-const createError = ref('')
+const repoMsg = ref('')
+let repoMsgTimer: ReturnType<typeof setTimeout> | undefined
 
 const deployTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'>('cursor')
 // 部署始终落项目目录（需选目录）；勾选后「同时」再额外落一份到全局 ~/.{tool}/skills。
@@ -100,23 +100,21 @@ function setNestedField(parent: string, key: string, val: unknown) {
   store.updateLocalConfig({ [parent]: { ...current, [key]: val } })
 }
 
-async function handleCreate() {
-  createError.value = ''
-  const name = newSkillName.value.trim()
-  if (!name) { createError.value = '名称不能为空'; return }
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) { createError.value = '仅支持小写字母、数字、连字符'; return }
-  try {
-    const res = await store.createSkill({
-      name,
-      description: newSkillDesc.value.trim() || `Skill: ${name}`,
-    })
-    if (!res.success) { createError.value = res.error || '创建失败'; return }
-    showCreateModal.value = false
-    newSkillName.value = ''
-    newSkillDesc.value = ''
-  } catch (e: any) {
-    createError.value = e.message
-  }
+function flashRepoMsg(msg: string) {
+  repoMsg.value = msg
+  if (repoMsgTimer) clearTimeout(repoMsgTimer)
+  repoMsgTimer = setTimeout(() => {
+    repoMsg.value = ''
+  }, 4000)
+}
+
+// AddSkillModal 完成回调：刷新个人列表；新建/导入到单个 Skill 时选中进入编辑器；
+// message 非空（完整成功，模态已自行关闭）时弹提示。部分失败时模态保持打开展示内联错误。
+async function onAddSkillDone(payload: { message: string; skills?: NativeSkillItem[] }) {
+  await store.fetchList('personal')
+  const first = payload.skills?.[0]
+  if (first) await store.selectSkill(first.id)
+  if (payload.message) flashRepoMsg(payload.message)
 }
 
 async function handleSave() {
@@ -352,6 +350,8 @@ onMounted(() => {
       <button class="btn-llm-test" @click="handleLLMTest" title="测试 LLM 连通性">LLM 测试</button>
 
       <button class="btn-new" @click="showCreateModal = true">+ 新建 Skill</button>
+
+      <div v-if="repoMsg" class="repo-msg">{{ repoMsg }}</div>
 
       <div v-if="store.loading" class="sidebar-loading">
         <span class="spinner"></span> 加载中...
@@ -598,27 +598,8 @@ onMounted(() => {
       </template>
     </main>
 
-    <!-- ===== Create Modal ===== -->
-    <Teleport to="body">
-      <div v-if="showCreateModal" class="modal-mask" @click.self="showCreateModal = false">
-        <div class="modal-box">
-          <h3>新建原生 Skill</h3>
-          <div class="form-row">
-            <label>名称 (ID)</label>
-            <input v-model="newSkillName" class="form-input" placeholder="my-awesome-skill" @keyup.enter="handleCreate" />
-          </div>
-          <div class="form-row">
-            <label>描述</label>
-            <input v-model="newSkillDesc" class="form-input" placeholder="一句话描述该 Skill" @keyup.enter="handleCreate" />
-          </div>
-          <p v-if="createError" class="form-error">{{ createError }}</p>
-          <div class="modal-actions">
-            <button class="btn cancel" @click="showCreateModal = false">取消</button>
-            <button class="btn primary" @click="handleCreate">创建</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <!-- ===== Create / Import Modal（手动新建 / 从链接导入 / 从本地文件夹 / 从 IDE 导入） ===== -->
+    <AddSkillModal v-model="showCreateModal" scope="personal" @done="onAddSkillDone" />
 
     <!-- ===== Copy to Team Repo Modal ===== -->
     <Teleport to="body">
@@ -827,6 +808,16 @@ onMounted(() => {
 }
 
 .btn-new:hover { opacity: 0.85; }
+
+.repo-msg {
+  margin: 0 1rem 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(74, 222, 128, 0.12);
+  border: 1px solid rgba(74, 222, 128, 0.35);
+  border-radius: 8px;
+  color: #4ade80;
+  font-size: 0.8rem;
+}
 
 .sidebar-loading, .sidebar-empty {
   padding: 2rem 1rem;

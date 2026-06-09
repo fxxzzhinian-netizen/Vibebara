@@ -1,0 +1,913 @@
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import {
+  listNativeSkills,
+  copySkillToTeam,
+  importLocalSkillToTeam,
+  scanLocalSkills,
+  scanUrlSkills,
+  importUrlSkills,
+  createNativeSkill,
+  importToNativeStore,
+  type NativeSkillItem,
+} from '@/api/skillStore'
+import { rescanSkills, type UnifiedSkillPackage } from '@/api/skillForge'
+import FolderPicker from '@/components/FolderPicker.vue'
+
+// 共享「新建/新增 Skill」模态：个人仓库（SkillForge）与团队仓库（Teams）共用。
+// scope='personal'：手动新建 / 从链接导入 / 从本地文件夹 / 从 IDE 工具导入（预留）。
+// scope='team'    ：从个人仓库导入 / 从本地文件夹 / 从链接导入（沿用团队既有行为）。
+const props = defineProps<{
+  modelValue: boolean
+  scope: 'personal' | 'team'
+  teamId?: string | null
+}>()
+
+const emit = defineEmits<{
+  (e: 'update:modelValue', val: boolean): void
+  // done：有内容真正落库后触发，父组件据此乐观插卡 / 刷新列表 / 弹提示。
+  //   - message 非空：完整成功，模态已关闭，父组件可弹成功提示。
+  //   - message 为空：部分失败，模态保持打开（内联报错），父组件仅插入已成功的项。
+  (e: 'done', payload: { message: string; skills?: NativeSkillItem[] }): void
+}>()
+
+type AddMethod = 'manual' | 'personal' | 'local' | 'link' | 'ide'
+
+const methods = computed<{ id: AddMethod; label: string; disabled?: boolean }[]>(() => {
+  if (props.scope === 'team') {
+    return [
+      { id: 'personal', label: '从个人仓库导入' },
+      { id: 'local', label: '从本地文件夹' },
+      { id: 'link', label: '从链接导入' },
+    ]
+  }
+  return [
+    { id: 'manual', label: '手动新建' },
+    { id: 'link', label: '从链接导入' },
+    { id: 'local', label: '从本地文件夹' },
+    { id: 'ide', label: '从 IDE 工具导入', disabled: true },
+  ]
+})
+
+const addMethod = ref<AddMethod>('manual')
+
+// —— 手动新建（仅 personal）——
+const manualName = ref('')
+const manualDesc = ref('')
+
+// —— 从个人仓库导入（仅 team）——
+const personalSkills = ref<NativeSkillItem[]>([])
+const selectedPersonalId = ref('')
+
+// —— 从本地文件夹（两步：解析 → 勾选导入）——
+const localPath = ref('')
+const scanLoading = ref(false)
+const scanned = ref(false)
+const scannedPackages = ref<UnifiedSkillPackage[]>([])
+const selectedScanPaths = ref<string[]>([])
+
+// —— 从链接导入（两步：解析链接得 token → 勾选导入）——
+const linkUrl = ref('')
+const urlScanLoading = ref(false)
+const urlScanned = ref(false)
+const urlToken = ref('')
+const urlSourceUrl = ref('')
+const urlScannedPackages = ref<UnifiedSkillPackage[]>([])
+const selectedUrlPaths = ref<string[]>([])
+
+const addSkillError = ref('')
+const addSkillLoading = ref(false)
+
+function close() {
+  emit('update:modelValue', false)
+}
+
+function resetLocalScan() {
+  scanned.value = false
+  scanLoading.value = false
+  scannedPackages.value = []
+  selectedScanPaths.value = []
+}
+
+function resetUrlScan() {
+  urlScanned.value = false
+  urlScanLoading.value = false
+  urlToken.value = ''
+  urlSourceUrl.value = ''
+  urlScannedPackages.value = []
+  selectedUrlPaths.value = []
+}
+
+function resetAll() {
+  manualName.value = ''
+  manualDesc.value = ''
+  selectedPersonalId.value = ''
+  localPath.value = ''
+  linkUrl.value = ''
+  resetLocalScan()
+  resetUrlScan()
+  addSkillError.value = ''
+  addSkillLoading.value = false
+}
+
+// 每次打开重置状态并定位默认方式（team→从个人仓库；personal→手动新建）。
+watch(
+  () => props.modelValue,
+  (open) => {
+    if (!open) return
+    resetAll()
+    addMethod.value = props.scope === 'team' ? 'personal' : 'manual'
+    if (props.scope === 'team') loadPersonalSkills()
+  },
+)
+
+function switchMethod(m: AddMethod, disabled?: boolean) {
+  if (disabled) return
+  addMethod.value = m
+  addSkillError.value = ''
+}
+
+// 改变文件夹/链接后需重新解析
+watch(localPath, () => {
+  if (scanned.value || scannedPackages.value.length) resetLocalScan()
+})
+watch(linkUrl, () => {
+  if (urlScanned.value || urlScannedPackages.value.length) resetUrlScan()
+})
+
+async function loadPersonalSkills() {
+  try {
+    const res = await listNativeSkills('personal')
+    personalSkills.value = res.success ? res.skills : []
+  } catch {
+    personalSkills.value = []
+  }
+}
+
+/** 完整成功：触发 done（带提示）后关闭模态。 */
+function finishDone(message: string, skills?: NativeSkillItem[]) {
+  emit('done', { message, skills })
+  close()
+}
+
+// —— 手动新建 ——
+async function confirmManual() {
+  addSkillError.value = ''
+  const name = manualName.value.trim()
+  if (!name) {
+    addSkillError.value = '名称不能为空'
+    return
+  }
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
+    addSkillError.value = '仅支持小写字母、数字、连字符'
+    return
+  }
+  addSkillLoading.value = true
+  try {
+    const res = await createNativeSkill({
+      name,
+      description: manualDesc.value.trim() || `Skill: ${name}`,
+    })
+    if (res.success) {
+      finishDone('已创建 Skill', res.skill ? [res.skill] : [])
+    } else {
+      addSkillError.value = res.error || '创建失败'
+    }
+  } catch (e: any) {
+    addSkillError.value = e?.response?.data?.detail || e.message || '创建失败'
+  } finally {
+    addSkillLoading.value = false
+  }
+}
+
+// —— 从个人仓库导入（team）——
+async function confirmAddFromPersonal() {
+  if (!props.teamId || !selectedPersonalId.value) return
+  addSkillError.value = ''
+  addSkillLoading.value = true
+  try {
+    const res = await copySkillToTeam(props.teamId, selectedPersonalId.value)
+    if (res.success) {
+      finishDone('已从个人仓库导入到团队仓库', res.skill ? [res.skill] : [])
+    } else {
+      addSkillError.value = res.error || '导入失败'
+    }
+  } catch (e: any) {
+    addSkillError.value = e?.response?.data?.detail || e.message || '导入失败'
+  } finally {
+    addSkillLoading.value = false
+  }
+}
+
+// —— 从本地文件夹：第一步解析 ——
+async function scanLocalFolder() {
+  const path = localPath.value.trim()
+  if (!path) return
+  if (props.scope === 'team' && !props.teamId) return
+  addSkillError.value = ''
+  scanLoading.value = true
+  scannedPackages.value = []
+  selectedScanPaths.value = []
+  try {
+    let ok = false
+    let pkgs: UnifiedSkillPackage[] = []
+    let err = ''
+    if (props.scope === 'team') {
+      const res = await scanLocalSkills(props.teamId as string, path)
+      ok = res.success
+      pkgs = res.packages
+      err = res.error || ''
+    } else {
+      const res = await rescanSkills(path)
+      ok = res.status === 'ready'
+      pkgs = res.packages
+      err = res.error || ''
+    }
+    if (ok) {
+      scannedPackages.value = pkgs
+      scanned.value = true
+      selectedScanPaths.value = pkgs.map((p) => p.source_path)
+    } else {
+      addSkillError.value = err || '解析失败'
+    }
+  } catch (e: any) {
+    addSkillError.value = e?.response?.data?.detail || e.message || '解析失败'
+  } finally {
+    scanLoading.value = false
+  }
+}
+
+function toggleScanSelect(path: string) {
+  const i = selectedScanPaths.value.indexOf(path)
+  if (i >= 0) selectedScanPaths.value.splice(i, 1)
+  else selectedScanPaths.value.push(path)
+}
+
+// —— 从本地文件夹：第二步导入勾选项 ——
+async function confirmAddFromLocal() {
+  if (!selectedScanPaths.value.length) return
+  if (props.scope === 'team' && !props.teamId) return
+  addSkillError.value = ''
+  addSkillLoading.value = true
+  let okCount = 0
+  const failed: string[] = []
+  const imported: NativeSkillItem[] = []
+  try {
+    for (const path of selectedScanPaths.value) {
+      const pkg = scannedPackages.value.find((p) => p.source_path === path)
+      const res =
+        props.scope === 'team'
+          ? await importLocalSkillToTeam(props.teamId as string, path, pkg?.origin)
+          : await importToNativeStore(path, pkg?.origin)
+      if (res.success) {
+        okCount += 1
+        if (res.skill) imported.push(res.skill)
+      } else {
+        failed.push(`${pkg?.display_name || pkg?.name || path}：${res.error || '失败'}`)
+      }
+    }
+    if (failed.length) {
+      // 部分失败：保持模态打开并内联报错；已成功的项交给父组件乐观插入。
+      emit('done', { message: '', skills: imported })
+      addSkillError.value = `成功 ${okCount} 个，失败 ${failed.length} 个 — ${failed.join('；')}`
+    } else {
+      const suffix = props.scope === 'team' ? '到团队仓库' : ''
+      finishDone(`已从本地导入 ${okCount} 个 Skill${suffix}`, imported)
+    }
+  } catch (e: any) {
+    addSkillError.value = e?.response?.data?.detail || e.message || '导入失败'
+  } finally {
+    addSkillLoading.value = false
+  }
+}
+
+// —— 从链接导入：第一步解析链接 ——
+async function scanLinkUrl() {
+  const url = linkUrl.value.trim()
+  if (!url) return
+  addSkillError.value = ''
+  urlScanLoading.value = true
+  urlScannedPackages.value = []
+  selectedUrlPaths.value = []
+  try {
+    const res = await scanUrlSkills(url)
+    if (res.success) {
+      urlToken.value = res.token
+      urlSourceUrl.value = res.source_url || url
+      urlScannedPackages.value = res.packages
+      urlScanned.value = true
+      selectedUrlPaths.value = res.packages.map((p) => p.source_path)
+      if (!res.packages.length) {
+        addSkillError.value = '该链接下未发现可导入的 Skill（需包含 SKILL.md）'
+      }
+    } else {
+      addSkillError.value = res.error || '解析链接失败'
+    }
+  } catch (e: any) {
+    addSkillError.value =
+      e?.response?.data?.detail || e?.response?.data?.error || e.message || '解析链接失败'
+  } finally {
+    urlScanLoading.value = false
+  }
+}
+
+function toggleUrlSelect(path: string) {
+  const i = selectedUrlPaths.value.indexOf(path)
+  if (i >= 0) selectedUrlPaths.value.splice(i, 1)
+  else selectedUrlPaths.value.push(path)
+}
+
+// —— 从链接导入：第二步导入勾选项 ——
+async function confirmAddFromUrl() {
+  if (!urlToken.value || !selectedUrlPaths.value.length) return
+  if (props.scope === 'team' && !props.teamId) return
+  addSkillError.value = ''
+  addSkillLoading.value = true
+  try {
+    const res = await importUrlSkills(
+      urlToken.value,
+      selectedUrlPaths.value,
+      props.scope,
+      props.scope === 'team' ? (props.teamId as string) : undefined,
+      urlSourceUrl.value,
+    )
+    // token 是一次性的：云端导入后即释放缓存，无论成败都需重新解析才能再次导入。
+    urlToken.value = ''
+    urlScanned.value = false
+    const imported = res.skills || []
+    const failed = (res.results || []).filter((r) => !r.success)
+    if (failed.length) {
+      emit('done', { message: '', skills: imported })
+      const detail = failed.map((r) => `${r.source_path}：${r.error || '失败'}`).join('；')
+      addSkillError.value = `成功 ${res.imported} 个，失败 ${failed.length} 个 — ${detail}`
+    } else {
+      const suffix = props.scope === 'team' ? '到团队仓库' : ''
+      finishDone(`已从链接导入 ${res.imported} 个 Skill${suffix}`, imported)
+    }
+  } catch (e: any) {
+    addSkillError.value =
+      e?.response?.data?.detail || e?.response?.data?.error || e.message || '导入失败'
+  } finally {
+    addSkillLoading.value = false
+  }
+}
+</script>
+
+<template>
+  <Teleport to="body">
+    <div v-if="modelValue" class="modal-overlay" @click.self="close">
+      <div class="modal add-skill-modal">
+        <h3>{{ scope === 'team' ? '新增 Skill' : '新建 Skill' }}</h3>
+
+        <div class="method-tabs">
+          <button
+            v-for="m in methods"
+            :key="m.id"
+            class="method-tab"
+            :class="{ active: addMethod === m.id, disabled: m.disabled }"
+            @click="switchMethod(m.id, m.disabled)"
+          >
+            {{ m.label }}
+          </button>
+        </div>
+
+        <!-- 手动新建（personal） -->
+        <div v-if="addMethod === 'manual'" class="method-body">
+          <p class="hint">填写名称与描述创建一个空白 Skill，随后在编辑器中编写指令与资源。</p>
+          <div class="field">
+            <label>名称 (ID)</label>
+            <input
+              v-model="manualName"
+              placeholder="my-awesome-skill"
+              @keyup.enter="confirmManual"
+            />
+          </div>
+          <div class="field">
+            <label>描述</label>
+            <input
+              v-model="manualDesc"
+              placeholder="一句话描述该 Skill"
+              @keyup.enter="confirmManual"
+            />
+          </div>
+          <p class="hint">ID 仅支持小写字母、数字、连字符。</p>
+        </div>
+
+        <!-- 从个人仓库导入（team） -->
+        <div v-else-if="addMethod === 'personal'" class="method-body">
+          <p class="hint">选择你个人仓库中的一个 Skill，复制一份放入当前团队仓库。</p>
+          <div v-if="personalSkills.length" class="personal-list">
+            <label
+              v-for="s in personalSkills"
+              :key="s.id"
+              class="personal-item"
+              :class="{ selected: selectedPersonalId === s.id }"
+            >
+              <input
+                type="radio"
+                name="personal-skill"
+                :value="s.id"
+                v-model="selectedPersonalId"
+              />
+              <span class="pi-main">
+                <span class="pi-name">{{ s.display_name || s.id }}</span>
+                <span class="pi-desc">{{ s.description || '暂无描述' }}</span>
+              </span>
+            </label>
+          </div>
+          <div v-else class="empty-hint" style="margin-top: 12px">个人仓库暂无 Skill</div>
+        </div>
+
+        <!-- 从本地文件夹（两步） -->
+        <div v-else-if="addMethod === 'local'" class="method-body">
+          <p class="hint">
+            第一步：选择本地文件夹并解析；第二步：勾选解析出的 Skill 导入。
+          </p>
+          <FolderPicker v-model="localPath" placeholder="点击「浏览...」选择文件夹" />
+
+          <div v-if="scanned" class="scan-result">
+            <div class="scan-result-head">
+              解析到 {{ scannedPackages.length }} 个 Skill
+              <button
+                v-if="scannedPackages.length"
+                class="link-btn"
+                @click="
+                  selectedScanPaths =
+                    selectedScanPaths.length === scannedPackages.length
+                      ? []
+                      : scannedPackages.map((p) => p.source_path)
+                "
+              >
+                {{ selectedScanPaths.length === scannedPackages.length ? '取消全选' : '全选' }}
+              </button>
+            </div>
+            <div v-if="scannedPackages.length" class="scan-list">
+              <label
+                v-for="p in scannedPackages"
+                :key="p.source_path"
+                class="scan-item"
+                :class="{ selected: selectedScanPaths.includes(p.source_path) }"
+              >
+                <input
+                  type="checkbox"
+                  :checked="selectedScanPaths.includes(p.source_path)"
+                  @change="toggleScanSelect(p.source_path)"
+                />
+                <span class="pi-main">
+                  <span class="pi-name">
+                    {{ p.display_name || p.name }}
+                    <span class="origin-badge">{{ p.origin }}</span>
+                  </span>
+                  <span class="pi-desc">{{ p.description || p.short_description || '暂无描述' }}</span>
+                  <span class="pi-path">{{ p.source_path }}</span>
+                </span>
+              </label>
+            </div>
+            <div v-else class="empty-hint" style="margin-top: 12px">
+              该文件夹下未发现可导入的 Skill（需包含 SKILL.md）
+            </div>
+          </div>
+        </div>
+
+        <!-- 从链接导入（两步） -->
+        <div v-else-if="addMethod === 'link'" class="method-body">
+          <p class="hint">
+            粘贴一个链接（GitHub / Gitee / GitLab 仓库，或 .zip / .tar.gz 归档），
+            自动解析其中的 Skill 后勾选导入。
+          </p>
+          <div class="url-input-row">
+            <input
+              v-model="linkUrl"
+              class="url-input"
+              placeholder="如 https://github.com/owner/repo 或 .../tree/main/skills/foo"
+              :disabled="urlScanLoading"
+              @keyup.enter="scanLinkUrl"
+            />
+          </div>
+
+          <div v-if="urlScanned" class="scan-result">
+            <div class="scan-result-head">
+              解析到 {{ urlScannedPackages.length }} 个 Skill
+              <button
+                v-if="urlScannedPackages.length"
+                class="link-btn"
+                @click="
+                  selectedUrlPaths =
+                    selectedUrlPaths.length === urlScannedPackages.length
+                      ? []
+                      : urlScannedPackages.map((p) => p.source_path)
+                "
+              >
+                {{ selectedUrlPaths.length === urlScannedPackages.length ? '取消全选' : '全选' }}
+              </button>
+            </div>
+            <div v-if="urlScannedPackages.length" class="scan-list">
+              <label
+                v-for="p in urlScannedPackages"
+                :key="p.source_path"
+                class="scan-item"
+                :class="{ selected: selectedUrlPaths.includes(p.source_path) }"
+              >
+                <input
+                  type="checkbox"
+                  :checked="selectedUrlPaths.includes(p.source_path)"
+                  @change="toggleUrlSelect(p.source_path)"
+                />
+                <span class="pi-main">
+                  <span class="pi-name">
+                    {{ p.display_name || p.name }}
+                    <span class="origin-badge">{{ p.origin }}</span>
+                  </span>
+                  <span class="pi-desc">{{ p.description || p.short_description || '暂无描述' }}</span>
+                  <span class="pi-path">{{ p.source_path === '.' ? '（仓库根目录）' : p.source_path }}</span>
+                </span>
+              </label>
+            </div>
+            <div v-else class="empty-hint" style="margin-top: 12px">
+              该链接下未发现可导入的 Skill（需包含 SKILL.md）
+            </div>
+          </div>
+        </div>
+
+        <!-- 从 IDE 工具导入（预留） -->
+        <div v-else-if="addMethod === 'ide'" class="method-body">
+          <p class="hint">从已安装的 IDE 工具（Cursor / Codex 等）的本地 Skill 目录中导入。</p>
+          <div class="empty-hint" style="margin-top: 12px">该功能即将支持，敬请期待。</div>
+        </div>
+
+        <div v-if="addSkillError" class="error-msg">{{ addSkillError }}</div>
+
+        <div class="modal-actions">
+          <button class="btn-sm" @click="close">取消</button>
+
+          <button
+            v-if="addMethod === 'manual'"
+            class="btn-sm btn-primary"
+            :disabled="!manualName.trim() || addSkillLoading"
+            @click="confirmManual"
+          >
+            {{ addSkillLoading ? '创建中...' : '创建' }}
+          </button>
+
+          <button
+            v-else-if="addMethod === 'personal'"
+            class="btn-sm btn-primary"
+            :disabled="!selectedPersonalId || addSkillLoading"
+            @click="confirmAddFromPersonal"
+          >
+            {{ addSkillLoading ? '导入中...' : '导入到团队' }}
+          </button>
+
+          <template v-else-if="addMethod === 'local'">
+            <button
+              v-if="!scanned"
+              class="btn-sm btn-primary"
+              :disabled="!localPath.trim() || scanLoading"
+              @click="scanLocalFolder"
+            >
+              {{ scanLoading ? '解析中...' : '解析文件夹' }}
+            </button>
+            <button
+              v-else
+              class="btn-sm btn-primary"
+              :disabled="!selectedScanPaths.length || addSkillLoading"
+              @click="confirmAddFromLocal"
+            >
+              {{ addSkillLoading ? '导入中...' : `导入所选 (${selectedScanPaths.length})` }}
+            </button>
+          </template>
+
+          <template v-else-if="addMethod === 'link'">
+            <button
+              v-if="!urlScanned"
+              class="btn-sm btn-primary"
+              :disabled="!linkUrl.trim() || urlScanLoading"
+              @click="scanLinkUrl"
+            >
+              {{ urlScanLoading ? '解析中...' : '解析链接' }}
+            </button>
+            <button
+              v-else
+              class="btn-sm btn-primary"
+              :disabled="!selectedUrlPaths.length || addSkillLoading"
+              @click="confirmAddFromUrl"
+            >
+              {{ addSkillLoading ? '导入中...' : `导入所选 (${selectedUrlPaths.length})` }}
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
+  </Teleport>
+</template>
+
+<style scoped>
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: #1e1e2e;
+  border: 1px solid #2a2a3e;
+  border-radius: 12px;
+  padding: 28px;
+  width: 400px;
+  max-width: 90vw;
+}
+
+.modal h3 {
+  margin: 0 0 20px;
+  font-size: 18px;
+}
+
+.add-skill-modal {
+  width: 480px;
+}
+
+.method-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.method-tab {
+  flex: 1;
+  padding: 8px 6px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #20202e;
+  color: #bbb;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.method-tab:hover:not(.disabled) {
+  background: #2a2a3e;
+}
+
+.method-tab.active {
+  border-color: #5b7fff;
+  background: #2a2a4a;
+  color: #fff;
+}
+
+.method-tab.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.method-body {
+  min-height: 80px;
+}
+
+.hint {
+  font-size: 13px;
+  color: #888;
+  margin: 0 0 12px;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.field label {
+  display: block;
+  font-size: 13px;
+  color: #aaa;
+  margin-bottom: 6px;
+}
+
+.field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #262636;
+  color: #e0e0e0;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.field input:focus {
+  border-color: #5b7fff;
+}
+
+.personal-list {
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.personal-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.personal-item:hover {
+  background: #222236;
+}
+
+.personal-item.selected {
+  border-color: #5b7fff;
+  background: #2a2a4a;
+}
+
+.personal-item input {
+  margin-top: 3px;
+  accent-color: #5b7fff;
+}
+
+.pi-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pi-name {
+  font-size: 14px;
+  color: #e0e0e0;
+}
+
+.pi-desc {
+  font-size: 12px;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+
+.scan-result {
+  margin-top: 14px;
+}
+
+.scan-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #bbb;
+  margin-bottom: 8px;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: #8b9cf7;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.link-btn:hover {
+  color: #aab4ff;
+}
+
+.scan-list {
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scan-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.scan-item:hover {
+  background: #222236;
+}
+
+.scan-item.selected {
+  border-color: #5b7fff;
+  background: #2a2a4a;
+}
+
+.scan-item input {
+  margin-top: 3px;
+  accent-color: #5b7fff;
+}
+
+.origin-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: #2a2a3e;
+  color: #8b9cf7;
+  font-size: 11px;
+  vertical-align: middle;
+}
+
+.pi-path {
+  font-size: 11px;
+  color: #666;
+  font-family: monospace;
+  word-break: break-all;
+}
+
+.url-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.url-input {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #262636;
+  color: #e0e0e0;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.url-input:focus {
+  border-color: #5b7fff;
+}
+
+.url-input::placeholder {
+  color: #666;
+}
+
+.url-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.empty-hint {
+  text-align: center;
+  color: #555;
+  font-size: 13px;
+}
+
+.error-msg {
+  color: #ff6b6b;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.btn-sm {
+  padding: 6px 14px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #262636;
+  color: #ccc;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-sm:hover {
+  background: #333;
+}
+
+.btn-sm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #5b7fff;
+  border-color: #5b7fff;
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #4a6eee;
+}
+</style>
