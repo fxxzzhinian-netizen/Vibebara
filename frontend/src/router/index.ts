@@ -1,6 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { getToken } from '@/runtime/tokenStorage'
-import { isDesktop } from '@/runtime/desktopBridge'
 import { useAuthStore } from '@/stores/authStore'
 
 const router = createRouter({
@@ -21,6 +20,12 @@ const router = createRouter({
       path: '/',
       name: 'dashboard',
       component: () => import('@/views/Dashboard.vue'),
+    },
+    {
+      // 原主页的项目启动器功能整体保留于此（暂不进导航，待后续重构安排）
+      path: '/launcher',
+      name: 'project-launcher',
+      component: () => import('@/views/ProjectLauncher.vue'),
     },
     {
       path: '/teams',
@@ -76,8 +81,8 @@ router.beforeEach(async (to, _from, next) => {
     return next('/')
   }
 
-  // 首次登录引导：仅桌面端启用，纯网页直接放行（无引导页）
-  if (token && isDesktop()) {
+  // 首次登录引导：web 与桌面端均启用
+  if (token) {
     const auth = useAuthStore()
     // 会话恢复时 user 可能尚未就绪（init 超时兜底），尽力补取一次
     if (!auth.user) {
@@ -85,16 +90,14 @@ router.beforeEach(async (to, _from, next) => {
     }
     const onboarded = auth.user?.onboarded
     if (to.path === '/onboarding') {
-      // 已完成引导则不再进入引导页
-      return onboarded ? next('/') : next()
+      // 已完成引导默认回主页；dev 模式下放行以便调试引导页 UI
+      if (onboarded && !import.meta.env.DEV) return next('/')
+      return next()
     }
     // 未完成引导 → 强制进入引导（user 取不到时不阻断，安全放行）
     if (auth.user && !onboarded) {
       return next('/onboarding')
     }
-  } else if (to.path === '/onboarding') {
-    // 非桌面端不存在引导流程
-    return next('/')
   }
 
   return next()

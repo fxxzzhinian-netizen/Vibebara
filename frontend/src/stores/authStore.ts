@@ -46,6 +46,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
       return res
     } catch (e: any) {
+      console.error('[auth] 注册请求失败 POST /auth/register:', e)
       error.value = e?.response?.data?.detail || e.message
       return { success: false, error: error.value } as any
     } finally {
@@ -73,6 +74,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
       return res
     } catch (e: any) {
+      console.error('[auth] 登录请求失败 POST /auth/login:', e)
       error.value = e?.response?.data?.detail || e.message
       return { success: false, error: error.value } as any
     } finally {
@@ -87,7 +89,8 @@ export const useAuthStore = defineStore('auth', () => {
       if (res.success && res.user) {
         user.value = res.user
       }
-    } catch {
+    } catch (e) {
+      console.error('[auth] 获取当前用户失败（将清除本地登录态）GET /auth/me:', e)
       logout()
     }
   }
@@ -105,6 +108,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
       return res
     } catch (e: any) {
+      console.error('[auth] 保存引导选择失败 POST /auth/onboarding:', e)
       return {
         success: false,
         error: e?.response?.data?.detail || e.message,

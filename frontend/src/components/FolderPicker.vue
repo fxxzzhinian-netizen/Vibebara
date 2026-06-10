@@ -144,17 +144,19 @@ watch(() => props.modelValue, (val) => {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  background: #262636;
-  color: #e0e0e0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f6f7f8;
+  color: #151717;
   font-size: 14px;
   gap: 8px;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .picker-display:hover,
 .picker-display:focus-within {
-  border-color: #5b7fff;
+  border-color: #151717;
+  background: #ffffff;
 }
 
 .path-input {
@@ -163,33 +165,36 @@ watch(() => props.modelValue, (val) => {
   border: none;
   outline: none;
   background: transparent;
-  color: #e0e0e0;
+  color: #151717;
   font-size: 14px;
+  font-family: inherit;
   padding: 0;
 }
 
 .path-input::placeholder {
-  color: #666;
+  color: #b6bcc4;
 }
 
 .browse-btn {
   flex-shrink: 0;
   font-size: 12px;
-  color: #8b9cf7;
+  font-weight: 600;
+  color: #4f46e5;
   background: none;
   border: none;
+  font-family: inherit;
   cursor: pointer;
   padding: 0 2px;
 }
 
 .browse-btn:hover {
-  color: #aab4ff;
+  text-decoration: underline;
 }
 
 .fp-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(21, 23, 23, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -197,15 +202,19 @@ watch(() => props.modelValue, (val) => {
 }
 
 .fp-dialog {
-  background: #1e1e2e;
-  border: 1px solid #2a2a3e;
-  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 16px;
+  box-shadow: 0 20px 48px rgba(21, 23, 23, 0.16);
   padding: 20px;
   width: 520px;
   max-width: 90vw;
   max-height: 70vh;
   display: flex;
   flex-direction: column;
+  color: #151717;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, sans-serif;
 }
 
 .fp-header {
@@ -217,21 +226,22 @@ watch(() => props.modelValue, (val) => {
 
 .fp-title {
   font-size: 16px;
-  font-weight: 600;
-  color: #e0e0e0;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #151717;
 }
 
 .fp-close {
   background: none;
   border: none;
-  color: #888;
+  color: #9ca3af;
   font-size: 22px;
   cursor: pointer;
   line-height: 1;
 }
 
 .fp-close:hover {
-  color: #fff;
+  color: #151717;
 }
 
 .fp-current {
@@ -239,19 +249,21 @@ watch(() => props.modelValue, (val) => {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  background: #16161e;
-  border-radius: 6px;
+  background: #f6f7f8;
+  border: 1px solid #ebedf0;
+  border-radius: 8px;
   margin-bottom: 10px;
 }
 
 .fp-up-btn {
-  background: #262636;
-  border: 1px solid #333;
-  border-radius: 4px;
-  color: #ccc;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  color: #6b7280;
   font-size: 14px;
   padding: 2px 8px;
   cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
 
 .fp-up-btn:disabled {
@@ -260,20 +272,21 @@ watch(() => props.modelValue, (val) => {
 }
 
 .fp-up-btn:hover:not(:disabled) {
-  background: #333;
+  border-color: #d1d5db;
+  color: #151717;
 }
 
 .fp-path {
   font-size: 13px;
-  color: #aaa;
-  font-family: monospace;
+  color: #6b7280;
+  font-family: 'JetBrains Mono', monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .fp-error {
-  color: #ff6b6b;
+  color: #dc2626;
   font-size: 13px;
   margin-bottom: 8px;
 }
@@ -281,8 +294,8 @@ watch(() => props.modelValue, (val) => {
 .fp-list {
   flex: 1;
   overflow-y: auto;
-  border: 1px solid #2a2a3e;
-  border-radius: 6px;
+  border: 1px solid #ebedf0;
+  border-radius: 10px;
   max-height: 300px;
   min-height: 120px;
 }
@@ -293,8 +306,9 @@ watch(() => props.modelValue, (val) => {
   gap: 8px;
   padding: 8px 12px;
   cursor: pointer;
-  border-bottom: 1px solid #222;
+  border-bottom: 1px solid #f3f4f6;
   font-size: 13px;
+  transition: background 0.12s ease;
 }
 
 .fp-item:last-child {
@@ -302,7 +316,7 @@ watch(() => props.modelValue, (val) => {
 }
 
 .fp-item:hover {
-  background: #2a2a3e;
+  background: #f6f7f8;
 }
 
 .fp-icon {
@@ -317,14 +331,14 @@ watch(() => props.modelValue, (val) => {
 
 .fp-empty {
   text-align: center;
-  color: #555;
+  color: #9ca3af;
   font-size: 13px;
   padding: 24px;
 }
 
 .fp-loading {
   text-align: center;
-  color: #888;
+  color: #9ca3af;
   font-size: 13px;
   padding: 24px;
 }
@@ -337,31 +351,38 @@ watch(() => props.modelValue, (val) => {
 }
 
 .btn-sm {
-  padding: 6px 14px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  background: #262636;
-  color: #ccc;
+  padding: 7px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #6b7280;
   font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-.btn-sm:hover {
-  background: #333;
+.btn-sm:hover:not(:disabled) {
+  border-color: #d1d5db;
+  color: #151717;
 }
 
 .btn-primary {
-  background: #5b7fff;
-  border-color: #5b7fff;
-  color: #fff;
+  background: #151717;
+  border-color: #151717;
+  color: #ffffff;
+  font-weight: 600;
 }
 
-.btn-primary:hover {
-  background: #4a6eee;
+.btn-primary:hover:not(:disabled) {
+  background: #2d2f2f;
+  border-color: #2d2f2f;
+  color: #ffffff;
 }
 
 .btn-sm:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 </style>

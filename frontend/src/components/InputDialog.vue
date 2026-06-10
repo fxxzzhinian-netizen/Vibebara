@@ -72,7 +72,7 @@ watch(
 .id-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(21, 23, 23, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -80,15 +80,15 @@ watch(
 }
 
 .id-dialog {
-  background: #1e1e2e;
-  border: 1px solid #2a2a3e;
-  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 16px;
   padding: 20px;
   width: 460px;
   max-width: 90vw;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 12px 32px rgba(21, 23, 23, 0.1);
 }
 
 .id-header {
@@ -101,25 +101,25 @@ watch(
 .id-title {
   font-size: 16px;
   font-weight: 600;
-  color: #e0e0e0;
+  color: #151717;
 }
 
 .id-close {
   background: none;
   border: none;
-  color: #888;
+  color: #9ca3af;
   font-size: 22px;
   cursor: pointer;
   line-height: 1;
 }
 
 .id-close:hover {
-  color: #fff;
+  color: #151717;
 }
 
 .id-message {
   font-size: 13px;
-  color: #9aa0b4;
+  color: #6b7280;
   line-height: 1.5;
   margin-bottom: 12px;
   white-space: pre-line;
@@ -129,20 +129,23 @@ watch(
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  background: #262636;
-  color: #e0e0e0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f6f7f8;
+  color: #151717;
   font-size: 14px;
+  font-family: inherit;
   outline: none;
+  transition: border-color 0.15s ease;
 }
 
 .id-input:focus {
-  border-color: #5b7fff;
+  border-color: #6366f1;
+  background: #ffffff;
 }
 
 .id-input::placeholder {
-  color: #666;
+  color: #9ca3af;
 }
 
 .id-textarea {
@@ -160,26 +163,33 @@ watch(
 }
 
 .id-btn {
-  padding: 6px 16px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  background: #262636;
-  color: #ccc;
+  padding: 7px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #6b7280;
   font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
 
 .id-btn:hover {
-  background: #333;
+  border-color: #d1d5db;
+  color: #151717;
 }
 
 .id-btn-primary {
-  background: #5b7fff;
-  border-color: #5b7fff;
-  color: #fff;
+  background: #151717;
+  border-color: #151717;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .id-btn-primary:hover {
-  background: #4a6eee;
+  background: #2d2f2f;
+  border-color: #2d2f2f;
+  color: #ffffff;
 }
 </style>

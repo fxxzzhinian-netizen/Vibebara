@@ -180,7 +180,8 @@ function resolveCommand(tool: LauncherToolId): string[] {
     if (IS_WINDOWS) {
       const exe = which("trae.cmd", "trae", "Trae.exe");
       if (exe) return [exe];
-      const appx = findAppxApp("Trae");
+      // Trae 在开始菜单注册名形态多样（如 "Trae" / "Trae CN" / "TRAE SOLO CN"），用通配匹配
+      const appx = findAppxApp("*Trae*");
       if (appx) return ["explorer.exe", appx];
     } else {
       const exe = which("trae", "Trae");

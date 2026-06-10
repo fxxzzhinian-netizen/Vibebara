@@ -33,12 +33,27 @@ export const cloudClient = axios.create({
   },
 })
 
+/**
+ * GET 防缓存：给 GET 请求附唯一查询参数，使每次 URL 不同、强制走网络。
+ *
+ * 背景：Electron/Chromium 会缓存 GET 响应。曾出现链路异常（如 VPN 残留代理）时
+ * 接口返回 403/401，被浏览器缓存住；链路恢复后相同 URL 仍命中缓存的旧失败响应，
+ * 请求根本不再发出，表现为“验证码加载失败 / 登录后 /auth/me 403”等顽固故障。
+ * 这些接口（验证码挑战、当前用户、列表等）本就应取实时数据，禁用缓存无副作用。
+ */
+function applyNoCache(config: { method?: string; params?: any }) {
+  if ((config.method ?? 'get').toLowerCase() === 'get') {
+    config.params = { ...(config.params ?? {}), _t: Date.now() }
+  }
+}
+
 cloudClient.interceptors.request.use((config) => {
   // 按形态取 token：桌面=safeStorage（经桥同步缓存），web=localStorage。
   const token = getToken()
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  applyNoCache(config)
   return config
 })
 
@@ -59,8 +74,38 @@ localAgentClient.interceptors.request.use((config) => {
   if (config.headers) {
     config.headers['X-Pairing-Token'] = getPairingToken()
   }
+  applyNoCache(config)
   return config
 })
+
+// ===== 统一请求错误日志 =====
+// 排查“加载失败但无报错”类问题：把失败的接口请求打到控制台，并区分三类：
+//   1. 有响应：打印 HTTP 状态码 + 后端返回体（如 401/422/500）；
+//   2. 无响应：网络不可达 / 超时 / 被系统代理拦截（如 VPN 残留代理 127.0.0.1:port）；
+//   3. 请求构造阶段错误。
+// 仅记录日志，不吞错：继续 reject，调用方原有逻辑完全不变。
+function logApiError(scope: 'cloud' | 'local', error: any) {
+  const cfg = error?.config ?? {}
+  const method = String(cfg.method ?? 'GET').toUpperCase()
+  const url = `${cfg.baseURL ?? ''}${cfg.url ?? ''}`
+  const res = error?.response
+  if (res) {
+    console.error(
+      `[api:${scope}] ${method} ${url} → HTTP ${res.status} ${res.statusText ?? ''}`,
+      res.data,
+    )
+  } else if (error?.request) {
+    console.error(
+      `[api:${scope}] ${method} ${url} → 无响应（网络不可达/超时/被代理拦截） code=${error.code ?? '?'} msg=${error.message ?? ''}`,
+    )
+  } else {
+    console.error(`[api:${scope}] 请求构造失败: ${error?.message ?? error}`)
+  }
+  return Promise.reject(error)
+}
+
+cloudClient.interceptors.response.use((r) => r, (e) => logApiError('cloud', e))
+localAgentClient.interceptors.response.use((r) => r, (e) => logApiError('local', e))
 
 // 桌面形态：订阅本地代理端口漂移热更（任务②）。web 形态桥不存在 → 跳过，行为不变。
 const _desktopBridge = getDesktopBridge()

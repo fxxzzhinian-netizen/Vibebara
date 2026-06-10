@@ -51,6 +51,7 @@ export interface CaptchaVerifyResponse {
 }
 
 export async function getCaptcha(): Promise<CaptchaChallenge> {
+  // 防缓存由 client.ts 的请求拦截器对所有 GET 统一处理（附唯一 _t 参数）。
   const { data } = await apiClient.get<CaptchaChallenge>('/auth/captcha')
   return data
 }

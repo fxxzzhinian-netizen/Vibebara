@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, session } from "electron";
 import path from "node:path";
 import {
   getEffectiveDeviceId,
@@ -112,6 +112,30 @@ async function bootstrap(): Promise<void> {
   }
 }
 
+/**
+ * 网络代理策略：默认强制直连，忽略系统代理。
+ *
+ * 背景：桌面端只访问自己的云端后端（国内可直连）与本机本地代理（127.0.0.1）。
+ * 若跟随系统代理，用户开过全局 VPN（如 Clash/V2Ray，常驻 127.0.0.1:PORT 系统代理）后，
+ * 这些云端请求会被强行送进代理：
+ *   - VPN 关掉后代理端口失效 → 请求“无响应”（连接失败）；
+ *   - 代理按进程/规则改走它路 → 后端/防火墙对该出口拒绝（HTTP 403）。
+ * 两者都表现为登录页“验证码加载失败”。强制直连可彻底规避系统代理抖动。
+ * 确有需要跟随系统代理时设 VIBEBARA_USE_SYSTEM_PROXY=1 还原。
+ */
+async function configureProxy(): Promise<void> {
+  if (process.env.VIBEBARA_USE_SYSTEM_PROXY === "1") {
+    console.log("[main] 代理策略: 跟随系统代理（VIBEBARA_USE_SYSTEM_PROXY=1）");
+    return;
+  }
+  try {
+    await session.defaultSession.setProxy({ mode: "direct" });
+    console.log("[main] 代理策略: 强制直连（忽略系统代理，规避 VPN 残留代理干扰）");
+  } catch (e) {
+    console.error("[main] 设置直连代理失败:", (e as Error)?.message);
+  }
+}
+
 function createWindow(): void {
   const { frontendIndex } = resolvePaths();
   mainWindow = new BrowserWindow({
@@ -147,6 +171,7 @@ function shutdownAgent(): void {
 
 void app.whenReady().then(async () => {
   await bootstrap();
+  await configureProxy();
   createWindow();
 
   app.on("activate", () => {

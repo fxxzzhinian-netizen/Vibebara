@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { listTools, type ToolInfo, type ToolId } from '@/api/launcher'
 import logoUrl from '@/img/logo.png'
+import soloIllus from '@/img/card/solo.png'
+import teamIllus from '@/img/card/team.png'
 import cursorIcon from '@/img/icon/cursor.svg'
 import codexIcon from '@/img/icon/codex.svg'
 import windsurfIcon from '@/img/icon/windsurf.svg'
@@ -81,16 +83,108 @@ const sortedTools = computed<PlatformTool[]>(() => {
   return [...found, ...rest]
 })
 
+// 轮播（coverflow）：选中项居中、向两侧逐级缩小，7 个工具同时可见
+const currentIndex = ref(0)
+const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280)
+
+function updateViewportWidth() {
+  viewportWidth.value = window.innerWidth
+}
+
+// 间距向外逐级递减：中心与相邻间距最大，越往外越小
+const GAP_FALLOFF = [1, 0.72, 0.5]
+
+// 第 dist 级图标距中心的累积间距倍数（如 dist=3 → 1 + 0.72 + 0.5 = 2.22）
+function cumulativeGap(dist: number): number {
+  let sum = 0
+  for (let k = 0; k < dist; k++) {
+    sum += GAP_FALLOFF[Math.min(k, GAP_FALLOFF.length - 1)]
+  }
+  return sum
+}
+
+// 居中项与相邻项的水平间距：随页面宽度自适应，并设上下限
+const spacing = computed(() => {
+  const usable = Math.max(420, viewportWidth.value - 240)
+  return Math.min(220, usable / (2 * cumulativeGap(3)))
+})
+
+// 最外侧（第 3 级）图标距中心的像素偏移
+const edgeOffset = computed(() => cumulativeGap(3) * spacing.value)
+
+// 箭头放在最外侧图标之外，并随间距联动
+const leftArrowStyle = computed(() => ({
+  left: `calc(50% - ${edgeOffset.value + 68}px)`,
+}))
+const rightArrowStyle = computed(() => ({
+  left: `calc(50% + ${edgeOffset.value + 68}px)`,
+}))
+
+watch(
+  [currentIndex, sortedTools],
+  () => {
+    const t = sortedTools.value[currentIndex.value]
+    selectedTool.value = t ? t.key : null
+  },
+  { immediate: true },
+)
+
+// 以选中项为中心的环形偏移：7 项 → 取值 -3..3，左右各 3 个对称
+function circularOffset(i: number): number {
+  const n = sortedTools.value.length
+  const half = Math.floor(n / 2)
+  let d = i - currentIndex.value
+  if (d > half) d -= n
+  if (d < -half) d += n
+  return d
+}
+
+function itemStyle(i: number) {
+  const p = circularOffset(i)
+  const dist = Math.abs(p)
+  // 中心最大，向两侧更明显地递减，强化视觉中心
+  const scale = Math.max(0.44, 1.3 - dist * 0.3)
+  const opacity = Math.max(0.3, 1 - dist * 0.26)
+  const tx = Math.sign(p) * cumulativeGap(dist) * spacing.value
+  return {
+    transform: `translateX(calc(-50% + ${tx}px)) scale(${scale})`,
+    opacity: String(opacity),
+    zIndex: String(100 - dist),
+  }
+}
+
+function centerIndex(i: number) {
+  if (i < 0 || i >= sortedTools.value.length) return
+  currentIndex.value = i
+}
+
+function prevTool() {
+  const n = sortedTools.value.length
+  currentIndex.value = (currentIndex.value - 1 + n) % n
+}
+
+function nextTool() {
+  const n = sortedTools.value.length
+  currentIndex.value = (currentIndex.value + 1) % n
+}
+
 onMounted(() => {
+  updateViewportWidth()
+  window.addEventListener('resize', updateViewportWidth)
   // 过场动画后自动进入场景选择
   window.setTimeout(() => {
     if (phase.value === 'intro') phase.value = 'scene'
   }, 1600)
 })
 
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateViewportWidth)
+})
+
 function chooseScene(mode: DevMode) {
   devMode.value = mode
   phase.value = 'tools'
+  currentIndex.value = 0
   void runDetection()
 }
 
@@ -114,8 +208,15 @@ async function runDetection() {
   }
 }
 
-function pickTool(key: PlatformKey) {
-  selectedTool.value = key
+// 底部圆点步骤指示（过场动画阶段不计入）
+const STEPS: Exclude<Phase, 'intro'>[] = ['scene', 'tools']
+
+function goStep(s: Exclude<Phase, 'intro'>) {
+  if (s === 'scene') {
+    phase.value = 'scene'
+  } else if (s === 'tools' && devMode.value) {
+    phase.value = 'tools'
+  }
 }
 
 async function finish() {
@@ -155,26 +256,16 @@ async function finish() {
         </div>
         <div class="scene-cards">
           <button class="scene-card" type="button" @click="chooseScene('solo')">
-            <span class="scene-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="8" r="4" />
-                <path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5" />
-              </svg>
+            <span class="scene-illus-wrap" aria-hidden="true">
+              <img :src="soloIllus" alt="个人独立开发" class="scene-illus" draggable="false" />
             </span>
             <span class="scene-title">个人独立开发使用</span>
-            <span class="scene-desc">一个人高效完成从想法到上线</span>
           </button>
           <button class="scene-card" type="button" @click="chooseScene('team')">
-            <span class="scene-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="9" cy="8" r="3.2" />
-                <circle cx="17" cy="9.5" r="2.6" />
-                <path d="M3 20c0-3.4 2.7-5.6 6-5.6s6 2.2 6 5.6" />
-                <path d="M15.5 14.4c2.8.2 5 2.2 5 5.1" />
-              </svg>
+            <span class="scene-illus-wrap" aria-hidden="true">
+              <img :src="teamIllus" alt="团队协同开发" class="scene-illus" draggable="false" />
             </span>
             <span class="scene-title">团队协同开发</span>
-            <span class="scene-desc">与团队共享技能、协作与交付</span>
           </button>
         </div>
       </div>
@@ -189,21 +280,52 @@ async function finish() {
           <p v-else>已为你识别本机工具，选择一个作为默认</p>
         </div>
 
-        <div class="tools-grid">
+        <div class="tools-carousel">
           <button
-            v-for="tool in sortedTools"
-            :key="tool.key"
             type="button"
-            class="tool-card"
-            :class="{
-              selected: selectedTool === tool.key,
-              found: detected.has(tool.key),
-            }"
-            @click="pickTool(tool.key)"
+            class="carousel-arrow"
+            :style="leftArrowStyle"
+            aria-label="上一个"
+            @click="prevTool"
           >
-            <span v-if="detected.has(tool.key)" class="tool-badge">已检测到</span>
-            <img :src="tool.icon" :alt="tool.label" class="tool-icon" draggable="false" />
-            <span class="tool-label">{{ tool.label }}</span>
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+
+          <div class="carousel-stage">
+            <button
+              v-for="(tool, i) in sortedTools"
+              :key="tool.key"
+              type="button"
+              class="carousel-item"
+              :class="{ active: i === currentIndex }"
+              :style="itemStyle(i)"
+              @click="centerIndex(i)"
+            >
+              <span class="carousel-icon-wrap">
+                <span v-if="detected.has(tool.key)" class="tool-check" aria-label="已检测到">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                  <span class="tool-check-tip">已检测到</span>
+                </span>
+                <img :src="tool.icon" :alt="tool.label" class="tool-icon" draggable="false" />
+              </span>
+              <span class="tool-label">{{ tool.label }}</span>
+            </button>
+          </div>
+
+          <button
+            type="button"
+            class="carousel-arrow"
+            :style="rightArrowStyle"
+            aria-label="下一个"
+            @click="nextTool"
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
           </button>
         </div>
 
@@ -219,6 +341,21 @@ async function finish() {
         </button>
       </div>
     </transition>
+
+    <!-- 底部圆点步骤指示 -->
+    <transition name="fade">
+      <div v-if="phase !== 'intro'" class="step-dots">
+        <button
+          v-for="(s, i) in STEPS"
+          :key="s"
+          type="button"
+          class="step-dot"
+          :class="{ active: phase === s }"
+          :aria-label="`第 ${i + 1} 步`"
+          @click="goStep(s)"
+        ></button>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -227,10 +364,10 @@ async function finish() {
   position: relative;
   min-height: 100vh;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   background: #ffffff;
-  padding: 24px;
+  padding: clamp(72px, 13vh, 150px) 24px 24px;
   box-sizing: border-box;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
     Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
@@ -247,10 +384,15 @@ async function finish() {
 
 .stage {
   width: 100%;
-  max-width: 760px;
+  max-width: 920px;
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+/* 工具步骤：铺满页面宽度；箭头按间距贴在最外侧图标旁 */
+.tools-stage {
+  max-width: none;
 }
 
 /* 过场动画 */
@@ -304,18 +446,18 @@ async function finish() {
 
 .stage-head {
   text-align: center;
-  margin-bottom: 34px;
+  margin-bottom: 46px;
 }
 
 .stage-head h1 {
-  font-size: 26px;
+  font-size: 32px;
   font-weight: 650;
   color: #151717;
-  margin: 0 0 10px;
+  margin: 0 0 14px;
 }
 
 .stage-head p {
-  font-size: 15px;
+  font-size: 17px;
   color: #6b7280;
   margin: 0;
 }
@@ -323,23 +465,24 @@ async function finish() {
 /* 场景卡片 */
 .scene-cards {
   display: flex;
-  gap: 22px;
+  gap: 30px;
   width: 100%;
   justify-content: center;
   flex-wrap: wrap;
+  margin-top: 28px;
 }
 
 .scene-card {
-  flex: 1 1 280px;
-  max-width: 320px;
+  flex: 1 1 360px;
+  max-width: 420px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  padding: 36px 26px;
+  padding: 30px 32px 34px;
   background: #ffffff;
   border: 1.5px solid #ecedec;
-  border-radius: 18px;
+  border-radius: 22px;
   cursor: pointer;
   color: #151717;
   transition: transform 0.2s ease, border-color 0.2s ease,
@@ -352,89 +495,166 @@ async function finish() {
   box-shadow: 0 12px 30px rgba(21, 23, 23, 0.1);
 }
 
-.scene-icon {
+.scene-illus-wrap {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
-  border-radius: 16px;
-  background: #f3f4f6;
-  color: #151717;
+  width: 100%;
+  height: 210px;
+  margin-bottom: 8px;
+}
+
+.scene-illus {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
 }
 
 .scene-title {
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 600;
 }
 
-.scene-desc {
-  font-size: 13.5px;
-  color: #6b7280;
-  text-align: center;
-}
-
-/* 工具网格 */
-.tools-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-  width: 100%;
-}
-
-.tool-card {
+/* 工具轮播（coverflow）：选中项居中最大、两侧递减；箭头绝对定位贴边缘图标 */
+.tools-carousel {
   position: relative;
+  width: 100%;
+  margin-top: 32px;
+}
+
+.carousel-stage {
+  position: relative;
+  width: 100%;
+  height: 234px;
+}
+
+.carousel-arrow {
+  position: absolute;
+  top: 90px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  z-index: 200;
+  transition: color 0.2s ease;
+}
+
+.carousel-arrow:hover {
+  color: #151717;
+}
+
+.carousel-item {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  width: 160px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 22px 12px;
-  background: #ffffff;
-  border: 1.5px solid #ecedec;
-  border-radius: 14px;
-  cursor: pointer;
+  gap: 16px;
+  padding: 0;
+  border: none;
+  background: transparent;
   color: #151717;
-  transition: transform 0.18s ease, border-color 0.18s ease,
-    box-shadow 0.18s ease;
+  cursor: pointer;
+  transform-origin: center 70px;
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.5s ease;
 }
 
-.tool-card:hover {
-  transform: translateY(-3px);
-  border-color: #151717;
+.carousel-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 140px;
+  height: 140px;
+  border-radius: 32px;
+  background: #f6f7f8;
+  transition: background 0.4s ease, box-shadow 0.4s ease;
 }
 
-.tool-card.selected {
-  border-color: #151717;
-  box-shadow: 0 0 0 1.5px #151717 inset;
-}
-
-.tool-card.found {
-  border-color: #cbd5e1;
+.carousel-item.active .carousel-icon-wrap {
+  background: #ffffff;
+  box-shadow: 0 16px 38px rgba(21, 23, 23, 0.18);
 }
 
 .tool-icon {
-  width: 36px;
-  height: 36px;
+  width: 78px;
+  height: 78px;
   object-fit: contain;
 }
 
 .tool-label {
   font-size: 14px;
   font-weight: 550;
+  white-space: nowrap;
+  transition: font-weight 0.3s ease;
 }
 
-.tool-badge {
+.carousel-item.active .tool-label {
+  font-weight: 650;
+}
+
+/* 已检测到：图标右上角对勾，悬停/触摸弹出说明 */
+.tool-check {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: #16a34a;
-  background: #dcfce7;
+  top: -7px;
+  right: -7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   border-radius: 999px;
-  padding: 2px 7px;
+  background: #16a34a;
+  color: #ffffff;
+  box-shadow: 0 0 0 2.5px #ffffff;
+  z-index: 3;
+  cursor: help;
+}
+
+.tool-check-tip {
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 50%;
+  transform: translateX(-50%) translateY(3px);
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: #151717;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.4;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+/* 气泡小三角 */
+.tool-check-tip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #151717;
+}
+
+.tool-check:hover .tool-check-tip,
+.tool-check:focus-visible .tool-check-tip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .err-text {
@@ -445,7 +665,7 @@ async function finish() {
 }
 
 .finish-btn {
-  margin-top: 34px;
+  margin-top: 60px;
   align-self: center;
   min-width: 200px;
   height: 50px;
@@ -470,6 +690,41 @@ async function finish() {
   cursor: not-allowed;
 }
 
+/* 底部圆点步骤指示 */
+.step-dots {
+  position: absolute;
+  left: 50%;
+  bottom: 40px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.step-dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: #d1d5db;
+  cursor: pointer;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.step-dot:hover {
+  background: #9ca3af;
+}
+
+.step-dot.active {
+  width: 24px;
+  background: #151717;
+}
+
+.step-dot.active:hover {
+  background: #151717;
+}
+
 /* 过渡动画 */
 .fade-enter-active,
 .fade-leave-active {
@@ -489,8 +744,9 @@ async function finish() {
 }
 
 @media (max-width: 640px) {
-  .tools-grid {
-    grid-template-columns: repeat(2, 1fr);
+  .scene-cards {
+    flex-direction: column;
+    align-items: center;
   }
 }
 </style>

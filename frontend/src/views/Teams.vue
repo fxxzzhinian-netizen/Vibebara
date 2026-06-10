@@ -6,6 +6,7 @@ import { useTeamStore } from '@/stores/teamStore'
 import { useProjectSyncStore } from '@/stores/projectSyncStore'
 import { useTeamSync } from '@/composables/useTeamSync'
 import { listNativeSkills, type NativeSkillItem } from '@/api/skillStore'
+import AppTopNav from '@/components/AppTopNav.vue'
 import AddSkillModal from '@/components/AddSkillModal.vue'
 
 const router = useRouter()
@@ -252,11 +253,10 @@ function logout() {
 
 <template>
   <div class="teams-page">
+    <AppTopNav />
+
     <header class="top-bar">
-      <div class="top-bar-left">
-        <button class="back-btn" @click="router.push('/')" title="返回主页">←</button>
-        <h2>Vibebara</h2>
-      </div>
+      <h2>团队协作</h2>
       <div class="user-info">
         <span>{{ authStore.user?.display_name || authStore.user?.username }}</span>
         <button class="btn-sm" @click="logout">退出</button>
@@ -491,70 +491,51 @@ function logout() {
 <style scoped>
 .teams-page {
   min-height: 100vh;
-  background: #121218;
-  color: #e0e0e0;
+  background: #ffffff;
+  color: #151717;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, sans-serif;
 }
 
+/* —— 页面工具条（AppTopNav 之下） —— */
 .top-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 24px;
-  background: #1a1a28;
-  border-bottom: 1px solid #2a2a3e;
+  height: 56px;
+  padding: 0 2rem;
+  background: #ffffff;
+  border-bottom: 1px solid #ebedf0;
 }
 
 .top-bar h2 {
   margin: 0;
-  font-size: 18px;
-  color: #8b9cf7;
-}
-
-.top-bar-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.back-btn {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #2a2a3e;
-  border-radius: 6px;
-  background: #232333;
-  color: #8b9cf7;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.back-btn:hover {
-  background: #2f2f45;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #151717;
 }
 
 .user-info {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 14px;
-  color: #aaa;
+  font-size: 0.86rem;
+  color: #6b7280;
 }
 
+/* AppTopNav 61px + 页面工具条 57px */
 .main-layout {
   display: flex;
-  height: calc(100vh - 53px);
+  height: calc(100vh - 118px);
 }
 
 .sidebar {
   width: 280px;
-  border-right: 1px solid #2a2a3e;
+  border-right: 1px solid #ebedf0;
   padding: 16px;
   overflow-y: auto;
-  background: #16161e;
+  background: #ffffff;
 }
 
 .sidebar-header {
@@ -566,8 +547,9 @@ function logout() {
 
 .sidebar-header h3 {
   margin: 0;
-  font-size: 15px;
-  color: #ccc;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #151717;
 }
 
 .btn-group {
@@ -586,28 +568,34 @@ function logout() {
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  border-radius: 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
   cursor: pointer;
   margin-bottom: 4px;
-  transition: background 0.15s;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .team-list li:hover {
-  background: #222236;
+  background: #f6f7f8;
 }
 
 .team-list li.active {
-  background: #2a2a4a;
-  border: 1px solid #5b7fff33;
+  background: #f0f1f3;
+  border-color: #e5e7eb;
+}
+
+.team-list li.active .team-name {
+  font-weight: 600;
 }
 
 .team-name {
-  font-size: 14px;
+  font-size: 0.88rem;
+  color: #151717;
 }
 
 .member-count {
-  font-size: 12px;
-  color: #666;
+  font-size: 0.76rem;
+  color: #9ca3af;
 }
 
 .content {
@@ -625,7 +613,10 @@ function logout() {
 
 .content-header h3 {
   margin: 0 0 4px;
-  font-size: 20px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #151717;
 }
 
 .team-title-row {
@@ -640,49 +631,50 @@ function logout() {
   gap: 6px;
   padding: 2px 10px;
   border-radius: 999px;
-  font-size: 12px;
-  background: #2a2a3e;
-  color: #888;
-  border: 1px solid #33334a;
+  font-size: 0.74rem;
+  font-weight: 600;
+  background: #f6f7f8;
+  color: #6b7280;
+  border: 1px solid #e5e7eb;
   user-select: none;
 }
 
 .sync-badge.on {
-  background: #163024;
-  color: #4ade80;
-  border-color: #1f5138;
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #bbf7d0;
 }
 
 .sync-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #777;
+  background: #9ca3af;
 }
 
 .sync-badge.on .sync-dot {
-  background: #4ade80;
-  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
 }
 
 .desc {
-  color: #888;
-  font-size: 13px;
+  color: #6b7280;
+  font-size: 0.84rem;
   margin: 4px 0;
 }
 
 .invite-code {
-  font-size: 12px;
-  color: #666;
+  font-size: 0.78rem;
+  color: #9ca3af;
   margin: 4px 0 0;
 }
 
 .invite-code code {
-  background: #2a2a3e;
+  background: #eef2ff;
   padding: 2px 8px;
-  border-radius: 4px;
-  color: #8b9cf7;
-  font-family: monospace;
+  border-radius: 6px;
+  color: #4f46e5;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .setting-toggle {
@@ -690,18 +682,18 @@ function logout() {
   align-items: center;
   gap: 8px;
   margin-top: 10px;
-  font-size: 13px;
-  color: #bbb;
+  font-size: 0.84rem;
+  color: #6b7280;
   cursor: pointer;
 }
 
 .setting-toggle input {
-  accent-color: #5b7fff;
+  accent-color: #151717;
 }
 
 .section-title {
-  font-size: 14px;
-  color: #888;
+  font-size: 0.78rem;
+  color: #9ca3af;
   font-weight: 600;
   margin-bottom: 12px;
   text-transform: uppercase;
@@ -720,9 +712,13 @@ function logout() {
 }
 
 .success-msg {
-  color: #4ade80;
-  font-size: 13px;
   margin-bottom: 12px;
+  padding: 0.6rem 1rem;
+  border-radius: 10px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+  font-size: 0.84rem;
 }
 
 .project-grid {
@@ -733,16 +729,17 @@ function logout() {
 
 .project-card {
   position: relative;
-  background: #1e1e2e;
-  border: 1px solid #2a2a3e;
-  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 16px;
   padding: 20px;
   cursor: pointer;
-  transition: border-color 0.2s, transform 0.1s;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .project-card:hover {
-  border-color: #5b7fff55;
+  border-color: #d1d5db;
+  box-shadow: 0 8px 24px rgba(21, 23, 23, 0.07);
   transform: translateY(-2px);
 }
 
@@ -757,14 +754,14 @@ function logout() {
   justify-content: center;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
-  color: #777;
+  color: #9ca3af;
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
 .project-card:hover .project-delete {
@@ -772,9 +769,9 @@ function logout() {
 }
 
 .project-delete:hover {
-  background: #3a1f25;
-  border-color: #6b2a33;
-  color: #ff6b6b;
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
 }
 
 .project-error {
@@ -783,21 +780,22 @@ function logout() {
 
 .project-card h4 {
   margin: 0 0 8px;
-  font-size: 16px;
-  color: #e0e0e0;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: #151717;
 }
 
 .project-card p {
-  font-size: 13px;
-  color: #888;
+  font-size: 0.84rem;
+  color: #6b7280;
   margin: 0 0 12px;
 }
 
 .project-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  color: #666;
+  font-size: 0.76rem;
+  color: #9ca3af;
 }
 
 .skill-grid {
@@ -807,28 +805,30 @@ function logout() {
 }
 
 .skill-card-mini {
-  background: #1e1e2e;
-  border: 1px solid #2a2a3e;
-  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 16px;
   padding: 16px 18px;
   cursor: pointer;
-  transition: border-color 0.2s, transform 0.1s;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
 .skill-card-mini:hover {
-  border-color: #5b7fff55;
+  border-color: #d1d5db;
+  box-shadow: 0 8px 24px rgba(21, 23, 23, 0.07);
   transform: translateY(-2px);
 }
 
 .skill-card-mini h4 {
   margin: 0 0 6px;
-  font-size: 15px;
-  color: #e0e0e0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #151717;
 }
 
 .skill-card-mini p {
-  font-size: 12px;
-  color: #888;
+  font-size: 0.78rem;
+  color: #6b7280;
   margin: 0 0 10px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -839,12 +839,12 @@ function logout() {
 .skill-meta-mini {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  color: #666;
+  font-size: 0.76rem;
+  color: #9ca3af;
 }
 
 .skill-meta-mini .hash {
-  font-family: monospace;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .member-list {
@@ -856,25 +856,31 @@ function logout() {
 .member-list li {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   padding: 8px 12px;
-  border-bottom: 1px solid #222;
-  font-size: 14px;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 0.88rem;
+  color: #151717;
 }
 
 .member-role {
-  color: #8b9cf7;
-  font-size: 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #4f46e5;
+  background: #eef2ff;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
 }
 
 .empty-hint {
   text-align: center;
-  color: #555;
-  font-size: 13px;
+  color: #9ca3af;
+  font-size: 0.84rem;
   margin-top: 32px;
 }
 
 .empty-hint.load-error {
-  color: #d9a441;
+  color: #b45309;
 }
 
 .empty-center {
@@ -882,33 +888,39 @@ function logout() {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #555;
+  color: #9ca3af;
 }
 
 /* 通用组件 */
 .btn-sm {
   padding: 6px 14px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  background: #262636;
-  color: #ccc;
-  font-size: 13px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #6b7280;
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
 .btn-sm:hover {
-  background: #333;
+  border-color: #d1d5db;
+  color: #151717;
 }
 
 .btn-primary {
-  background: #5b7fff;
-  border-color: #5b7fff;
-  color: #fff;
+  background: #151717;
+  border-color: #151717;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .btn-primary:hover {
-  background: #4a6eee;
+  background: #2d2f2f;
+  border-color: #2d2f2f;
+  color: #ffffff;
 }
 
 .header-actions {
@@ -918,21 +930,21 @@ function logout() {
 }
 
 .btn-danger {
-  background: #2a1a1f;
-  border-color: #6b2a33;
-  color: #ff6b6b;
+  background: #ffffff;
+  border-color: #fecaca;
+  color: #dc2626;
 }
 
 .btn-danger:hover {
-  background: #3a1f25;
-  border-color: #8a3540;
-  color: #ff8080;
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #dc2626;
 }
 
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(21, 23, 23, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -940,17 +952,20 @@ function logout() {
 }
 
 .modal {
-  background: #1e1e2e;
-  border: 1px solid #2a2a3e;
-  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 16px;
   padding: 28px;
   width: 400px;
   max-width: 90vw;
+  box-shadow: 0 24px 48px rgba(21, 23, 23, 0.12);
 }
 
 .modal h3 {
   margin: 0 0 20px;
-  font-size: 18px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #151717;
 }
 
 .field {
@@ -959,30 +974,33 @@ function logout() {
 
 .field label {
   display: block;
-  font-size: 13px;
-  color: #aaa;
+  font-size: 0.82rem;
+  color: #6b7280;
   margin-bottom: 6px;
 }
 
 .field input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  background: #262636;
-  color: #e0e0e0;
-  font-size: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  background: #f6f7f8;
+  color: #151717;
+  font-size: 0.88rem;
+  font-family: inherit;
   outline: none;
   box-sizing: border-box;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .field input:focus {
-  border-color: #5b7fff;
+  border-color: #151717;
+  background: #ffffff;
 }
 
 .error-msg {
-  color: #ff6b6b;
-  font-size: 13px;
+  color: #dc2626;
+  font-size: 0.82rem;
   margin-bottom: 12px;
 }
 
@@ -996,13 +1014,14 @@ function logout() {
 .link-btn {
   background: none;
   border: none;
-  color: #8b9cf7;
-  font-size: 12px;
+  color: #4f46e5;
+  font-size: 0.78rem;
+  font-family: inherit;
   cursor: pointer;
   padding: 0;
 }
 
 .link-btn:hover {
-  color: #aab4ff;
+  text-decoration: underline;
 }
 </style>

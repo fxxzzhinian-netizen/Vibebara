@@ -39,14 +39,14 @@ const store = useNotificationStore()
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #1e1e2e;
-  border: 1px solid #3a3a5e;
-  border-left: 3px solid #5b7fff;
-  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-left: 3px solid #6366f1;
+  border-radius: 10px;
   padding: 12px 16px;
   min-width: 280px;
   max-width: 420px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 32px rgba(21, 23, 23, 0.1);
   pointer-events: auto;
   cursor: pointer;
   transition: opacity 0.3s, transform 0.3s;
@@ -56,21 +56,21 @@ const store = useNotificationStore()
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #5b7fff;
+  background: #6366f1;
   flex-shrink: 0;
 }
 
 .toast-text {
   flex: 1;
   font-size: 13px;
-  color: #e0e0e0;
+  color: #151717;
   line-height: 1.4;
 }
 
 .toast-time {
   font-size: 11px;
-  color: #666;
-  font-family: monospace;
+  color: #9ca3af;
+  font-family: 'JetBrains Mono', monospace;
   flex-shrink: 0;
 }
 

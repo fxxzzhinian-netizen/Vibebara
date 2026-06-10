@@ -2,7 +2,6 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
-import { isDesktop } from '@/runtime/desktopBridge'
 import SliderCaptcha from '@/components/SliderCaptcha.vue'
 import logoUrl from '@/img/logo.png'
 
@@ -80,8 +79,8 @@ async function doSubmit() {
   loading.value = false
   if (res.success) {
     localStorage.setItem('vibebara_user_id', authStore.user?.id || '')
-    // 桌面端首次登录（未完成引导）→ 进入引导流程；其余直接进主页
-    if (isDesktop() && authStore.user && !authStore.user.onboarded) {
+    // 首次登录（未完成引导）→ 进入引导流程；其余直接进主页
+    if (authStore.user && !authStore.user.onboarded) {
       router.push('/onboarding')
     } else {
       router.push('/')
@@ -529,79 +528,6 @@ async function doSubmit() {
 .overlay-fade-enter-from,
 .overlay-fade-leave-to {
   opacity: 0;
-}
-
-/* ============ 滑块验证组件浅色适配 ============ */
-:deep(.track) {
-  height: 50px;
-  border-radius: 10px;
-  background: #fafafa;
-  border: 1.5px solid #ecedec;
-}
-
-:deep(.track.is-success) {
-  border-color: rgba(16, 185, 129, 0.55);
-}
-
-:deep(.track.is-fail) {
-  border-color: rgba(220, 38, 38, 0.55);
-}
-
-:deep(.track-fill) {
-  background: rgba(45, 121, 243, 0.12);
-}
-
-:deep(.is-success .track-fill) {
-  background: rgba(16, 185, 129, 0.12);
-}
-
-:deep(.track-text) {
-  color: #6b7280;
-}
-
-:deep(.is-success .track-text) {
-  color: #059669;
-}
-
-:deep(.is-fail .track-text) {
-  color: #dc2626;
-}
-
-:deep(.handle) {
-  background: #ffffff;
-  border: 1.5px solid #ecedec;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  color: #6b7280;
-}
-
-:deep(.handle:hover) {
-  background: #2d79f3;
-  border-color: #2d79f3;
-  color: #fff;
-}
-
-:deep(.is-dragging .handle) {
-  background: #2d79f3;
-  border-color: #2d79f3;
-  color: #fff;
-}
-
-:deep(.is-success .handle) {
-  background: rgba(16, 185, 129, 0.12);
-  border-color: rgba(16, 185, 129, 0.55);
-  color: #059669;
-}
-
-:deep(.is-fail .handle) {
-  background: rgba(220, 38, 38, 0.08);
-  border-color: rgba(220, 38, 38, 0.55);
-  color: #dc2626;
-}
-
-:deep(.puzzle-panel) {
-  border: 1.5px solid #ecedec;
-  background: #f3f4f6;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.14);
 }
 
 @media (max-width: 520px) {

@@ -1,991 +1,621 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useSessionStore } from '@/stores/session'
-import { useProjectStore } from '@/stores/project'
-import { listTools, launchTool, type ToolInfo } from '@/api/launcher'
-import {
-  browseDirectory,
-  migrateSkill,
-  type DirEntry,
-  type UnifiedSkillPackage,
-  type MigrateResponse,
-} from '@/api/skillForge'
-import { importToNativeStore } from '@/api/skillStore'
+import { useSkillStore } from '@/stores/skillStore'
+import { useTeamStore } from '@/stores/teamStore'
+import { useWorkspaceStore } from '@/stores/workspaceStore'
+import AppTopNav from '@/components/AppTopNav.vue'
+import AddSkillModal from '@/components/AddSkillModal.vue'
+import type { NativeSkillItem } from '@/api/skillStore'
+import cursorIcon from '@/img/icon/cursor.svg'
+import codexIcon from '@/img/icon/codex.svg'
+import windsurfIcon from '@/img/icon/windsurf.svg'
+import claudeIcon from '@/img/icon/claudecode.svg'
+import kiroIcon from '@/img/icon/kiro.svg'
+import traeIcon from '@/img/icon/trae.svg'
+import qoderIcon from '@/img/icon/qoder.svg'
+
+// 主页 = SKILL 仓库：按当前空间（个人/团队）展示 Skill 卡片网格。
 
 const router = useRouter()
-const sessionStore = useSessionStore()
-const project = useProjectStore()
-const tools = ref<ToolInfo[]>([])
+const store = useSkillStore()
+const teamStore = useTeamStore()
+const workspace = useWorkspaceStore()
 
-// --- Folder browser (local UI state) ---
-const browserOpen = ref(false)
-const browseCurrent = ref('')
-const browseParent = ref<string | null>(null)
-const browseDirs = ref<DirEntry[]>([])
-const browseLoading = ref(false)
-const browseError = ref('')
+const addOpen = ref(false)
+const flashMsg = ref('')
+let flashTimer: ReturnType<typeof setTimeout> | null = null
 
-// --- Migration flow modal (local UI state) ---
-const migrationOpen = ref(false)
-const migrationTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude'>('cursor')
-const migrationTool = ref<string>('cursor')
-const migrationSteps = ref<{
-  id: string
-  name: string
-  origin: string
-  status: 'pending' | 'running' | 'done' | 'skip' | 'error'
-  message: string
-}[]>([])
-const migrationPhase = ref<'adapting' | 'launching' | 'complete' | 'error'>('adapting')
+const isTeamSpace = computed(() => workspace.spaceType === 'team')
 
-onMounted(async () => {
-  await sessionStore.fetchSessions('active')
-  try { tools.value = await listTools() } catch { /* */ }
+const currentTeamName = computed(
+  () => teamStore.teams.find((t) => t.id === workspace.activeTeamId)?.name ?? '',
+)
+
+const spaceTitle = computed(() =>
+  isTeamSpace.value ? currentTeamName.value || '团队空间' : '个人空间',
+)
+
+// 团队空间下按选中团队过滤（fetchList('team') 返回用户全部团队的 Skill）
+const displaySkills = computed(() => {
+  if (!isTeamSpace.value || !workspace.activeTeamId) return store.skills
+  return store.skills.filter((s) => s.team_id === workspace.activeTeamId)
 })
 
-// ========== Folder Browser ==========
+const platforms = [
+  { key: 'cursor', label: 'Cursor', icon: cursorIcon },
+  { key: 'codex', label: 'Codex', icon: codexIcon },
+  { key: 'windsurf', label: 'Windsurf', icon: windsurfIcon },
+  { key: 'claude', label: 'Claude Code', icon: claudeIcon },
+  { key: 'kiro', label: 'Kiro', icon: kiroIcon },
+  { key: 'trae', label: 'Trae', icon: traeIcon },
+  { key: 'qoder', label: 'Qoder', icon: qoderIcon },
+] as const
 
-const pastePathInput = ref('')
-
-function copyPath(text: string) {
-  navigator.clipboard.writeText(text)
+function deployedOn(skill: NativeSkillItem): Record<string, boolean> {
+  return store.installedStatus(skill) as unknown as Record<string, boolean>
 }
 
-async function openBrowser() {
-  browserOpen.value = true
-  browseError.value = ''
-  pastePathInput.value = ''
-  await loadDir('')
+function refresh() {
+  store.fetchList(workspace.scope)
 }
 
-async function goToPath() {
-  const p = pastePathInput.value.trim()
-  if (!p) return
-  await loadDir(p)
-}
-
-function closeBrowser() {
-  browserOpen.value = false
-}
-
-async function loadDir(path: string) {
-  browseLoading.value = true
-  browseError.value = ''
-  try {
-    const res = await browseDirectory(path)
-    if (res.success) {
-      browseCurrent.value = res.current
-      browseParent.value = res.parent
-      browseDirs.value = res.dirs
-      if (res.error) browseError.value = res.error
-    } else {
-      browseError.value = res.error || '无法读取目录'
-    }
-  } catch (err: any) {
-    browseError.value = err?.response?.data?.detail || err.message || '请求异常'
-  } finally {
-    browseLoading.value = false
-  }
-}
-
-async function selectDir(dir: DirEntry) {
-  await loadDir(dir.abs_path)
-}
-
-async function goParent() {
-  if (browseParent.value !== null) await loadDir(browseParent.value)
-  else await loadDir('')
-}
-
-async function confirmSelect() {
-  if (!browseCurrent.value) return
-  browserOpen.value = false
-  await project.openProject(browseCurrent.value)
-}
-
-// ========== Skill Scan ==========
-
-async function doScan() {
-  await project.scan()
-}
-
-function closeProject() {
-  project.closeProject()
-}
-
-// ========== Open in Platform (Migration Flow) ==========
-
-function toolForPlatform(platform: 'cursor' | 'codex' | 'windsurf' | 'claude'): string {
-  if (platform === 'cursor') return 'cursor'
-  if (platform === 'windsurf') return 'windsurf'
-  if (platform === 'claude') {
-    const claudeApp = tools.value.find((t) => t.id === 'claude-app' && t.available)
-    if (claudeApp) return 'claude-app'
-    const claudeCode = tools.value.find((t) => t.id === 'claude-code' && t.available)
-    if (claudeCode) return 'claude-code'
-    return 'claude-code'
-  }
-  const codexApp = tools.value.find((t) => t.id === 'codex-app' && t.available)
-  if (codexApp) return 'codex-app'
-  const codexCli = tools.value.find((t) => t.id === 'codex-cli' && t.available)
-  if (codexCli) return 'codex-cli'
-  return 'codex-cli'
-}
-
-function isToolAvailable(platform: 'cursor' | 'codex' | 'windsurf' | 'claude'): boolean {
-  if (platform === 'cursor') {
-    return tools.value.some((t) => t.id === 'cursor' && t.available)
-  }
-  if (platform === 'windsurf') {
-    return tools.value.some((t) => t.id === 'windsurf' && t.available)
-  }
-  if (platform === 'claude') {
-    return tools.value.some(
-      (t) => (t.id === 'claude-code' || t.id === 'claude-app') && t.available,
-    )
-  }
-  return tools.value.some(
-    (t) => (t.id === 'codex-cli' || t.id === 'codex-app') && t.available,
-  )
-}
-
-async function openInPlatform(platform: 'cursor' | 'codex' | 'windsurf' | 'claude') {
-  migrationTarget.value = platform
-  migrationTool.value = toolForPlatform(platform)
-  migrationPhase.value = 'adapting'
-  migrationOpen.value = true
-
-  migrationSteps.value = project.packages.map((pkg) => {
-    const needsMigrate = pkg.origin !== 'unknown' && pkg.origin !== platform
-    return {
-      id: pkg.id,
-      name: pkg.name || pkg.id,
-      origin: pkg.origin,
-      status: needsMigrate ? ('pending' as const) : ('skip' as const),
-      message: needsMigrate
-        ? `${originLabel(pkg.origin)} → ${originLabel(platform)}`
-        : '无需迁移',
-    }
-  })
-
-  const toMigrate = migrationSteps.value.filter((s) => s.status === 'pending')
-  if (toMigrate.length === 0) {
-    await launchProject()
-    return
-  }
-
-  for (const step of toMigrate) {
-    step.status = 'running'
-    try {
-      const pkg = project.packages.find((p) => p.id === step.id)!
-      const res: MigrateResponse = await migrateSkill(
-        pkg.source_path,
-        platform,
-        pkg.id,
-      )
-      if (res.success) {
-        step.status = 'done'
-        step.message = res.adapted ? '已适配' : '无需迁移'
-      } else {
-        step.status = 'error'
-        step.message = res.error || '迁移失败'
-      }
-    } catch (err: any) {
-      step.status = 'error'
-      step.message = err?.response?.data?.detail || err.message || '迁移异常'
-    }
-  }
-
-  const hasError = migrationSteps.value.some((s) => s.status === 'error')
-  if (hasError) {
-    migrationPhase.value = 'error'
+function openSkill(skill: NativeSkillItem) {
+  if (skill.scope === 'team') {
+    router.push(`/skills/${skill.id}`)
   } else {
-    await launchProject()
+    // 先选中再进入个人仓库编辑器，进入后直接定位到该 Skill
+    void store.selectSkill(skill.id)
+    router.push('/skill-forge')
   }
 }
 
-async function launchProject() {
-  migrationPhase.value = 'launching'
-  try {
-    await launchTool({
-      tool: migrationTool.value as any,
-      project_path: project.projectPath,
-    })
-    migrationPhase.value = 'complete'
-  } catch (err: any) {
-    migrationPhase.value = 'error'
-    migrationSteps.value.push({
-      id: '__launch__',
-      name: '启动终端',
-      origin: '',
-      status: 'error',
-      message: err?.response?.data?.detail || err.message || '启动失败',
-    })
-  }
+function flash(message: string) {
+  flashMsg.value = message
+  if (flashTimer) clearTimeout(flashTimer)
+  flashTimer = setTimeout(() => (flashMsg.value = ''), 3000)
 }
 
-async function retryLaunch() {
-  await launchProject()
+function onAddDone(payload: { message: string; skills?: NativeSkillItem[] }) {
+  refresh()
+  if (payload.message) flash(payload.message)
 }
 
-function closeMigration() {
-  migrationOpen.value = false
-  project.scan()
+function skillDesc(s: NativeSkillItem): string {
+  return s.short_description || s.description || '暂无描述'
 }
 
-// ========== Import to Platform ==========
-
-const importingMap = ref<Record<string, boolean>>({})
-const importResults = ref<Record<string, { ok: boolean; msg: string }>>({})
-
-async function importToPlatform(pkg: UnifiedSkillPackage) {
-  importingMap.value[pkg.id] = true
-  delete importResults.value[pkg.id]
-  try {
-    const res = await importToNativeStore(pkg.source_path, pkg.origin)
-    if (res.success) {
-      importResults.value[pkg.id] = { ok: true, msg: '已导入' }
-    } else {
-      const msg = res.error || '导入失败'
-      console.error(`[import] ${pkg.id}: ${msg}`)
-      importResults.value[pkg.id] = { ok: false, msg }
-    }
-  } catch (err: any) {
-    const msg = err?.response?.data?.detail || err?.response?.data?.error || err.message || '请求异常'
-    console.error(`[import] ${pkg.id}:`, err)
-    importResults.value[pkg.id] = { ok: false, msg }
-  } finally {
-    delete importingMap.value[pkg.id]
-  }
+function formatTime(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const diff = Date.now() - d.getTime()
+  if (diff < 60_000) return '刚刚'
+  if (diff < 3600_000) return `${Math.floor(diff / 60_000)} 分钟前`
+  if (diff < 86400_000) return `${Math.floor(diff / 3600_000)} 小时前`
+  return d.toLocaleDateString('zh-CN')
 }
 
-// ========== Helpers ==========
+// 空间切换（含切换具体团队）→ 重新拉取列表
+watch(
+  () => [workspace.spaceType, workspace.activeTeamId],
+  () => refresh(),
+)
 
-function originLabel(o: string): string {
-  if (o === 'cursor') return 'Cursor'
-  if (o === 'codex') return 'Codex'
-  if (o === 'windsurf') return 'Windsurf'
-  if (o === 'claude') return 'Claude Code'
-  if (o === 'kiro') return 'Kiro'
-  if (o === 'trae') return 'Trae'
-  if (o === 'qoder') return 'Qoder'
-  return '未知'
-}
-
-function truncDesc(s: string, max = 100) {
-  return s.length <= max ? s : s.slice(0, max) + '...'
-}
-
-function pathSegments(p: string) {
-  if (!p) return []
-  return p.replace(/\\/g, '/').split('/').filter(Boolean)
-}
+onMounted(() => {
+  workspace.init()
+  refresh()
+})
 </script>
 
 <template>
-  <div class="dashboard">
-    <header class="header">
-      <h1>Vibebara</h1>
-      <p class="subtitle">AI 协作中台</p>
-    </header>
+  <div class="home">
+    <AppTopNav />
 
-    <nav class="nav">
-      <button @click="router.push('/skill-forge')">个人 Skill 仓库</button>
-      <button @click="router.push('/teams')">团队协作</button>
-    </nav>
-
-    <!-- ========== Project Launcher ========== -->
-    <section class="project-launcher">
-      <div v-if="!project.projectOpened" class="launcher-empty" @click="openBrowser">
-        <div class="launcher-icon">📂</div>
-        <h2>打开项目</h2>
-        <p>选择一个文件夹，自动扫描识别 Skill 并管理跨平台迁移</p>
-      </div>
-
-      <div v-else class="launcher-opened">
-        <div class="project-bar">
-          <div class="project-info">
-            <span class="project-icon">📂</span>
-            <div>
-              <div class="project-name">{{ project.projectPath.split(/[\\/]/).pop() }}</div>
-              <div class="project-fullpath">{{ project.projectPath }}</div>
-            </div>
-          </div>
-          <div class="project-actions">
-            <button class="btn-sm refresh" :disabled="project.scanning" @click="doScan">
-              {{ project.scanning ? '扫描中...' : '刷新' }}
-            </button>
-            <button class="btn-sm secondary" @click="openBrowser">切换项目</button>
-            <button class="btn-sm danger" @click="closeProject">关闭</button>
-          </div>
+    <main class="home-main">
+      <!-- 工具行 -->
+      <div class="toolbar">
+        <div class="toolbar-titles">
+          <h1 class="page-title">SKILL 仓库</h1>
+          <p class="page-subtitle">
+            <span :class="['space-tag', workspace.spaceType]">{{ spaceTitle }}</span>
+            <span v-if="!store.loading" class="count">共 {{ displaySkills.length }} 个 Skill</span>
+          </p>
         </div>
-
-        <!-- Scan status -->
-        <div v-if="project.scanError && !project.hasSkills" class="scan-hint">{{ project.scanError }}</div>
-        <div v-if="project.scanning && !project.hasSkills" class="scan-hint">
-          <span class="spinner"></span> 正在扫描 Skill...
-        </div>
-
-        <!-- Skill packages list -->
-        <div v-if="project.hasSkills" class="skill-section">
-          <div class="skill-section-header">
-            <h3>发现 {{ project.packages.length }} 个 Skill</h3>
-          </div>
-
-          <div class="skill-list">
-            <div v-for="pkg in project.packages" :key="pkg.id" class="skill-row">
-              <div class="skill-main">
-                <div class="skill-header">
-                  <span class="skill-name">{{ pkg.name || pkg.id }}</span>
-                  <span :class="['origin-badge', `origin-${pkg.origin}`]">
-                    {{ originLabel(pkg.origin) }}
-                  </span>
-                </div>
-                <div class="skill-desc">
-                  {{ pkg.description ? truncDesc(pkg.description) : '暂无描述' }}
-                </div>
-              </div>
-              <div class="skill-badges-row">
-                <span v-if="pkg.has_scripts" class="badge scripts">scripts</span>
-                <span v-if="pkg.has_references" class="badge refs">refs</span>
-                <span v-if="pkg.has_assets" class="badge assets">assets</span>
-              </div>
-              <div class="install-dots">
-                <span :class="['dot', { active: pkg.installed_at.cursor }]" title="Cursor"></span>
-                <span class="dot-label">C</span>
-                <span :class="['dot', { active: pkg.installed_at.codex }]" title="Codex"></span>
-                <span class="dot-label">X</span>
-                <span :class="['dot', { active: pkg.installed_at.windsurf }]" title="Windsurf"></span>
-                <span class="dot-label">W</span>
-                <span :class="['dot', { active: pkg.installed_at.claude }]" title="Claude Code"></span>
-                <span class="dot-label">A</span>
-                <span :class="['dot', { active: pkg.installed_at.kiro }]" title="Kiro"></span>
-                <span class="dot-label">K</span>
-                <span :class="['dot', { active: pkg.installed_at.trae }]" title="Trae"></span>
-                <span class="dot-label">T</span>
-                <span :class="['dot', { active: pkg.installed_at.qoder }]" title="Qoder"></span>
-                <span class="dot-label">Q</span>
-              </div>
-              <div class="import-action">
-                <button
-                  v-if="!importResults[pkg.id]"
-                  class="btn-import"
-                  :disabled="!!importingMap[pkg.id]"
-                  @click="importToPlatform(pkg)"
-                >
-                  {{ importingMap[pkg.id] ? '导入中...' : '导入到平台' }}
-                </button>
-                <span v-else-if="importResults[pkg.id]?.ok" class="import-ok">已导入</span>
-                <span v-else class="import-err">{{ importResults[pkg.id]?.msg }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Open in platform buttons -->
-          <div class="open-platform-bar">
-            <span class="open-label">在终端中打开项目：</span>
-            <button
-              class="btn-open cursor-open"
-              :disabled="!isToolAvailable('cursor')"
-              @click="openInPlatform('cursor')"
-            >
-              Cursor 中打开
-            </button>
-            <button
-              class="btn-open codex-open"
-              :disabled="!isToolAvailable('codex')"
-              @click="openInPlatform('codex')"
-            >
-              Codex 中打开
-            </button>
-            <button
-              class="btn-open windsurf-open"
-              :disabled="!isToolAvailable('windsurf')"
-              @click="openInPlatform('windsurf')"
-            >
-              Windsurf 中打开
-            </button>
-            <button
-              class="btn-open claude-open"
-              :disabled="!isToolAvailable('claude')"
-              @click="openInPlatform('claude')"
-            >
-              Claude Code 中打开
-            </button>
-          </div>
+        <div class="toolbar-actions">
+          <button class="btn-ghost" :disabled="store.loading" @click="refresh">
+            {{ store.loading ? '加载中...' : '刷新' }}
+          </button>
+          <button
+            class="btn-primary"
+            :disabled="isTeamSpace && !workspace.activeTeamId"
+            @click="addOpen = true"
+          >
+            <span class="plus">+</span> 新增 Skill
+          </button>
         </div>
       </div>
-    </section>
 
-    <!-- ========== Folder Browser Modal ========== -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="browserOpen" class="modal-overlay" @click.self="closeBrowser">
-          <div class="modal-box">
-            <div class="modal-header">
-              <h2>选择项目文件夹</h2>
-              <button class="modal-close" @click="closeBrowser">✕</button>
-            </div>
-            <div class="paste-path-bar">
-              <input
-                v-model="pastePathInput"
-                class="paste-path-input"
-                placeholder="粘贴路径直接跳转，如 E:\Projects\my-app"
-                @keyup.enter="goToPath"
+      <!-- 内联提示 -->
+      <transition name="flash">
+        <div v-if="flashMsg" class="flash-bar">{{ flashMsg }}</div>
+      </transition>
+
+      <!-- 错误态 -->
+      <div v-if="store.error && !store.loading" class="error-bar">
+        {{ store.error }}
+        <button class="btn-retry" @click="refresh">重试</button>
+      </div>
+
+      <!-- 加载骨架 -->
+      <div v-if="store.loading && !displaySkills.length" class="skill-grid">
+        <div v-for="i in 6" :key="i" class="skill-card skeleton">
+          <div class="sk-line sk-title"></div>
+          <div class="sk-line sk-text"></div>
+          <div class="sk-line sk-text short"></div>
+          <div class="sk-line sk-foot"></div>
+        </div>
+      </div>
+
+      <!-- 卡片网格 -->
+      <div v-else-if="displaySkills.length" class="skill-grid">
+        <div
+          v-for="skill in displaySkills"
+          :key="skill.id"
+          class="skill-card"
+          @click="openSkill(skill)"
+        >
+          <div class="card-head">
+            <span class="card-name">{{ skill.display_name || skill.name || skill.id }}</span>
+            <span class="card-version">v{{ skill.version }}</span>
+          </div>
+          <p class="card-desc">{{ skillDesc(skill) }}</p>
+          <div v-if="skill.tags?.length" class="card-tags">
+            <span v-for="tag in skill.tags.slice(0, 4)" :key="tag" class="tag">{{ tag }}</span>
+            <span v-if="skill.tags.length > 4" class="tag more">+{{ skill.tags.length - 4 }}</span>
+          </div>
+          <div class="card-foot">
+            <div class="platform-icons">
+              <img
+                v-for="p in platforms"
+                :key="p.key"
+                :src="p.icon"
+                :alt="p.label"
+                :title="`${p.label}${deployedOn(skill)[p.key] ? '：已部署' : '：未部署'}`"
+                :class="['platform-icon', { deployed: deployedOn(skill)[p.key] }]"
               />
-              <button class="paste-path-go" :disabled="!pastePathInput.trim()" @click="goToPath">前往</button>
             </div>
-            <div class="breadcrumb">
-              <button class="crumb-btn" @click="loadDir('')">根</button>
-              <template v-for="(seg, i) in pathSegments(browseCurrent)" :key="i">
-                <span class="crumb-sep">/</span>
-                <button class="crumb-btn" @click="loadDir(
-                  browseCurrent.replace(/\\/g, '/').split('/').slice(0, i + (/^[a-zA-Z]:/.test(browseCurrent) ? 1 : 0) + 1).join('/')
-                )">{{ seg }}</button>
-              </template>
-            </div>
-            <div class="dir-list" :class="{ loading: browseLoading }">
-              <button v-if="browseParent !== null || browseCurrent" class="dir-item parent" @click="goParent">
-                <span class="dir-icon">⬆</span><span>上级目录</span>
-              </button>
-              <button v-for="d in browseDirs" :key="d.abs_path" class="dir-item" @click="selectDir(d)">
-                <span class="dir-icon">{{ d.is_drive ? '💾' : '📁' }}</span><span>{{ d.name }}</span>
-              </button>
-              <div v-if="!browseLoading && browseDirs.length === 0 && browseCurrent" class="dir-empty">
-                此目录下没有子文件夹
-              </div>
-            </div>
-            <div v-if="browseError" class="browse-error">{{ browseError }}</div>
-            <div class="modal-footer">
-              <div class="selected-path">
-                <span v-if="browseCurrent">{{ browseCurrent }}</span>
-                <span v-else class="path-hint">请选择一个文件夹</span>
-                <button v-if="browseCurrent" class="btn-copy" @click="copyPath(browseCurrent)" title="复制路径">📋</button>
-              </div>
-              <div class="modal-btns">
-                <button class="btn-cancel" @click="closeBrowser">取消</button>
-                <button class="btn-confirm" :disabled="!browseCurrent" @click="confirmSelect">打开此目录</button>
-              </div>
-            </div>
+            <span v-if="skill.updated_at" class="card-time">{{ formatTime(skill.updated_at) }}</span>
           </div>
         </div>
-      </Transition>
-    </Teleport>
+      </div>
 
-    <!-- ========== Migration Flow Modal ========== -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="migrationOpen" class="modal-overlay" @click.self="migrationPhase === 'complete' || migrationPhase === 'error' ? closeMigration() : undefined">
-          <div class="modal-box migration-modal">
-            <div class="modal-header">
-              <h2>
-                <template v-if="migrationPhase === 'adapting'">适配 Skill 到 {{ originLabel(migrationTarget) }}</template>
-                <template v-else-if="migrationPhase === 'launching'">正在启动 {{ originLabel(migrationTarget) }}...</template>
-                <template v-else-if="migrationPhase === 'complete'">项目已在 {{ originLabel(migrationTarget) }} 中打开</template>
-                <template v-else>迁移出现问题</template>
-              </h2>
-              <button
-                v-if="migrationPhase === 'complete' || migrationPhase === 'error'"
-                class="modal-close"
-                @click="closeMigration"
-              >✕</button>
-            </div>
-
-            <div class="migration-steps">
-              <div
-                v-for="step in migrationSteps"
-                :key="step.id"
-                :class="['step-row', `step-${step.status}`]"
-              >
-                <span class="step-icon">
-                  <template v-if="step.status === 'pending'">○</template>
-                  <template v-else-if="step.status === 'running'"><span class="spinner-sm"></span></template>
-                  <template v-else-if="step.status === 'done'">✓</template>
-                  <template v-else-if="step.status === 'skip'">—</template>
-                  <template v-else>✗</template>
-                </span>
-                <span class="step-name">{{ step.name }}</span>
-                <span class="step-msg">{{ step.message }}</span>
-              </div>
-            </div>
-
-            <div class="migration-footer">
-              <template v-if="migrationPhase === 'adapting'">
-                <span class="phase-hint">正在适配中，请稍候...</span>
-              </template>
-              <template v-else-if="migrationPhase === 'launching'">
-                <span class="phase-hint"><span class="spinner-sm"></span> 正在启动终端...</span>
-              </template>
-              <template v-else-if="migrationPhase === 'complete'">
-                <span class="phase-hint phase-success">所有 Skill 已适配，项目已启动</span>
-                <button class="btn-confirm" @click="closeMigration">完成</button>
-              </template>
-              <template v-else>
-                <span class="phase-hint phase-error">部分操作失败，请检查后重试</span>
-                <div class="modal-btns">
-                  <button class="btn-cancel" @click="closeMigration">关闭</button>
-                  <button class="btn-confirm" @click="retryLaunch">仍然启动</button>
-                </div>
-              </template>
-            </div>
-          </div>
+      <!-- 空状态 -->
+      <div v-else-if="!store.loading" class="empty-state">
+        <div class="empty-icon">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <rect x="8" y="12" width="32" height="26" rx="4" stroke="#d1d5db" stroke-width="2.5" />
+            <path d="M8 20h32" stroke="#d1d5db" stroke-width="2.5" />
+            <path d="M20 29h8" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round" />
+          </svg>
         </div>
-      </Transition>
-    </Teleport>
+        <template v-if="isTeamSpace && !teamStore.teams.length">
+          <h2>还没有加入任何团队</h2>
+          <p>创建或加入一个团队后，即可在团队空间共享 Skill</p>
+          <button class="btn-primary" @click="router.push('/teams')">去创建 / 加入团队</button>
+        </template>
+        <template v-else>
+          <h2>{{ spaceTitle }}还没有 Skill</h2>
+          <p>新建一个 Skill，或从本地文件夹 / 链接导入</p>
+          <button class="btn-primary" @click="addOpen = true"><span class="plus">+</span> 新增 Skill</button>
+        </template>
+      </div>
+    </main>
+
+    <AddSkillModal
+      v-model="addOpen"
+      :scope="workspace.scope"
+      :team-id="isTeamSpace ? workspace.activeTeamId : null"
+      @done="onAddDone"
+    />
   </div>
 </template>
 
 <style scoped>
-.dashboard {
-  max-width: 1200px;
+.home {
+  min-height: 100vh;
+  background: #ffffff;
+  color: #151717;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, sans-serif;
+}
+
+.home-main {
+  max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
 }
 
-.header {
-  text-align: center;
-  margin-bottom: 1.5rem;
-}
-
-.header h1 {
-  font-size: 2.5rem;
-  background: linear-gradient(135deg, var(--primary), #a78bfa);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.subtitle {
-  color: var(--text-muted);
-  margin-top: 0.5rem;
-}
-
-.nav {
+/* —— 工具行 —— */
+.toolbar {
   display: flex;
-  gap: 0.75rem;
-  justify-content: center;
-  margin-bottom: 2rem;
-}
-
-.nav button {
-  padding: 0.6rem 1.25rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 0.9rem;
-}
-
-.nav button:hover {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: #fff;
-}
-
-/* ========== Project Launcher ========== */
-.project-launcher { margin-bottom: 2rem; }
-
-.launcher-empty {
-  background: var(--surface);
-  border: 2px dashed var(--border);
-  border-radius: 16px;
-  padding: 3rem 2rem;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.launcher-empty:hover {
-  border-color: var(--primary);
-  background: rgba(99, 102, 241, 0.04);
-}
-
-.launcher-icon { font-size: 3rem; margin-bottom: 0.75rem; }
-.launcher-empty h2 { font-size: 1.3rem; margin-bottom: 0.4rem; }
-.launcher-empty p { color: var(--text-muted); font-size: 0.9rem; }
-
-.launcher-opened {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 1.25rem 1.5rem;
-}
-
-.project-bar {
-  display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.75rem;
 }
 
-.project-info { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
-.project-icon { font-size: 1.5rem; flex-shrink: 0; }
-.project-name { font-weight: 600; font-size: 1.05rem; }
-.project-fullpath { font-size: 0.75rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; word-break: break-all; }
-.project-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
-
-.btn-sm {
-  padding: 0.35rem 0.75rem;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  cursor: pointer;
-  border: 1px solid;
-  transition: all 0.2s;
-  white-space: nowrap;
+.page-title {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #151717;
 }
 
-.btn-sm.refresh { background: rgba(99, 102, 241, 0.1); border-color: rgba(99, 102, 241, 0.3); color: var(--primary); }
-.btn-sm.refresh:hover:not(:disabled) { background: rgba(99, 102, 241, 0.2); }
-.btn-sm.secondary { background: transparent; border-color: var(--border); color: var(--text-muted); }
-.btn-sm.secondary:hover { background: var(--surface-hover); color: var(--text); }
-.btn-sm.danger { background: transparent; border-color: var(--border); color: var(--text-muted); }
-.btn-sm.danger:hover { background: rgba(239, 68, 68, 0.1); color: var(--danger); border-color: rgba(239, 68, 68, 0.3); }
-.btn-sm:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.scan-hint { color: var(--text-muted); text-align: center; padding: 1.5rem; font-size: 0.9rem; }
-
-/* --- Skill list --- */
-.skill-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
-.skill-section-header h3 { font-size: 1rem; font-weight: 600; }
-
-.skill-list { display: flex; flex-direction: column; gap: 0.5rem; }
-
-.skill-row {
+.page-subtitle {
+  margin: 0.5rem 0 0;
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  transition: border-color 0.2s;
+  gap: 0.65rem;
 }
 
-.skill-row:hover { border-color: rgba(99, 102, 241, 0.3); }
-
-.skill-main { flex: 1; min-width: 0; }
-.skill-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.2rem; }
-.skill-name { font-weight: 600; font-size: 0.92rem; }
-.skill-desc { color: var(--text-muted); font-size: 0.78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-.origin-badge {
-  font-size: 0.65rem;
-  padding: 0.08rem 0.45rem;
-  border-radius: 4px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.origin-cursor { background: rgba(99, 102, 241, 0.12); color: var(--primary); }
-.origin-codex { background: rgba(16, 185, 129, 0.12); color: var(--success); }
-.origin-windsurf { background: rgba(6, 182, 212, 0.12); color: #06b6d4; }
-.origin-claude { background: rgba(217, 119, 87, 0.12); color: #d97757; }
-.origin-kiro { background: rgba(124, 58, 237, 0.12); color: #7c3aed; }
-.origin-trae { background: rgba(236, 72, 153, 0.12); color: #ec4899; }
-.origin-qoder { background: rgba(245, 158, 11, 0.12); color: #f59e0b; }
-.origin-unknown { background: rgba(156, 163, 175, 0.15); color: var(--text-muted); }
-
-.skill-badges-row { display: flex; gap: 0.3rem; flex-shrink: 0; }
-.badge { font-size: 0.65rem; padding: 0.06rem 0.35rem; border-radius: 4px; font-weight: 500; }
-.badge.scripts { background: rgba(16, 185, 129, 0.1); color: var(--success); }
-.badge.refs { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-.badge.assets { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-
-.install-dots { display: flex; align-items: center; gap: 0.25rem; flex-shrink: 0; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
-.dot.active { background: var(--success); }
-.dot-label { font-size: 0.6rem; color: var(--text-muted); margin-right: 0.4rem; }
-
-.import-action { flex-shrink: 0; }
-.btn-import {
-  padding: 0.25rem 0.65rem;
-  background: rgba(99, 102, 241, 0.08);
-  border: 1px solid rgba(99, 102, 241, 0.25);
-  color: var(--primary);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.72rem;
-  font-weight: 500;
-  transition: all 0.15s;
-  white-space: nowrap;
-}
-.btn-import:hover:not(:disabled) { background: rgba(99, 102, 241, 0.15); }
-.btn-import:disabled { opacity: 0.5; cursor: not-allowed; }
-.import-ok { font-size: 0.72rem; color: var(--success); font-weight: 600; }
-.import-err { font-size: 0.72rem; color: var(--danger); font-weight: 600; cursor: help; }
-
-/* --- Open in platform bar --- */
-.open-platform-bar {
-  display: flex;
+.space-tag {
+  display: inline-flex;
   align-items: center;
-  gap: 0.75rem;
-  margin-top: 1.25rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--border);
-}
-
-.open-label { font-weight: 600; font-size: 0.9rem; }
-
-.btn-open {
-  padding: 0.6rem 1.5rem;
-  border: 1px solid;
-  border-radius: 10px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.9rem;
-  transition: all 0.2s;
-}
-
-.btn-open.cursor-open {
-  background: rgba(99, 102, 241, 0.1);
-  border-color: rgba(99, 102, 241, 0.3);
-  color: var(--primary);
-}
-.btn-open.cursor-open:hover:not(:disabled) { background: rgba(99, 102, 241, 0.2); }
-
-.btn-open.codex-open {
-  background: rgba(16, 185, 129, 0.1);
-  border-color: rgba(16, 185, 129, 0.3);
-  color: var(--success);
-}
-.btn-open.codex-open:hover:not(:disabled) { background: rgba(16, 185, 129, 0.2); }
-
-.btn-open.windsurf-open {
-  background: rgba(6, 182, 212, 0.1);
-  border-color: rgba(6, 182, 212, 0.3);
-  color: #06b6d4;
-}
-.btn-open.windsurf-open:hover:not(:disabled) { background: rgba(6, 182, 212, 0.2); }
-
-.btn-open.claude-open {
-  background: rgba(217, 119, 87, 0.1);
-  border-color: rgba(217, 119, 87, 0.3);
-  color: #d97757;
-}
-.btn-open.claude-open:hover:not(:disabled) { background: rgba(217, 119, 87, 0.2); }
-.btn-open:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* ========== Folder Browser Modal ========== */
-.modal-overlay {
-  position: fixed; inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 1000;
-}
-
-.modal-box {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  width: 580px;
-  max-width: 94vw;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-}
-
-.modal-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 1.25rem 1.5rem 0.75rem;
-}
-.modal-header h2 { font-size: 1.1rem; font-weight: 600; }
-
-.modal-close {
-  background: transparent; border: none; color: var(--text-muted);
-  font-size: 1.2rem; cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 6px;
-  transition: all 0.15s;
-}
-.modal-close:hover { background: var(--surface-hover); color: var(--text); }
-
-.paste-path-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 1.5rem;
-  border-bottom: 1px solid var(--border);
-}
-.paste-path-input {
-  flex: 1;
-  padding: 0.4rem 0.65rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-size: 0.82rem;
-  font-family: 'JetBrains Mono', monospace;
-  transition: border-color 0.15s;
-}
-.paste-path-input:focus { outline: none; border-color: var(--primary); }
-.paste-path-input::placeholder { color: var(--text-muted); opacity: 0.7; }
-.paste-path-go {
-  padding: 0.4rem 0.75rem;
-  background: var(--primary);
-  border: none;
-  color: #fff;
-  border-radius: 6px;
-  font-size: 0.78rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: opacity 0.15s;
-  white-space: nowrap;
-}
-.paste-path-go:hover:not(:disabled) { opacity: 0.85; }
-.paste-path-go:disabled { opacity: 0.4; cursor: not-allowed; }
-
-.breadcrumb {
-  display: flex; align-items: center; gap: 0.1rem;
-  padding: 0.5rem 1.5rem; font-size: 0.82rem; flex-wrap: wrap;
-  border-bottom: 1px solid var(--border);
-}
-.crumb-btn {
-  background: transparent; border: none; color: var(--primary);
-  cursor: pointer; padding: 0.15rem 0.3rem; border-radius: 4px;
-  font-size: 0.82rem; transition: background 0.15s;
-}
-.crumb-btn:hover { background: rgba(99, 102, 241, 0.1); }
-.crumb-sep { color: var(--text-muted); opacity: 0.5; }
-
-.dir-list { flex: 1; overflow-y: auto; padding: 0.5rem; min-height: 250px; max-height: 400px; }
-.dir-list.loading { opacity: 0.5; pointer-events: none; }
-
-.dir-item {
-  width: 100%; display: flex; align-items: center; gap: 0.6rem;
-  padding: 0.55rem 0.85rem; background: transparent; border: none; border-radius: 8px;
-  color: var(--text); font-size: 0.9rem; cursor: pointer; transition: background 0.15s;
-  text-align: left;
-}
-.dir-item:hover { background: var(--surface-hover); }
-.dir-item.parent { color: var(--text-muted); font-size: 0.85rem; }
-.dir-icon { font-size: 1.1rem; flex-shrink: 0; }
-.dir-empty { text-align: center; color: var(--text-muted); padding: 2rem 1rem; font-size: 0.85rem; }
-.browse-error { color: var(--danger); font-size: 0.82rem; padding: 0 1.5rem 0.5rem; }
-
-.modal-footer {
-  padding: 0.75rem 1.5rem 1.25rem; border-top: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-}
-.selected-path {
-  flex: 1; min-width: 0; font-size: 0.78rem;
-  font-family: 'JetBrains Mono', monospace; color: var(--text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  display: flex; align-items: center; gap: 0.4rem;
-}
-.path-hint { color: var(--text-muted); }
-.btn-copy {
-  flex-shrink: 0;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 0.15rem 0.35rem;
-  cursor: pointer;
-  font-size: 0.72rem;
-  line-height: 1;
-  transition: all 0.15s;
-}
-.btn-copy:hover { background: var(--surface-hover); border-color: var(--primary); }
-.modal-btns { display: flex; gap: 0.5rem; flex-shrink: 0; }
-
-.btn-cancel {
-  padding: 0.5rem 1rem; background: transparent;
-  border: 1px solid var(--border); color: var(--text-muted);
-  border-radius: 8px; cursor: pointer; transition: all 0.2s;
-}
-.btn-cancel:hover { background: var(--surface-hover); color: var(--text); }
-
-.btn-confirm {
-  padding: 0.5rem 1.2rem; background: var(--primary);
-  border: 1px solid var(--primary); color: #fff; border-radius: 8px;
-  cursor: pointer; font-weight: 500; transition: all 0.2s;
-}
-.btn-confirm:hover:not(:disabled) { background: var(--primary-hover); }
-.btn-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
-
-/* ========== Migration Flow Modal ========== */
-.migration-modal { width: 520px; }
-
-.migration-steps {
-  padding: 0.75rem 1.5rem;
-  max-height: 350px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
   gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
 }
 
-.step-row {
+.space-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.space-tag.personal {
+  color: #15803d;
+  background: #f0fdf4;
+}
+
+.space-tag.personal::before {
+  background: #16a34a;
+}
+
+.space-tag.team {
+  color: #4f46e5;
+  background: #eef2ff;
+}
+
+.space-tag.team::before {
+  background: #6366f1;
+}
+
+.count {
+  font-size: 0.82rem;
+  color: #9ca3af;
+}
+
+.toolbar-actions {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
+}
+
+/* —— 按钮 —— */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 1.1rem;
+  border: none;
+  border-radius: 9px;
+  background: #151717;
+  color: #ffffff;
   font-size: 0.88rem;
-  transition: background 0.2s;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
 }
 
-.step-row.step-running { background: rgba(99, 102, 241, 0.06); }
-.step-row.step-done { background: rgba(16, 185, 129, 0.06); }
-.step-row.step-error { background: rgba(239, 68, 68, 0.06); }
-.step-row.step-skip { opacity: 0.5; }
-
-.step-icon {
-  width: 1.2em;
-  text-align: center;
-  flex-shrink: 0;
-  font-weight: 700;
+.btn-primary:hover:not(:disabled) {
+  background: #2d2f2f;
 }
 
-.step-done .step-icon { color: var(--success); }
-.step-error .step-icon { color: var(--danger); }
-.step-skip .step-icon { color: var(--text-muted); }
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
 
-.step-name { font-weight: 500; min-width: 0; }
-.step-msg { margin-left: auto; font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
-.migration-footer {
-  padding: 1rem 1.5rem;
-  border-top: 1px solid var(--border);
+.plus {
+  font-size: 1.05rem;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.btn-ghost {
+  padding: 0.55rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #6b7280;
+  font-size: 0.88rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  border-color: #d1d5db;
+  color: #151717;
+}
+
+.btn-ghost:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* —— 提示 / 错误 —— */
+.flash-bar {
+  margin-bottom: 1rem;
+  padding: 0.65rem 1rem;
+  border-radius: 10px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+  font-size: 0.86rem;
+}
+
+.flash-enter-active,
+.flash-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.flash-enter-from,
+.flash-leave-to {
+  opacity: 0;
+}
+
+.error-bar {
+  margin-bottom: 1rem;
+  padding: 0.65rem 1rem;
+  border-radius: 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  font-size: 0.86rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
 }
 
-.phase-hint { font-size: 0.88rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; }
-.phase-success { color: var(--success); font-weight: 500; }
-.phase-error { color: var(--danger); }
-
-/* Spinners */
-.spinner, .spinner-sm {
-  display: inline-block;
-  border: 2px solid rgba(99, 102, 241, 0.3);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  vertical-align: middle;
+.btn-retry {
+  padding: 0.3rem 0.8rem;
+  border: 1px solid #fca5a5;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #dc2626;
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
 }
-.spinner { width: 1em; height: 1em; margin-right: 0.5rem; }
-.spinner-sm { width: 0.9em; height: 0.9em; }
 
-@keyframes spin { to { transform: rotate(360deg); } }
+.btn-retry:hover {
+  background: #fef2f2;
+}
 
-/* ========== Transitions ========== */
-.modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
-.modal-enter-active .modal-box, .modal-leave-active .modal-box { transition: transform 0.2s ease; }
-.modal-enter-from, .modal-leave-to { opacity: 0; }
-.modal-enter-from .modal-box { transform: scale(0.95) translateY(10px); }
-.modal-leave-to .modal-box { transform: scale(0.95) translateY(10px); }
+/* —— 卡片网格 —— */
+.skill-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.1rem;
+}
 
-/* ========== Responsive ========== */
+.skill-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1.25rem 1.3rem;
+  border: 1px solid #ebedf0;
+  border-radius: 16px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.skill-card:hover {
+  border-color: #d1d5db;
+  box-shadow: 0 8px 24px rgba(21, 23, 23, 0.07);
+  transform: translateY(-2px);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.card-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #151717;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-version {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6b7280;
+  background: #f6f7f8;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+}
+
+.card-desc {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: #6b7280;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.6em;
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tag {
+  font-size: 0.72rem;
+  color: #4b5563;
+  background: #f3f4f6;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+}
+
+.tag.more {
+  color: #9ca3af;
+}
+
+.card-foot {
+  margin-top: auto;
+  padding-top: 0.65rem;
+  border-top: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.platform-icons {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.platform-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  opacity: 0.18;
+  filter: grayscale(1);
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.platform-icon.deployed {
+  opacity: 1;
+  filter: none;
+}
+
+.card-time {
+  font-size: 0.74rem;
+  color: #b6bcc4;
+  white-space: nowrap;
+}
+
+/* —— 骨架屏 —— */
+.skill-card.skeleton {
+  cursor: default;
+  pointer-events: none;
+}
+
+.sk-line {
+  border-radius: 6px;
+  background: linear-gradient(90deg, #f3f4f6 25%, #e9ebee 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+.sk-title {
+  height: 18px;
+  width: 55%;
+}
+
+.sk-text {
+  height: 12px;
+  width: 90%;
+}
+
+.sk-text.short {
+  width: 65%;
+}
+
+.sk-foot {
+  height: 14px;
+  width: 40%;
+  margin-top: 0.5rem;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* —— 空状态 —— */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 5rem 1rem;
+}
+
+.empty-icon {
+  margin-bottom: 1.25rem;
+}
+
+.empty-state h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #151717;
+}
+
+.empty-state p {
+  margin: 0 0 1.5rem;
+  font-size: 0.88rem;
+  color: #9ca3af;
+}
+
 @media (max-width: 768px) {
-  .project-bar { flex-direction: column; align-items: flex-start; }
-  .project-actions { width: 100%; justify-content: flex-end; }
-  .skill-row { flex-direction: column; align-items: flex-start; }
-  .open-platform-bar { flex-direction: column; align-items: flex-start; }
-  .nav { flex-wrap: wrap; }
+  .home-main {
+    padding: 1.25rem 1rem;
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-actions {
+    justify-content: flex-end;
+  }
+
+  .skill-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

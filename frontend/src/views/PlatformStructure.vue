@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSkillStore } from '@/stores/skillStore'
+import AppTopNav from '@/components/AppTopNav.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -201,6 +202,8 @@ const fieldsForPlatform = computed(() => {
 
 <template>
   <div class="platform-page">
+    <AppTopNav />
+
     <!-- Header -->
     <header class="page-header">
       <button class="back-btn" @click="goBack" title="返回">← 返回</button>
@@ -662,6 +665,10 @@ const fieldsForPlatform = computed(() => {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  background: #ffffff;
+  color: #151717;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, sans-serif;
 }
 
 /* Header */
@@ -670,62 +677,63 @@ const fieldsForPlatform = computed(() => {
   align-items: center;
   gap: 1rem;
   padding: 1.25rem 2rem;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: #ffffff;
+  border-bottom: 1px solid #ebedf0;
 }
 
 .back-btn {
   padding: 0.4rem 0.8rem;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  border-radius: 6px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: #6b7280;
+  border-radius: 7px;
   cursor: pointer;
   font-size: 0.85rem;
-  transition: all 0.15s;
+  font-family: inherit;
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
-.back-btn:hover { background: var(--surface-hover); color: var(--text); }
+.back-btn:hover { border-color: #d1d5db; color: #151717; }
 
 .header-text { flex: 1; }
 .header-text h1 {
   font-size: 1.4rem;
   font-weight: 700;
-  background: linear-gradient(135deg, var(--primary), #a78bfa);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  letter-spacing: -0.02em;
+  color: #151717;
 }
-.header-sub { font-size: 0.82rem; color: var(--text-muted); margin-top: 0.2rem; }
+.header-sub { font-size: 0.82rem; color: #6b7280; margin-top: 0.2rem; }
 
 .header-actions { display: flex; align-items: center; gap: 1rem; }
-.current-skill { font-size: 0.82rem; color: var(--text-muted); }
-.current-skill strong { color: var(--text); }
+.current-skill { font-size: 0.82rem; color: #6b7280; }
+.current-skill strong { color: #151717; }
 
 .btn {
   padding: 0.45rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
   cursor: pointer;
   font-size: 0.82rem;
-  font-weight: 500;
-  transition: all 0.15s;
-  background: var(--surface);
-  color: var(--text);
+  font-weight: 600;
+  font-family: inherit;
+  transition: background 0.15s ease;
+  background: #ffffff;
+  color: #151717;
 }
 
 .save-btn {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
+  background: #151717;
+  color: #ffffff;
+  border-color: #151717;
 }
-.save-btn:hover { opacity: 0.85; }
+.save-btn:hover { background: #2d2f2f; }
 
 /* Segmented Nav */
 .segment-nav {
   display: flex;
   gap: 0;
   padding: 0.75rem 2rem;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  background: #ffffff;
+  border-bottom: 1px solid #ebedf0;
 }
 
 .seg-btn {
@@ -733,24 +741,25 @@ const fieldsForPlatform = computed(() => {
   align-items: center;
   gap: 0.5rem;
   padding: 0.6rem 1.25rem;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: #6b7280;
   font-size: 0.88rem;
   font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.seg-btn:first-child { border-radius: 8px 0 0 8px; }
-.seg-btn:last-child { border-radius: 0 8px 8px 0; }
+.seg-btn:first-child { border-radius: 9px 0 0 9px; }
+.seg-btn:last-child { border-radius: 0 9px 9px 0; }
 .seg-btn:not(:first-child) { border-left: none; }
 
-.seg-btn:hover { background: var(--surface-hover); color: var(--text); }
+.seg-btn:hover { background: #f6f7f8; color: #151717; }
 .seg-btn.active {
-  background: rgba(99, 102, 241, 0.08);
-  border-color: var(--primary);
-  color: var(--primary);
+  background: #eef2ff;
+  border-color: #6366f1;
+  color: #4f46e5;
   font-weight: 600;
   position: relative;
   z-index: 1;
@@ -763,7 +772,7 @@ const fieldsForPlatform = computed(() => {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.seg-dot.overview { background: var(--text-muted); }
+.seg-dot.overview { background: #9ca3af; }
 .seg-dot.codex { background: #10b981; }
 .seg-dot.cursor { background: #6366f1; }
 .seg-dot.windsurf { background: #06b6d4; }
@@ -787,10 +796,10 @@ const fieldsForPlatform = computed(() => {
 .overview-intro {
   margin-bottom: 2rem;
   font-size: 0.9rem;
-  color: var(--text-muted);
+  color: #6b7280;
   line-height: 1.8;
 }
-.overview-intro strong { color: var(--text); }
+.overview-intro strong { color: #151717; }
 
 .field-table-wrapper {
   margin-bottom: 2.5rem;
@@ -798,9 +807,10 @@ const fieldsForPlatform = computed(() => {
 .field-table-wrapper h3 {
   font-size: 1rem;
   font-weight: 600;
+  color: #151717;
   margin-bottom: 0.75rem;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid #ebedf0;
 }
 
 .field-table {
@@ -816,41 +826,42 @@ const fieldsForPlatform = computed(() => {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
+  color: #9ca3af;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .field-table td {
   padding: 0.55rem 0.75rem;
-  border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+  border-bottom: 1px solid #f3f4f6;
 }
 
-.field-table tr:hover td { background: rgba(99, 102, 241, 0.02); }
+.field-table tr:hover td { background: #fafafb; }
 
 .field-name {
   font-weight: 500;
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.82rem;
+  color: #151717;
 }
 
-.field-note { color: var(--text-muted); font-size: 0.78rem; }
+.field-note { color: #6b7280; font-size: 0.78rem; }
 
 .support {
   text-align: center;
   font-weight: 700;
   width: 70px;
 }
-.support.yes { color: var(--success); }
-.support.no { color: var(--danger); opacity: 0.7; }
-.support.pending { color: var(--text-muted); opacity: 0.5; }
+.support.yes { color: #16a34a; }
+.support.no { color: #dc2626; opacity: 0.6; }
+.support.pending { color: #9ca3af; opacity: 0.5; }
 
 /* Platform Detail */
 .platform-detail-section {}
 
 .platform-info-bar {
   padding: 1.25rem 1.5rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: #f6f7f8;
+  border: 1px solid #ebedf0;
   border-left: 4px solid;
   border-radius: 12px;
   margin-bottom: 1.5rem;
@@ -863,36 +874,37 @@ const fieldsForPlatform = computed(() => {
   margin-bottom: 0.4rem;
 }
 
-.platform-info-text h2 { font-size: 1.2rem; font-weight: 700; }
+.platform-info-text h2 { font-size: 1.2rem; font-weight: 700; color: #151717; }
 
 .platform-badge {
   font-size: 0.68rem;
-  padding: 0.15rem 0.5rem;
-  border-radius: 4px;
-  background: var(--surface-hover);
-  color: var(--text-muted);
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: #6b7280;
   font-family: 'JetBrains Mono', monospace;
 }
 
-.platform-desc { font-size: 0.85rem; color: var(--text-muted); line-height: 1.6; }
+.platform-desc { font-size: 0.85rem; color: #6b7280; line-height: 1.6; }
 
 .no-skill-hint {
   text-align: center;
   padding: 3rem 2rem;
-  color: var(--text-muted);
+  color: #6b7280;
   font-size: 0.9rem;
-  background: var(--surface);
-  border: 1px dashed var(--border);
-  border-radius: 12px;
+  background: #f6f7f8;
+  border: 1px dashed #e5e7eb;
+  border-radius: 16px;
 }
 
 .coming-soon {
   text-align: center;
   padding: 3rem 2rem;
-  color: var(--text-muted);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  color: #6b7280;
+  background: #f6f7f8;
+  border: 1px solid #ebedf0;
+  border-radius: 16px;
 }
 .coming-icon { font-size: 3rem; margin-bottom: 0.75rem; }
 .coming-soon p { font-size: 1rem; font-weight: 500; }
@@ -900,9 +912,9 @@ const fieldsForPlatform = computed(() => {
 
 /* Platform editable fields */
 .platform-fields {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 16px;
   padding: 1.5rem;
 }
 
@@ -915,26 +927,27 @@ const fieldsForPlatform = computed(() => {
   display: block;
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--text-muted);
+  color: #6b7280;
   margin-bottom: 0.3rem;
 }
 
 .form-input {
   width: 100%;
   padding: 0.55rem 0.75rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: #f6f7f8;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
-  color: var(--text);
+  color: #151717;
   font-size: 0.88rem;
   font-family: inherit;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s ease;
   box-sizing: border-box;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: var(--primary);
+  border-color: #6366f1;
+  background: #ffffff;
 }
 
 .form-input.textarea {
@@ -956,8 +969,8 @@ const fieldsForPlatform = computed(() => {
 .color-picker {
   width: 36px;
   height: 36px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
   cursor: pointer;
   background: none;
   padding: 2px;
@@ -967,15 +980,15 @@ const fieldsForPlatform = computed(() => {
 .build-info {
   margin-top: 1.5rem;
   padding: 1rem 1.25rem;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: #f6f7f8;
+  border: 1px solid #ebedf0;
+  border-radius: 12px;
 }
 
 .build-info h4 {
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--text-muted);
+  color: #151717;
   margin-bottom: 0.6rem;
 }
 
@@ -987,22 +1000,25 @@ const fieldsForPlatform = computed(() => {
 
 .build-info li {
   font-size: 0.82rem;
-  color: var(--text-muted);
+  color: #6b7280;
   padding: 0.3rem 0;
   line-height: 1.5;
 }
 
 .build-info li::before {
   content: '•';
-  color: var(--primary);
+  color: #6366f1;
   margin-right: 0.5rem;
 }
 
 .build-info code {
-  background: var(--surface);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
   padding: 0.1rem 0.35rem;
-  border-radius: 3px;
+  border-radius: 4px;
   font-size: 0.78rem;
+  font-family: 'JetBrains Mono', monospace;
+  color: #151717;
 }
 
 /* Responsive */

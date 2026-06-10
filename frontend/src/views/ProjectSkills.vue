@@ -8,6 +8,7 @@ import { getPlatformInstalledStatus } from '@/api/orchestration'
 import { useNotificationStore, formatNotification } from '@/stores/notificationStore'
 import { useSkillSync } from '@/composables/useSkillSync'
 import { promptInput } from '@/composables/useInputDialog'
+import AppTopNav from '@/components/AppTopNav.vue'
 import FolderPicker from '@/components/FolderPicker.vue'
 import type { ChangeItem, UserSkillDeploymentInfo } from '@/api/projects'
 import { parseUnifiedDiff, inlineSegments } from '@/utils/diffView'
@@ -413,6 +414,8 @@ function goBack() {
 
 <template>
   <div class="project-page">
+    <AppTopNav />
+
     <header class="top-bar">
       <div class="left">
         <button class="btn-sm" @click="goBack">&larr; 返回</button>
@@ -718,17 +721,21 @@ function goBack() {
 <style scoped>
 .project-page {
   min-height: 100vh;
-  background: #121218;
-  color: #e0e0e0;
+  background: #ffffff;
+  color: #151717;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, sans-serif;
 }
 
+/* —— 页面工具条（AppTopNav 之下） —— */
 .top-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 24px;
-  background: #1a1a28;
-  border-bottom: 1px solid #2a2a3e;
+  height: 56px;
+  padding: 0 2rem;
+  background: #ffffff;
+  border-bottom: 1px solid #ebedf0;
 }
 
 .top-bar .left {
@@ -739,25 +746,31 @@ function goBack() {
 
 .top-bar h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #151717;
 }
 
 .sync-badge {
-  font-size: 12px;
+  font-size: 0.74rem;
+  font-weight: 600;
   padding: 3px 10px;
-  border-radius: 12px;
-  background: #333;
-  color: #888;
+  border-radius: 999px;
+  background: #f6f7f8;
+  color: #6b7280;
+  border: 1px solid #e5e7eb;
 }
 
 .sync-badge.online {
-  background: #1a3a2a;
-  color: #4ade80;
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #bbf7d0;
 }
 
 .user-info {
-  font-size: 14px;
-  color: #aaa;
+  font-size: 0.86rem;
+  color: #6b7280;
 }
 
 .content {
@@ -767,8 +780,8 @@ function goBack() {
 }
 
 .project-info .desc {
-  color: #888;
-  font-size: 14px;
+  color: #6b7280;
+  font-size: 0.88rem;
   margin: 0 0 24px;
 }
 
@@ -781,7 +794,10 @@ function goBack() {
 
 .section-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #151717;
 }
 
 .skill-list {
@@ -794,10 +810,16 @@ function goBack() {
   display: flex;
   align-items: center;
   gap: 16px;
-  background: #1e1e2e;
-  border: 1px solid #2a2a3e;
-  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 16px;
   padding: 16px 20px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.skill-card:hover {
+  border-color: #d1d5db;
+  box-shadow: 0 4px 16px rgba(21, 23, 23, 0.05);
 }
 
 .skill-main {
@@ -806,43 +828,45 @@ function goBack() {
 
 .skill-main h4 {
   margin: 0 0 4px;
-  font-size: 15px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #151717;
 }
 
 .skill-main h4.skill-name {
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color 0.15s ease;
 }
 
 .skill-main h4.skill-name:hover {
-  color: #8b8bff;
+  color: #4f46e5;
   text-decoration: underline;
 }
 
 .skill-main p {
   margin: 0;
-  font-size: 13px;
-  color: #888;
+  font-size: 0.84rem;
+  color: #6b7280;
 }
 
 .deployment-line {
   margin-top: 8px;
-  font-size: 12px;
-  color: #777;
+  font-size: 0.76rem;
+  color: #9ca3af;
   word-break: break-all;
 }
 
 .deployment-line.synced {
-  color: #4ade80;
+  color: #16a34a;
 }
 
 .deployment-line.changed {
-  color: #fbbf24;
+  color: #b45309;
 }
 
 .deployment-line.conflict,
 .deployment-line.missing {
-  color: #ff6b6b;
+  color: #dc2626;
 }
 
 .skill-meta {
@@ -853,15 +877,15 @@ function goBack() {
 }
 
 .version {
-  font-size: 13px;
-  color: #8b9cf7;
+  font-size: 0.82rem;
+  color: #4f46e5;
   font-weight: 600;
 }
 
 .hash {
-  font-size: 11px;
-  color: #555;
-  font-family: monospace;
+  font-size: 0.7rem;
+  color: #b6bcc4;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .skill-actions {
@@ -872,26 +896,31 @@ function goBack() {
 }
 
 .btn-danger {
-  border-color: #ff4444;
-  color: #ff6b6b;
+  border-color: #fecaca;
+  color: #dc2626;
 }
 
 .btn-danger:hover {
-  background: #3a1a1a;
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #dc2626;
 }
 
 .message-log {
   margin-top: 40px;
-  background: #1a1a28;
-  border: 1px solid #2a2a3e;
-  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 16px;
   padding: 16px 20px;
 }
 
 .message-log h4 {
   margin: 0 0 12px;
-  font-size: 14px;
-  color: #888;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .message-log ul {
@@ -903,9 +932,9 @@ function goBack() {
 }
 
 .message-log li {
-  font-size: 13px;
+  font-size: 0.84rem;
   padding: 8px 0;
-  border-bottom: 1px solid #222;
+  border-bottom: 1px solid #f3f4f6;
 }
 
 .msg-row {
@@ -918,17 +947,19 @@ function goBack() {
   margin-left: auto;
   flex-shrink: 0;
   padding: 2px 10px;
-  font-size: 12px;
-  border: 1px solid #3a3a52;
-  border-radius: 6px;
-  background: #232336;
-  color: #8b9cf7;
+  font-size: 0.76rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #6b7280;
+  font-family: inherit;
   cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
 
 .detail-btn:hover {
-  background: #2c2c44;
-  border-color: #4a4a6a;
+  border-color: #d1d5db;
+  color: #151717;
 }
 
 /* —— 改动详情弹窗 —— */
@@ -939,14 +970,14 @@ function goBack() {
 
 .diff-meta {
   margin: 0 0 4px;
-  font-size: 12px;
-  color: #888;
+  font-size: 0.76rem;
+  color: #9ca3af;
 }
 
 .diff-summary {
   margin: 0 0 14px;
-  font-size: 13px;
-  color: #bbb;
+  font-size: 0.84rem;
+  color: #6b7280;
 }
 
 .diff-body {
@@ -962,35 +993,35 @@ function goBack() {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 12px;
-  color: #c9c9d4;
+  font-size: 0.76rem;
+  color: #4b5563;
   margin-bottom: 6px;
   font-weight: 600;
 }
 
 .diff-block-head .counts {
-  font-family: monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-weight: 400;
 }
 
 .diff-block-head .counts .add {
-  color: #4ade80;
+  color: #16a34a;
   margin-right: 6px;
 }
 
 .diff-block-head .counts .del {
-  color: #f87171;
+  color: #dc2626;
 }
 
 .diff-code {
-  border: 1px solid #2a2a3e;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
   overflow: hidden;
 }
 
 .diff-line {
   display: flex;
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
   font-size: 12.5px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -1001,7 +1032,7 @@ function goBack() {
   flex-shrink: 0;
   width: 22px;
   text-align: center;
-  color: #5a5a72;
+  color: #b6bcc4;
   user-select: none;
 }
 
@@ -1011,51 +1042,51 @@ function goBack() {
 }
 
 .diff-line.add {
-  background: rgba(46, 160, 67, 0.16);
+  background: rgba(22, 163, 74, 0.08);
 }
 
 .diff-line.add .ln {
-  color: #4ade80;
+  color: #16a34a;
 }
 
 .diff-line.del {
-  background: rgba(248, 81, 73, 0.16);
+  background: rgba(220, 38, 38, 0.07);
 }
 
 .diff-line.del .ln {
-  color: #f87171;
+  color: #dc2626;
 }
 
 .diff-line.hunk {
-  background: #1b2333;
-  color: #6b8ac9;
+  background: #f6f7f8;
+  color: #6b7280;
 }
 
 .diff-line.context {
-  color: #9a9aa8;
+  color: #6b7280;
 }
 
 /* 行内字符级高亮（被替换/新增的具体片段） */
 .seg-del {
-  background: rgba(248, 81, 73, 0.4);
+  background: rgba(220, 38, 38, 0.18);
   border-radius: 2px;
 }
 
 .seg-add {
-  background: rgba(46, 160, 67, 0.4);
+  background: rgba(22, 163, 74, 0.2);
   border-radius: 2px;
 }
 
 .diff-trunc {
   margin: 6px 0 0;
-  font-size: 12px;
-  color: #888;
+  font-size: 0.76rem;
+  color: #9ca3af;
 }
 
 .diff-resource {
-  font-family: monospace;
-  font-size: 13px;
-  color: #ddd;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem;
+  color: #4b5563;
 }
 
 .diff-resource .res-verb {
@@ -1063,57 +1094,57 @@ function goBack() {
   padding: 1px 8px;
   border-radius: 6px;
   margin-right: 8px;
-  font-size: 12px;
+  font-size: 0.76rem;
 }
 
 .diff-resource.added .res-verb {
-  background: #1a3a2a;
-  color: #4ade80;
+  background: #f0fdf4;
+  color: #15803d;
 }
 
 .diff-resource.removed .res-verb {
-  background: #3a1a1a;
-  color: #f87171;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .diff-resource.modified .res-verb {
-  background: #3a2e1a;
-  color: #fbbf24;
+  background: #fef3c7;
+  color: #b45309;
 }
 
 .dirty-badge {
   display: inline-block;
   margin-left: 8px;
   padding: 1px 8px;
-  border-radius: 10px;
-  background: #3a2e1a;
-  color: #fbbf24;
-  font-size: 11px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #b45309;
+  font-size: 0.7rem;
 }
 
 .msg-time {
-  color: #666;
-  font-size: 11px;
-  font-family: monospace;
+  color: #9ca3af;
+  font-size: 0.7rem;
+  font-family: 'JetBrains Mono', monospace;
   min-width: 70px;
   flex-shrink: 0;
 }
 
 .msg-text {
-  color: #ccc;
+  color: #4b5563;
   flex: 1;
 }
 
 .empty-hint {
   text-align: center;
-  color: #555;
-  font-size: 13px;
+  color: #9ca3af;
+  font-size: 0.84rem;
   margin-top: 24px;
 }
 
 .hint {
-  font-size: 13px;
-  color: #888;
+  font-size: 0.84rem;
+  color: #6b7280;
   margin: 0 0 16px;
 }
 
@@ -1130,50 +1161,63 @@ function goBack() {
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  border-bottom: 1px solid #2a2a3e;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.add-skill-list strong {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #151717;
 }
 
 .add-skill-list .sub {
   display: block;
-  font-size: 12px;
-  color: #666;
+  font-size: 0.76rem;
+  color: #9ca3af;
   margin-top: 2px;
 }
 
 /* Shared */
 .btn-sm {
   padding: 6px 14px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  background: #262636;
-  color: #ccc;
-  font-size: 13px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #6b7280;
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
 .btn-sm:hover {
-  background: #333;
+  border-color: #d1d5db;
+  color: #151717;
 }
 
 .btn-primary {
-  background: #5b7fff;
-  border-color: #5b7fff;
-  color: #fff;
+  background: #151717;
+  border-color: #151717;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .btn-primary:hover {
-  background: #4a6eee;
+  background: #2d2f2f;
+  border-color: #2d2f2f;
+  color: #ffffff;
 }
 
 .btn-sm:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(21, 23, 23, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1181,17 +1225,20 @@ function goBack() {
 }
 
 .modal {
-  background: #1e1e2e;
-  border: 1px solid #2a2a3e;
-  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 16px;
   padding: 28px;
   width: 480px;
   max-width: 90vw;
+  box-shadow: 0 24px 48px rgba(21, 23, 23, 0.12);
 }
 
 .modal h3 {
   margin: 0 0 12px;
-  font-size: 18px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #151717;
 }
 
 .field {
@@ -1200,8 +1247,8 @@ function goBack() {
 
 .field label {
   display: block;
-  font-size: 13px;
-  color: #aaa;
+  font-size: 0.82rem;
+  color: #6b7280;
   margin-bottom: 6px;
 }
 
@@ -1210,36 +1257,49 @@ function goBack() {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  background: #262636;
-  color: #e0e0e0;
-  font-size: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  background: #f6f7f8;
+  color: #151717;
+  font-size: 0.88rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: #151717;
+  background: #ffffff;
 }
 
 .check-line {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  color: #bbb;
+  font-size: 0.84rem;
+  color: #6b7280;
   margin-top: 6px;
 }
 
+.check-line input {
+  accent-color: #151717;
+}
+
 .error-msg {
-  color: #ff6b6b;
-  font-size: 13px;
+  color: #dc2626;
+  font-size: 0.82rem;
   margin-top: 12px;
 }
 
 .action-banner {
   margin: 0 0 12px;
   padding: 8px 12px;
-  border-radius: 6px;
-  background: #1f2a3a;
-  border: 1px solid #2f4a6a;
-  color: #93c5fd;
-  font-size: 13px;
+  border-radius: 10px;
+  background: #eef2ff;
+  border: 1px solid #e0e7ff;
+  color: #4f46e5;
+  font-size: 0.84rem;
   cursor: pointer;
 }
 

@@ -16,15 +16,15 @@ import InputDialog from '@/components/InputDialog.vue'
 :root {
   --primary: #6366f1;
   --primary-hover: #4f46e5;
-  --bg: #0f172a;
-  --surface: #1e293b;
-  --surface-hover: #334155;
-  --border: #334155;
-  --text: #f1f5f9;
-  --text-muted: #94a3b8;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
+  --bg: #ffffff;
+  --surface: #f6f7f8;
+  --surface-hover: #eef0f2;
+  --border: #e5e7eb;
+  --text: #151717;
+  --text-muted: #6b7280;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
 }
 
 * {
@@ -34,7 +34,8 @@ import InputDialog from '@/components/InputDialog.vue'
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;

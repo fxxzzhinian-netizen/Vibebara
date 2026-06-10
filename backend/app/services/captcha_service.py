@@ -25,11 +25,8 @@ from PIL import Image, ImageDraw, ImageFilter
 
 # ---- 几何参数 ----
 BG_W, BG_H = 320, 180
-PIECE_BODY = 46          # 拼块主体边长
-KNOB_R = 9               # 凸起半径
-KNOB_D = KNOB_R * 2
-PIECE_W = PIECE_BODY + KNOB_D   # 右侧凸起外扩
-PIECE_H = PIECE_BODY + KNOB_D   # 顶部凸起外扩
+PIECE_W = 52             # 拼块（椭圆）外接宽
+PIECE_H = 52             # 拼块（椭圆）外接高
 
 # ---- 校验参数 ----
 TOLERANCE = 6            # 像素容差
@@ -94,25 +91,14 @@ def _draw_background() -> Image.Image:
 
 
 def _piece_mask() -> Image.Image:
-    """拼图块蒙版：主体方块 + 顶部/右侧圆形凸起。"""
+    """拼图块蒙版：椭圆形。
+
+    缺口与拼块使用同一蒙版、贴在同一 (target_x, piece_y)，故二者天然对齐。
+    留 2px 边，避免椭圆描边/抗锯齿被画布边缘裁切。
+    """
     mask = Image.new("L", (PIECE_W, PIECE_H), 0)
     d = ImageDraw.Draw(mask)
-    # 主体（左下对齐：顶部留凸起空间，右侧留凸起空间）
-    d.rounded_rectangle(
-        [0, KNOB_D, PIECE_BODY, KNOB_D + PIECE_BODY], radius=4, fill=255
-    )
-    # 顶部凸起
-    d.ellipse(
-        [PIECE_BODY // 2 - KNOB_R, KNOB_D - KNOB_R,
-         PIECE_BODY // 2 + KNOB_R, KNOB_D + KNOB_R],
-        fill=255,
-    )
-    # 右侧凸起
-    d.ellipse(
-        [PIECE_BODY - KNOB_R, KNOB_D + PIECE_BODY // 2 - KNOB_R,
-         PIECE_BODY + KNOB_R, KNOB_D + PIECE_BODY // 2 + KNOB_R],
-        fill=255,
-    )
+    d.ellipse([2, 2, PIECE_W - 3, PIECE_H - 3], fill=255)
     return mask
 
 

@@ -15,16 +15,24 @@ type State =
   | 'fail'
   | 'error'
 
-const HANDLE_W = 40
+const HANDLE_W = 60
+// 手柄四周与轨道的留边，需与 .handle 的 top/left CSS 保持一致
+const HANDLE_MARGIN = 4
 
 const state = ref<State>('loading')
 const challenge = ref<CaptchaChallenge | null>(null)
 const handlePos = ref(0)
 const trackEl = ref<HTMLDivElement | null>(null)
 
-let trackWidth = 0
+// 轨道/拼图面板的实际显示宽度（响应式）：拼块的缩放与定位都基于它。
+// 必须是 ref —— 否则缩放比 scale 取不到真实宽度，会导致拼块与缺口在竖直方向错位。
+const trackWidth = ref(0)
 let dragStartX = 0
 let failTimer: ReturnType<typeof setTimeout> | null = null
+
+function measureTrack() {
+  trackWidth.value = trackEl.value?.getBoundingClientRect().width ?? 0
+}
 
 const bgSrc = computed(() =>
   challenge.value ? `data:image/png;base64,${challenge.value.bg}` : '',
@@ -34,15 +42,15 @@ const pieceSrc = computed(() =>
 )
 
 const scale = computed(() => {
-  if (!challenge.value || !trackWidth) return 1
-  return trackWidth / challenge.value.bg_width
+  if (!challenge.value || !trackWidth.value) return 1
+  return trackWidth.value / challenge.value.bg_width
 })
 
 const pieceLeft = computed(() => {
   if (!challenge.value) return 0
   const pieceWCss = challenge.value.piece_width * scale.value
-  const handleRange = Math.max(trackWidth - HANDLE_W, 1)
-  const pieceRange = Math.max(trackWidth - pieceWCss, 0)
+  const handleRange = Math.max(trackWidth.value - HANDLE_W - HANDLE_MARGIN * 2, 1)
+  const pieceRange = Math.max(trackWidth.value - pieceWCss, 0)
   return (handlePos.value / handleRange) * pieceRange
 })
 
@@ -88,7 +96,8 @@ async function loadChallenge() {
     if (!res.success) throw new Error(res.error || 'captcha failed')
     challenge.value = res
     state.value = 'ready'
-  } catch {
+  } catch (e) {
+    console.error('[captcha] 加载挑战失败 GET /auth/captcha:', e)
     challenge.value = null
     state.value = 'error'
   }
@@ -109,7 +118,7 @@ function onPointerDown(e: PointerEvent) {
     return
   }
   if (state.value !== 'ready' || !challenge.value) return
-  trackWidth = trackEl.value?.getBoundingClientRect().width ?? 0
+  measureTrack()
   dragStartX = e.clientX
   state.value = 'dragging'
   ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
@@ -117,7 +126,7 @@ function onPointerDown(e: PointerEvent) {
 
 function onPointerMove(e: PointerEvent) {
   if (state.value !== 'dragging') return
-  const max = Math.max(trackWidth - HANDLE_W, 0)
+  const max = Math.max(trackWidth.value - HANDLE_W - HANDLE_MARGIN * 2, 0)
   handlePos.value = Math.min(Math.max(e.clientX - dragStartX, 0), max)
 }
 
@@ -139,7 +148,8 @@ async function onPointerUp() {
       return
     }
     throw new Error(res.error || 'verify failed')
-  } catch {
+  } catch (e) {
+    console.error('[captcha] 校验失败 POST /auth/captcha/verify:', e)
     state.value = 'fail'
     failTimer = setTimeout(() => {
       failTimer = null
@@ -159,11 +169,15 @@ function reset() {
 defineExpose({ reset })
 
 onMounted(() => {
+  // 先量一次轨道宽度（拼块缩放/定位依赖它），并随窗口尺寸变化更新，避免竖直错位。
+  measureTrack()
+  window.addEventListener('resize', measureTrack)
   void loadChallenge()
 })
 
 onBeforeUnmount(() => {
   if (failTimer) clearTimeout(failTimer)
+  window.removeEventListener('resize', measureTrack)
 })
 </script>
 
@@ -200,8 +214,13 @@ onBeforeUnmount(() => {
       class="track"
       :class="[`is-${state}`, { shaking: state === 'fail' }]"
     >
-      <div class="track-fill" :style="{ width: `${handlePos + HANDLE_W / 2}px` }"></div>
+      <div class="track-fill" :style="{ width: `${handlePos + HANDLE_MARGIN + HANDLE_W / 2}px` }"></div>
       <span class="track-text">{{ trackText }}</span>
+      <span v-if="state === 'ready'" class="hint-arrows" aria-hidden="true">
+        <svg v-for="i in 3" :key="i" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m9 6 6 6-6 6" />
+        </svg>
+      </span>
       <div
         class="handle"
         role="slider"
@@ -238,16 +257,16 @@ onBeforeUnmount(() => {
 /* ---- 拼图浮层 ---- */
 .puzzle-panel {
   position: absolute;
-  bottom: calc(100% + 10px);
+  bottom: calc(100% + 12px);
   left: 0;
   right: 0;
   aspect-ratio: 16 / 9;
-  border-radius: 10px;
+  border-radius: 14px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  border: 1px solid #e8eaef;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
   z-index: 30;
-  background: #0d1322;
+  background: #f3f4f6;
 }
 
 .puzzle-bg {
@@ -260,7 +279,7 @@ onBeforeUnmount(() => {
   position: absolute;
   left: 0;
   will-change: transform;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
 }
 
 .refresh-btn {
@@ -273,17 +292,18 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 6px;
-  background: rgba(10, 14, 24, 0.6);
-  color: rgba(255, 255, 255, 0.75);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.85);
+  color: #64748b;
   cursor: pointer;
   backdrop-filter: blur(4px);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
   transition: background 0.15s, color 0.15s;
 }
 
 .refresh-btn:hover {
-  background: rgba(10, 14, 24, 0.85);
-  color: #fff;
+  background: #ffffff;
+  color: #151717;
 }
 
 .panel-enter-active,
@@ -300,32 +320,40 @@ onBeforeUnmount(() => {
 /* ---- 滑轨 ---- */
 .track {
   position: relative;
-  height: 42px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  height: 52px;
+  border-radius: 999px;
+  background: #f4f6fa;
+  border: 1px solid #e8eaef;
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.05);
   overflow: hidden;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, background 0.2s;
 }
 
 .track.is-success {
   border-color: rgba(16, 185, 129, 0.45);
+  background: #f0fdf7;
 }
 
 .track.is-fail {
-  border-color: rgba(239, 68, 68, 0.45);
+  border-color: rgba(220, 38, 38, 0.4);
+  background: #fef5f5;
 }
 
 .track-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  background: rgba(99, 102, 241, 0.16);
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(45, 121, 243, 0.08), rgba(45, 121, 243, 0.18));
   transition: background 0.2s;
 }
 
 .is-success .track-fill {
   width: 100% !important;
-  background: rgba(16, 185, 129, 0.14);
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.16));
+}
+
+.is-fail .track-fill {
+  background: linear-gradient(90deg, rgba(220, 38, 38, 0.06), rgba(220, 38, 38, 0.12));
 }
 
 .track-text {
@@ -334,67 +362,112 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
-  color: var(--text-muted, #94a3b8);
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #9ca3af;
   letter-spacing: 0.02em;
   pointer-events: none;
 }
 
+/* 就绪时文字微光扫过，提示可拖动 */
+.is-ready .track-text {
+  background: linear-gradient(90deg, #9ca3af 35%, #4b5563 50%, #9ca3af 65%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: captcha-shimmer 2.6s linear infinite;
+}
+
+@keyframes captcha-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
 .is-success .track-text {
-  color: #34d399;
+  color: #059669;
 }
 
 .is-fail .track-text {
-  color: #f87171;
+  color: #dc2626;
 }
 
+/* 右侧滑动提示箭头：依次呼吸闪烁 */
+.hint-arrows {
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  color: #c4ccda;
+  pointer-events: none;
+}
+
+.hint-arrows svg {
+  margin-left: -6px;
+  animation: hint-blink 1.6s ease-in-out infinite;
+}
+
+.hint-arrows svg:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.hint-arrows svg:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes hint-blink {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+/* ---- 手柄：横向胶囊 ---- */
 .handle {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 40px;
-  height: 100%;
+  top: 4px;
+  left: 4px;
+  width: 60px;
+  height: calc(100% - 8px);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.09);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  color: #cbd5e1;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, #5697ff, #2d79f3);
+  box-shadow: 0 2px 8px rgba(45, 121, 243, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  color: #ffffff;
   cursor: grab;
   touch-action: none;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, box-shadow 0.15s, opacity 0.15s;
   will-change: transform;
 }
 
 .handle:hover {
-  background: rgba(99, 102, 241, 0.35);
-  color: #fff;
+  box-shadow: 0 4px 14px rgba(45, 121, 243, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
 }
 
 .is-dragging .handle {
   cursor: grabbing;
-  background: rgba(99, 102, 241, 0.55);
-  color: #fff;
+  background: linear-gradient(135deg, #3d83f7, #1f63d8);
+  box-shadow: 0 4px 16px rgba(45, 121, 243, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
 .is-checking .handle,
 .is-loading .handle {
   pointer-events: none;
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 .is-success .handle {
-  background: rgba(16, 185, 129, 0.35);
-  border-color: rgba(16, 185, 129, 0.5);
-  color: #34d399;
+  background: linear-gradient(135deg, #34d399, #10b981);
+  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
   pointer-events: none;
 }
 
 .is-fail .handle {
-  background: rgba(239, 68, 68, 0.3);
-  border-color: rgba(239, 68, 68, 0.5);
-  color: #f87171;
+  background: linear-gradient(135deg, #f87171, #ef4444);
+  box-shadow: 0 2px 10px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
   pointer-events: none;
 }
 
@@ -414,8 +487,15 @@ onBeforeUnmount(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .shaking {
+  .shaking,
+  .is-ready .track-text,
+  .hint-arrows svg {
     animation: none;
+  }
+
+  .is-ready .track-text {
+    color: #9ca3af;
+    background: none;
   }
 }
 </style>

@@ -793,7 +793,7 @@ async function confirmAddFromIde() {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(21, 23, 23, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -801,17 +801,23 @@ async function confirmAddFromIde() {
 }
 
 .modal {
-  background: #1e1e2e;
-  border: 1px solid #2a2a3e;
-  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 16px;
+  box-shadow: 0 20px 48px rgba(21, 23, 23, 0.16);
   padding: 28px;
   width: 400px;
   max-width: 90vw;
+  color: #151717;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, sans-serif;
 }
 
 .modal h3 {
   margin: 0 0 20px;
   font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .add-skill-modal {
@@ -827,23 +833,26 @@ async function confirmAddFromIde() {
 .method-tab {
   flex: 1;
   padding: 8px 6px;
-  border: 1px solid #333;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
-  background: #20202e;
-  color: #bbb;
+  background: #ffffff;
+  color: #6b7280;
   font-size: 13px;
+  font-family: inherit;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
-.method-tab:hover:not(.disabled) {
-  background: #2a2a3e;
+.method-tab:hover:not(.disabled):not(.active) {
+  border-color: #d1d5db;
+  color: #151717;
 }
 
 .method-tab.active {
-  border-color: #5b7fff;
-  background: #2a2a4a;
-  color: #fff;
+  border-color: #151717;
+  background: #151717;
+  color: #ffffff;
+  font-weight: 600;
 }
 
 .method-tab.disabled {
@@ -857,7 +866,8 @@ async function confirmAddFromIde() {
 
 .hint {
   font-size: 13px;
-  color: #888;
+  color: #9ca3af;
+  line-height: 1.6;
   margin: 0 0 12px;
 }
 
@@ -868,24 +878,32 @@ async function confirmAddFromIde() {
 .field label {
   display: block;
   font-size: 13px;
-  color: #aaa;
+  font-weight: 600;
+  color: #6b7280;
   margin-bottom: 6px;
 }
 
 .field input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  background: #262636;
-  color: #e0e0e0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f6f7f8;
+  color: #151717;
   font-size: 14px;
+  font-family: inherit;
   outline: none;
   box-sizing: border-box;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.field input::placeholder {
+  color: #b6bcc4;
 }
 
 .field input:focus {
-  border-color: #5b7fff;
+  border-color: #151717;
+  background: #ffffff;
 }
 
 .personal-list {
@@ -901,24 +919,24 @@ async function confirmAddFromIde() {
   align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid #2a2a3e;
-  border-radius: 8px;
+  border: 1px solid #ebedf0;
+  border-radius: 10px;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .personal-item:hover {
-  background: #222236;
+  background: #f6f7f8;
 }
 
 .personal-item.selected {
-  border-color: #5b7fff;
-  background: #2a2a4a;
+  border-color: #151717;
+  background: #f6f7f8;
 }
 
 .personal-item input {
   margin-top: 3px;
-  accent-color: #5b7fff;
+  accent-color: #151717;
 }
 
 .pi-main {
@@ -930,12 +948,13 @@ async function confirmAddFromIde() {
 
 .pi-name {
   font-size: 14px;
-  color: #e0e0e0;
+  font-weight: 500;
+  color: #151717;
 }
 
 .pi-desc {
   font-size: 12px;
-  color: #888;
+  color: #6b7280;
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
@@ -952,21 +971,23 @@ async function confirmAddFromIde() {
   align-items: center;
   justify-content: space-between;
   font-size: 13px;
-  color: #bbb;
+  color: #6b7280;
   margin-bottom: 8px;
 }
 
 .link-btn {
   background: none;
   border: none;
-  color: #8b9cf7;
+  color: #4f46e5;
   font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
   padding: 0;
 }
 
 .link-btn:hover {
-  color: #aab4ff;
+  text-decoration: underline;
 }
 
 .scan-list {
@@ -982,33 +1003,33 @@ async function confirmAddFromIde() {
   align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid #2a2a3e;
-  border-radius: 8px;
+  border: 1px solid #ebedf0;
+  border-radius: 10px;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .scan-item:hover {
-  background: #222236;
+  background: #f6f7f8;
 }
 
 .scan-item.selected {
-  border-color: #5b7fff;
-  background: #2a2a4a;
+  border-color: #151717;
+  background: #f6f7f8;
 }
 
 .scan-item input {
   margin-top: 3px;
-  accent-color: #5b7fff;
+  accent-color: #151717;
 }
 
 .origin-badge {
   display: inline-block;
   margin-left: 6px;
   padding: 0 6px;
-  border-radius: 8px;
-  background: #2a2a3e;
-  color: #8b9cf7;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #4b5563;
   font-size: 11px;
   vertical-align: middle;
 }
@@ -1017,17 +1038,17 @@ async function confirmAddFromIde() {
   display: inline-block;
   margin-left: 6px;
   padding: 0 6px;
-  border-radius: 8px;
-  background: rgba(245, 158, 11, 0.16);
-  color: #f59e0b;
+  border-radius: 999px;
+  background: #fffbeb;
+  color: #b45309;
   font-size: 11px;
   vertical-align: middle;
 }
 
 .pi-path {
   font-size: 11px;
-  color: #666;
-  font-family: monospace;
+  color: #9ca3af;
+  font-family: 'JetBrains Mono', monospace;
   word-break: break-all;
 }
 
@@ -1038,7 +1059,7 @@ async function confirmAddFromIde() {
   gap: 8px;
   margin-top: 14px;
   font-size: 13px;
-  color: #aaa;
+  color: #6b7280;
 }
 
 .ide-groups {
@@ -1061,9 +1082,9 @@ async function confirmAddFromIde() {
   gap: 8px;
   font-size: 12px;
   font-weight: 600;
-  color: #cdd3ff;
+  color: #151717;
   padding: 2px 0;
-  border-bottom: 1px solid #2a2a3e;
+  border-bottom: 1px solid #f3f4f6;
 }
 
 .ide-group-name {
@@ -1077,9 +1098,9 @@ async function confirmAddFromIde() {
   min-width: 18px;
   height: 16px;
   padding: 0 5px;
-  border-radius: 8px;
-  background: #2a2a3e;
-  color: #8b9cf7;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #6b7280;
   font-size: 11px;
   font-weight: 600;
 }
@@ -1088,8 +1109,8 @@ async function confirmAddFromIde() {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(91, 127, 255, 0.3);
-  border-top-color: #5b7fff;
+  border: 2px solid #e5e7eb;
+  border-top-color: #151717;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -1106,21 +1127,24 @@ async function confirmAddFromIde() {
 .url-input {
   flex: 1;
   padding: 9px 12px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  background: #262636;
-  color: #e0e0e0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f6f7f8;
+  color: #151717;
   font-size: 13px;
+  font-family: inherit;
   outline: none;
   box-sizing: border-box;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .url-input:focus {
-  border-color: #5b7fff;
+  border-color: #151717;
+  background: #ffffff;
 }
 
 .url-input::placeholder {
-  color: #666;
+  color: #b6bcc4;
 }
 
 .url-input:disabled {
@@ -1130,14 +1154,18 @@ async function confirmAddFromIde() {
 
 .empty-hint {
   text-align: center;
-  color: #555;
+  color: #9ca3af;
   font-size: 13px;
 }
 
 .error-msg {
-  color: #ff6b6b;
-  font-size: 13px;
   margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  font-size: 13px;
 }
 
 .modal-actions {
@@ -1148,32 +1176,38 @@ async function confirmAddFromIde() {
 }
 
 .btn-sm {
-  padding: 6px 14px;
-  border: 1px solid #333;
-  border-radius: 6px;
-  background: #262636;
-  color: #ccc;
+  padding: 7px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #6b7280;
   font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-.btn-sm:hover {
-  background: #333;
+.btn-sm:hover:not(:disabled) {
+  border-color: #d1d5db;
+  color: #151717;
 }
 
 .btn-sm:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .btn-primary {
-  background: #5b7fff;
-  border-color: #5b7fff;
-  color: #fff;
+  background: #151717;
+  border-color: #151717;
+  color: #ffffff;
+  font-weight: 600;
 }
 
-.btn-primary:hover {
-  background: #4a6eee;
+.btn-primary:hover:not(:disabled) {
+  background: #2d2f2f;
+  border-color: #2d2f2f;
+  color: #ffffff;
 }
 </style>
