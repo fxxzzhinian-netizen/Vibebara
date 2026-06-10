@@ -6,25 +6,50 @@ import { useAuthStore } from '@/stores/authStore'
 const router = useRouter()
 const authStore = useAuthStore()
 
+const mode = ref<'login' | 'register'>('login')
 const username = ref('')
 const password = ref('')
+const confirmPassword = ref('')
+const inviteCode = ref('')
 const loading = ref(false)
 const error = ref('')
 
-async function handleLogin() {
+function switchMode(target: 'login' | 'register') {
+  mode.value = target
+  error.value = ''
+}
+
+async function handleSubmit() {
   if (!username.value || !password.value) {
     error.value = '请输入用户名和密码'
     return
   }
+  if (mode.value === 'register') {
+    if (!inviteCode.value.trim()) {
+      error.value = '请输入邀请码'
+      return
+    }
+    if (password.value !== confirmPassword.value) {
+      error.value = '两次输入的密码不一致'
+      return
+    }
+  }
   loading.value = true
   error.value = ''
-  const res = await authStore.doLogin(username.value, password.value)
+  const res =
+    mode.value === 'login'
+      ? await authStore.doLogin(username.value, password.value)
+      : await authStore.doRegister(
+          username.value,
+          password.value,
+          inviteCode.value.trim(),
+        )
   loading.value = false
   if (res.success) {
     localStorage.setItem('vibebara_user_id', authStore.user?.id || '')
     router.push('/')
   } else {
-    error.value = res.error || '登录失败'
+    error.value = res.error || (mode.value === 'login' ? '登录失败' : '注册失败')
   }
 }
 </script>
@@ -37,7 +62,24 @@ async function handleLogin() {
         <p>团队 Skill 协作平台</p>
       </div>
 
-      <form class="login-form" @submit.prevent="handleLogin">
+      <div class="mode-tabs">
+        <button
+          type="button"
+          :class="{ active: mode === 'login' }"
+          @click="switchMode('login')"
+        >
+          登录
+        </button>
+        <button
+          type="button"
+          :class="{ active: mode === 'register' }"
+          @click="switchMode('register')"
+        >
+          注册
+        </button>
+      </div>
+
+      <form class="login-form" @submit.prevent="handleSubmit">
         <div class="field">
           <label>用户名</label>
           <input
@@ -53,20 +95,48 @@ async function handleLogin() {
           <input
             v-model="password"
             type="password"
-            placeholder="输入密码"
-            autocomplete="current-password"
+            :placeholder="mode === 'register' ? '设置密码' : '输入密码'"
+            :autocomplete="mode === 'register' ? 'new-password' : 'current-password'"
           />
         </div>
+
+        <template v-if="mode === 'register'">
+          <div class="field">
+            <label>确认密码</label>
+            <input
+              v-model="confirmPassword"
+              type="password"
+              placeholder="再次输入密码"
+              autocomplete="new-password"
+            />
+          </div>
+
+          <div class="field">
+            <label>邀请码</label>
+            <input
+              v-model="inviteCode"
+              type="text"
+              placeholder="VH-XXXX-XXXX"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+        </template>
 
         <div v-if="error" class="error-msg">{{ error }}</div>
 
         <button type="submit" class="btn-login" :disabled="loading">
-          {{ loading ? '登录中...' : '登 录' }}
+          {{
+            loading
+              ? mode === 'login' ? '登录中...' : '注册中...'
+              : mode === 'login' ? '登 录' : '注 册'
+          }}
         </button>
       </form>
 
       <div class="login-footer">
-        <span>预设账号: DAIL / DAIL2026 或 DAIL2 / DAIL2027</span>
+        <span v-if="mode === 'register'">注册需要邀请码，请联系管理员获取</span>
+        <span v-else>测试版 · 没有账号？切换到「注册」并填写邀请码</span>
       </div>
     </div>
   </div>
@@ -107,6 +177,33 @@ async function handleLogin() {
   color: #888;
   font-size: 14px;
   margin: 0;
+}
+
+.mode-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  background: #262636;
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.mode-tabs button {
+  flex: 1;
+  padding: 9px 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #888;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.mode-tabs button.active {
+  background: linear-gradient(135deg, #5b7fff, #8b5cf6);
+  color: #fff;
 }
 
 .login-form .field {

@@ -26,12 +26,14 @@ export interface UserResponse {
 export async function register(
   username: string,
   password: string,
+  inviteCode: string,
   display_name?: string,
   email?: string,
 ): Promise<TokenResponse> {
   const { data } = await apiClient.post<TokenResponse>('/auth/register', {
     username,
     password,
+    invite_code: inviteCode,
     display_name: display_name ?? '',
     email: email ?? null,
   })

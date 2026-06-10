@@ -43,6 +43,7 @@ async def register(data: RegisterRequest):
             password=data.password,
             display_name=data.display_name,
             email=data.email,
+            invite_code=data.invite_code,
         )
         return result
     except Exception as e:

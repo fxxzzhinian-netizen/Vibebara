@@ -20,12 +20,13 @@ export const useAuthStore = defineStore('auth', () => {
   async function doRegister(
     username: string,
     password: string,
+    inviteCode: string,
     displayName?: string,
   ) {
     loading.value = true
     error.value = ''
     try {
-      const res = await register(username, password, displayName)
+      const res = await register(username, password, inviteCode, displayName)
       if (res.success) {
         token.value = res.token
         setToken(res.token)

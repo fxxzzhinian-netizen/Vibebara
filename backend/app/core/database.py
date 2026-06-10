@@ -81,6 +81,8 @@ async def _migrate_add_columns() -> None:
         ("user_skill_deployments", "local_dirty", "TINYINT(1) NOT NULL DEFAULT 0"),
         # 团队 Skill 版本记录：资源清单列（存量表升级补列；新表由 create_all 直接含）。
         ("skill_versions", "resources_json", "TEXT NULL"),
+        # 注册邀请码：记录用户注册时消费的码（invite_codes 新表由 create_all 直接建）。
+        ("users", "invite_code_used", "VARCHAR(16) NULL"),
     ]
     async with engine.begin() as conn:
         for table, column, col_def in migrations:

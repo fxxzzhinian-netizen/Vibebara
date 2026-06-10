@@ -100,8 +100,21 @@ def _hash_api_key(api_key: str) -> str:
 
 
 async def register(
-    username: str, password: str, display_name: str = "", email: Optional[str] = None
+    username: str,
+    password: str,
+    display_name: str = "",
+    email: Optional[str] = None,
+    invite_code: Optional[str] = None,
+    bypass_invite: bool = False,
 ) -> dict:
+    """注册新用户。
+
+    INVITE_CODE_REQUIRED 开启时必须提供有效邀请码（bypass_invite 仅供
+    种子用户等内部调用绕过）。邀请码消费与用户创建在同一事务内，
+    注册失败回滚时不会浪费邀请码次数。
+    """
+    from app.services import invite_service
+
     async with async_session_factory() as session:
         existing = await session.execute(
             select(User).where(User.username == username)
@@ -116,11 +129,22 @@ async def register(
             if dup_email.scalar_one_or_none():
                 return {"success": False, "error": "邮箱已被注册"}
 
+        consumed_code: Optional[str] = None
+        if settings.INVITE_CODE_REQUIRED and not bypass_invite:
+            ok, code_or_error = await invite_service.consume_invite(
+                session, invite_code or ""
+            )
+            if not ok:
+                await session.rollback()
+                return {"success": False, "error": code_or_error}
+            consumed_code = code_or_error
+
         user = User(
             username=username,
             password_hash=_hash_password(password),
             display_name=display_name or username,
             email=email,
+            invite_code_used=consumed_code,
         )
         session.add(user)
         await session.commit()

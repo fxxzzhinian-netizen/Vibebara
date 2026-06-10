@@ -133,6 +133,35 @@ curl http://localhost:8000/health        # {"status":"healthy",...}
 | `DAIL` | `DAIL2026` |
 | `DAIL2` | `DAIL2027` |
 
+### 邀请码（测试版注册收口）
+
+测试版注册需填写后台签发的邀请码（格式 `VH-XXXX-XXXX`，大小写不敏感、连字符可省略）。种子账号不受影响。
+
+**服务器上签发 / 管理（推荐）：**
+
+```bash
+# 签发 10 个一次性邀请码
+docker compose exec backend python scripts/generate_invites.py -n 10
+
+# 签发 1 个可用 20 次、30 天后过期的码（适合发到一个测试群）
+docker compose exec backend python scripts/generate_invites.py --max-uses 20 --expires-days 30 --note "首批内测群"
+
+# 查看全部邀请码及使用状况 / 吊销某个码
+docker compose exec backend python scripts/generate_invites.py --list
+docker compose exec backend python scripts/generate_invites.py --disable VH-8K2M-9DQ4
+```
+
+**管理 API（管理员账号登录后调用，默认白名单 `DAIL`）：**
+
+- `POST /api/v1/invites/generate` — 批量签发（`count` / `max_uses` / `expires_in_days` / `note`）
+- `GET /api/v1/invites` — 列出全部码及使用状况
+- `POST /api/v1/invites/{code}/disable` — 吊销
+
+**相关配置（环境变量 / `.env`）：**
+
+- `INVITE_CODE_REQUIRED`（默认 `true`）— 设为 `false` 可放开注册（本地开发用）
+- `ADMIN_USERNAMES`（默认 `["DAIL"]`）— 邀请码管理端点的管理员用户名白名单
+
 ### 日常运维
 
 ```bash

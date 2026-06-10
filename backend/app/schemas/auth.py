@@ -7,6 +7,8 @@ class RegisterRequest(BaseModel):
     password: str
     display_name: str = ""
     email: Optional[str] = None
+    # 注册邀请码（INVITE_CODE_REQUIRED 开启时必填），格式 VH-XXXX-XXXX
+    invite_code: str = ""
 
 
 class LoginRequest(BaseModel):

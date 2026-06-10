@@ -14,6 +14,7 @@ from app.api.launcher import api_router as launcher_router
 from app.api.skill_forge import api_router as skill_forge_router
 from app.api.skill_store import api_router as skill_store_router
 from app.api.auth import api_router as auth_router
+from app.api.invites import api_router as invites_router
 from app.api.teams import api_router as teams_router
 from app.api.projects import api_router as projects_router
 from app.api.devices import api_router as devices_router
@@ -148,6 +149,7 @@ def create_app() -> FastAPI:
     app.include_router(skill_forge_router, prefix="/api/v1")
     app.include_router(skill_store_router, prefix="/api/v1")
     app.include_router(auth_router, prefix="/api/v1")
+    app.include_router(invites_router, prefix="/api/v1")
     app.include_router(teams_router, prefix="/api/v1")
     app.include_router(projects_router, prefix="/api/v1")
     # 设备身份端点（M5-b 地基）：local/cloud 均挂载（云端数据端点，无本地盘依赖）。
@@ -204,6 +206,7 @@ async def _seed_default_users():
             username=u["username"],
             password=u["password"],
             display_name=u["display_name"],
+            bypass_invite=True,
         )
         if result.get("success"):
             print(f"  [启动] 创建用户: {u['username']}")
