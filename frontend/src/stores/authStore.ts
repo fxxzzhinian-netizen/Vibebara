@@ -4,6 +4,7 @@ import {
   register,
   login,
   getMe,
+  saveOnboarding,
   type UserInfo,
 } from '@/api/auth'
 import { ensureDeviceRegistered } from '@/api/devices'
@@ -91,6 +92,26 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  async function completeOnboarding(devMode: string, favoriteTool: string) {
+    try {
+      const res = await saveOnboarding(devMode, favoriteTool)
+      if (res.success && user.value) {
+        user.value = {
+          ...user.value,
+          onboarded: true,
+          dev_mode: devMode,
+          favorite_tool: favoriteTool,
+        }
+      }
+      return res
+    } catch (e: any) {
+      return {
+        success: false,
+        error: e?.response?.data?.detail || e.message,
+      }
+    }
+  }
+
   function logout() {
     token.value = ''
     user.value = null
@@ -116,6 +137,7 @@ export const useAuthStore = defineStore('auth', () => {
     doRegister,
     doLogin,
     fetchMe,
+    completeOnboarding,
     logout,
     init,
   }

@@ -190,6 +190,21 @@ async def get_user_by_id(user_id: str) -> Optional[User]:
         return await session.get(User, user_id)
 
 
+async def save_onboarding(
+    user_id: str, dev_mode: str, favorite_tool: str
+) -> dict:
+    """保存首次登录引导选择并标记完成。"""
+    async with async_session_factory() as session:
+        user = await session.get(User, user_id)
+        if not user:
+            return {"success": False, "error": "用户不存在"}
+        user.dev_mode = dev_mode
+        user.favorite_tool = favorite_tool
+        user.onboarded = True
+        await session.commit()
+    return {"success": True}
+
+
 async def generate_api_key(user_id: str) -> dict:
     raw_key = f"vhk_{secrets.token_urlsafe(32)}"
     hashed = _hash_api_key(raw_key)

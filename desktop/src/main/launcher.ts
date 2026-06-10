@@ -30,6 +30,9 @@ const SUPPORTED_TOOLS: LauncherToolId[] = [
   "windsurf",
   "claude-code",
   "claude-app",
+  "kiro",
+  "trae",
+  "qoder",
 ];
 
 const TOOL_LABELS: Record<LauncherToolId, string> = {
@@ -39,6 +42,9 @@ const TOOL_LABELS: Record<LauncherToolId, string> = {
   windsurf: "Windsurf",
   "claude-code": "Claude Code",
   "claude-app": "Claude",
+  kiro: "Kiro",
+  trae: "Trae",
+  qoder: "Qoder",
 };
 
 /** 交互式 CLI 工具（新终端窗口启动）；其余按 GUI 应用后台启动。 */
@@ -157,6 +163,45 @@ function resolveCommand(tool: LauncherToolId): string[] {
     throw new Error("Claude App 未找到，请确认 Claude 桌面应用已安装");
   }
 
+  if (tool === "kiro") {
+    if (IS_WINDOWS) {
+      const exe = which("kiro.cmd", "kiro", "Kiro.exe");
+      if (exe) return [exe];
+      const appx = findAppxApp("Kiro");
+      if (appx) return ["explorer.exe", appx];
+    } else {
+      const exe = which("kiro", "Kiro");
+      if (exe) return [exe];
+    }
+    throw new Error("kiro 命令未找到，请确认 Kiro 已安装且在 PATH 中");
+  }
+
+  if (tool === "trae") {
+    if (IS_WINDOWS) {
+      const exe = which("trae.cmd", "trae", "Trae.exe");
+      if (exe) return [exe];
+      const appx = findAppxApp("Trae");
+      if (appx) return ["explorer.exe", appx];
+    } else {
+      const exe = which("trae", "Trae");
+      if (exe) return [exe];
+    }
+    throw new Error("trae 命令未找到，请确认 Trae 已安装且在 PATH 中");
+  }
+
+  if (tool === "qoder") {
+    if (IS_WINDOWS) {
+      const exe = which("qoder.cmd", "qoder", "qodercli.cmd", "qodercli", "Qoder.exe");
+      if (exe) return [exe];
+      const appx = findAppxApp("Qoder");
+      if (appx) return ["explorer.exe", appx];
+    } else {
+      const exe = which("qoder", "qodercli", "Qoder");
+      if (exe) return [exe];
+    }
+    throw new Error("qoder 命令未找到，请确认 Qoder 已安装且在 PATH 中");
+  }
+
   throw new Error(`不支持的工具: ${tool}`);
 }
 
@@ -225,6 +270,15 @@ export function listTools(): { tools: LauncherToolInfo[] } {
     } else if (id === "claude-app") {
       mode = "app";
       description = "启动 Claude 桌面应用";
+    } else if (id === "kiro") {
+      mode = "app";
+      description = "启动 Kiro IDE";
+    } else if (id === "trae") {
+      mode = "app";
+      description = "启动 Trae IDE";
+    } else if (id === "qoder") {
+      mode = "app";
+      description = "启动 Qoder IDE";
     } else {
       mode = "app";
       description = "启动 Cursor IDE";

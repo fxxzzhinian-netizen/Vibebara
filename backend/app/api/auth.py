@@ -10,6 +10,8 @@ from app.schemas.auth import (
     CaptchaVerifyResponse,
     GenerateApiKeyResponse,
     LoginRequest,
+    OnboardingRequest,
+    OnboardingResponse,
     RegisterRequest,
     TokenResponse,
     UserInfo,
@@ -112,8 +114,25 @@ async def get_me(user_id: str = Depends(get_current_user_id)):
             email=user.email,
             avatar_url=user.avatar_url,
             created_at=user.created_at.isoformat() if user.created_at else None,
+            onboarded=bool(user.onboarded),
+            dev_mode=user.dev_mode,
+            favorite_tool=user.favorite_tool,
         ),
     }
+
+
+@api_router.post("/onboarding", response_model=OnboardingResponse)
+async def save_onboarding(
+    data: OnboardingRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    try:
+        return await auth_service.save_onboarding(
+            user_id, data.dev_mode, data.favorite_tool
+        )
+    except Exception as e:
+        logger.exception("[auth/onboarding] 保存引导选择失败")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @api_router.post("/api-key", response_model=GenerateApiKeyResponse)

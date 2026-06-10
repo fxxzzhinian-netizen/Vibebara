@@ -83,6 +83,10 @@ async def _migrate_add_columns() -> None:
         ("skill_versions", "resources_json", "TEXT NULL"),
         # 注册邀请码：记录用户注册时消费的码（invite_codes 新表由 create_all 直接建）。
         ("users", "invite_code_used", "VARCHAR(16) NULL"),
+        # 首次登录引导：完成标记 + 场景偏好 + 最常用工具（存量表升级补列）。
+        ("users", "onboarded", "TINYINT(1) NOT NULL DEFAULT 0"),
+        ("users", "dev_mode", "VARCHAR(16) NULL"),
+        ("users", "favorite_tool", "VARCHAR(32) NULL"),
     ]
     async with engine.begin() as conn:
         for table, column, col_def in migrations:

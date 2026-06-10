@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
+import { isDesktop } from '@/runtime/desktopBridge'
 import SliderCaptcha from '@/components/SliderCaptcha.vue'
 import logoUrl from '@/img/logo.png'
 
@@ -16,44 +17,55 @@ const inviteCode = ref('')
 const captchaToken = ref('')
 const loading = ref(false)
 const error = ref('')
-const captchaRef = ref<InstanceType<typeof SliderCaptcha> | null>(null)
+const showCaptcha = ref(false)
+const showPassword = ref(false)
+const showConfirmPassword = ref(false)
 
 function switchMode(target: 'login' | 'register') {
   if (mode.value === target) return
   mode.value = target
   error.value = ''
-  resetCaptcha()
-}
-
-function resetCaptcha() {
   captchaToken.value = ''
-  captchaRef.value?.reset()
 }
 
-function onCaptchaVerified(token: string) {
-  captchaToken.value = token
-  if (error.value === '请先完成滑块验证') error.value = ''
-}
-
-async function handleSubmit() {
+function validateFields(): boolean {
   if (!username.value || !password.value) {
     error.value = '请输入用户名和密码'
-    return
+    return false
   }
   if (mode.value === 'register') {
     if (!inviteCode.value.trim()) {
       error.value = '请输入邀请码'
-      return
+      return false
     }
     if (password.value !== confirmPassword.value) {
       error.value = '两次输入的密码不一致'
-      return
+      return false
     }
   }
-  if (!captchaToken.value) {
-    error.value = '请先完成滑块验证'
-    return
-  }
+  return true
+}
+
+// 点击登录/注册：先做字段校验，通过后弹出滑块验证
+function handleSubmit() {
+  error.value = ''
+  if (!validateFields()) return
+  captchaToken.value = ''
+  showCaptcha.value = true
+}
+
+function closeCaptcha() {
+  showCaptcha.value = false
+}
+
+async function onCaptchaVerified(token: string) {
+  captchaToken.value = token
+  showCaptcha.value = false
+  await doSubmit()
+}
+
+async function doSubmit() {
+  if (!captchaToken.value) return
   loading.value = true
   error.value = ''
   const res =
@@ -68,20 +80,25 @@ async function handleSubmit() {
   loading.value = false
   if (res.success) {
     localStorage.setItem('vibebara_user_id', authStore.user?.id || '')
-    router.push('/')
+    // 桌面端首次登录（未完成引导）→ 进入引导流程；其余直接进主页
+    if (isDesktop() && authStore.user && !authStore.user.onboarded) {
+      router.push('/onboarding')
+    } else {
+      router.push('/')
+    }
   } else {
     error.value = res.error || (mode.value === 'login' ? '登录失败' : '注册失败')
     // 验证 token 已被服务端消费（一次性），失败后需重新验证
-    resetCaptcha()
+    captchaToken.value = ''
   }
 }
 </script>
 
 <template>
   <div class="login-page">
-    <form class="form" @submit.prevent="handleSubmit">
-      <img class="form-logo" :src="logoUrl" alt="vibebara" draggable="false" />
+    <img class="page-logo" :src="logoUrl" alt="vibebara" draggable="false" />
 
+    <form class="form" @submit.prevent="handleSubmit">
       <div class="form-head">
         <h2>{{ mode === 'login' ? '欢迎回来' : '创建账号' }}</h2>
         <p>
@@ -117,22 +134,38 @@ async function handleSubmit() {
         <label for="login-password">密码</label>
       </div>
       <div class="inputForm">
-        <svg height="20" viewBox="-64 0 512 512" width="20" xmlns="http://www.w3.org/2000/svg">
+        <svg height="20" viewBox="0 0 1024 1024" width="20" xmlns="http://www.w3.org/2000/svg">
           <path
-            d="m336 512h-288c-26.453125 0-48-21.523438-48-48v-224c0-26.476562 21.546875-48 48-48h288c26.453125 0 48 21.523438 48 48v224c0 26.476562-21.546875 48-48 48zm-288-288c-8.8125 0-16 7.167969-16 16v224c0 8.832031 7.1875 16 16 16h288c8.8125 0 16-7.167969 16-16v-224c0-8.832031-7.1875-16-16-16zm0 0"
+            d="M814.08 366.08h-76.8v-76.8c0-124.416-100.85888-225.28-225.28-225.28s-225.28 100.85888-225.28 225.28v76.8H209.92c-56.55552 0-102.4 45.84448-102.4 102.4v389.12c0 56.55552 45.84448 102.4 102.4 102.4h604.16c56.55552 0 102.4-45.84448 102.4-102.4v-389.12c0-56.55552-45.84448-102.4-102.4-102.4z m-455.68-76.8c0-84.69504 68.90496-153.6 153.6-153.6s153.6 68.90496 153.6 153.6v76.8H358.4v-76.8z m486.4 568.32c0 16.93696-13.77792 30.72-30.72 30.72H209.92c-16.94208 0-30.72-13.78304-30.72-30.72v-389.12c0-16.93696 13.77792-30.72 30.72-30.72h604.16c16.94208 0 30.72 13.78304 30.72 30.72v389.12z"
           ></path>
           <path
-            d="m304 224c-8.832031 0-16-7.167969-16-16v-80c0-52.929688-43.070312-96-96-96s-96 43.070312-96 96v80c0 8.832031-7.167969 16-16 16s-16-7.167969-16-16v-80c0-70.59375 57.40625-128 128-128s128 57.40625 128 128v80c0 8.832031-7.167969 16-16 16zm0 0"
+            d="M512 550.4a35.84 35.84 0 0 0-35.84 35.84v174.08a35.84 35.84 0 1 0 71.68 0v-174.08a35.84 35.84 0 0 0-35.84-35.84z"
           ></path>
         </svg>
         <input
           id="login-password"
           v-model="password"
-          type="password"
+          :type="showPassword ? 'text' : 'password'"
           class="input"
           :placeholder="mode === 'register' ? '设置密码' : '输入密码'"
           :autocomplete="mode === 'register' ? 'new-password' : 'current-password'"
         />
+        <button
+          type="button"
+          class="toggle-pass"
+          :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+          @click="showPassword = !showPassword"
+        >
+          <svg v-if="showPassword" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+            <circle cx="12" cy="12" r="3" />
+            <line x1="3.5" y1="3.5" x2="20.5" y2="20.5" />
+          </svg>
+          <svg v-else viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        </button>
       </div>
 
       <template v-if="mode === 'register'">
@@ -140,22 +173,38 @@ async function handleSubmit() {
           <label for="login-confirm">确认密码</label>
         </div>
         <div class="inputForm">
-          <svg height="20" viewBox="-64 0 512 512" width="20" xmlns="http://www.w3.org/2000/svg">
+          <svg height="20" viewBox="0 0 1024 1024" width="20" xmlns="http://www.w3.org/2000/svg">
             <path
-              d="m336 512h-288c-26.453125 0-48-21.523438-48-48v-224c0-26.476562 21.546875-48 48-48h288c26.453125 0 48 21.523438 48 48v224c0 26.476562-21.546875 48-48 48zm-288-288c-8.8125 0-16 7.167969-16 16v224c0 8.832031 7.1875 16 16 16h288c8.8125 0 16-7.167969 16-16v-224c0-8.832031-7.1875-16-16-16zm0 0"
+              d="M814.08 366.08h-76.8v-76.8c0-124.416-100.85888-225.28-225.28-225.28s-225.28 100.85888-225.28 225.28v76.8H209.92c-56.55552 0-102.4 45.84448-102.4 102.4v389.12c0 56.55552 45.84448 102.4 102.4 102.4h604.16c56.55552 0 102.4-45.84448 102.4-102.4v-389.12c0-56.55552-45.84448-102.4-102.4-102.4z m-455.68-76.8c0-84.69504 68.90496-153.6 153.6-153.6s153.6 68.90496 153.6 153.6v76.8H358.4v-76.8z m486.4 568.32c0 16.93696-13.77792 30.72-30.72 30.72H209.92c-16.94208 0-30.72-13.78304-30.72-30.72v-389.12c0-16.93696 13.77792-30.72 30.72-30.72h604.16c16.94208 0 30.72 13.78304 30.72 30.72v389.12z"
             ></path>
             <path
-              d="m304 224c-8.832031 0-16-7.167969-16-16v-80c0-52.929688-43.070312-96-96-96s-96 43.070312-96 96v80c0 8.832031-7.167969 16-16 16s-16-7.167969-16-16v-80c0-70.59375 57.40625-128 128-128s128 57.40625 128 128v80c0 8.832031-7.167969 16-16 16zm0 0"
+              d="M512 550.4a35.84 35.84 0 0 0-35.84 35.84v174.08a35.84 35.84 0 1 0 71.68 0v-174.08a35.84 35.84 0 0 0-35.84-35.84z"
             ></path>
           </svg>
           <input
             id="login-confirm"
             v-model="confirmPassword"
-            type="password"
+            :type="showConfirmPassword ? 'text' : 'password'"
             class="input"
             placeholder="再次输入密码"
             autocomplete="new-password"
           />
+          <button
+            type="button"
+            class="toggle-pass"
+            :aria-label="showConfirmPassword ? '隐藏密码' : '显示密码'"
+            @click="showConfirmPassword = !showConfirmPassword"
+          >
+            <svg v-if="showConfirmPassword" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+              <circle cx="12" cy="12" r="3" />
+              <line x1="3.5" y1="3.5" x2="20.5" y2="20.5" />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
         </div>
 
         <div class="flex-column">
@@ -179,10 +228,6 @@ async function handleSubmit() {
         </div>
       </template>
 
-      <div class="captcha-wrap">
-        <SliderCaptcha ref="captchaRef" @verified="onCaptchaVerified" />
-      </div>
-
       <div v-if="error" class="error-msg">{{ error }}</div>
 
       <button type="submit" class="button-submit" :disabled="loading">
@@ -202,11 +247,30 @@ async function handleSubmit() {
         </template>
       </p>
     </form>
+
+    <!-- 滑块验证弹窗：点击登录/注册后出现 -->
+    <transition name="overlay-fade">
+      <div v-if="showCaptcha" class="captcha-overlay" @click.self="closeCaptcha">
+        <div class="captcha-modal">
+          <button type="button" class="captcha-close" aria-label="关闭" @click="closeCaptcha">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+          <h3 class="captcha-title">安全验证</h3>
+          <p class="captcha-sub">拖动滑块完成拼图以继续</p>
+          <div class="captcha-slot">
+            <SliderCaptcha @verified="onCaptchaVerified" />
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
 <style scoped>
 .login-page {
+  position: relative;
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -214,6 +278,13 @@ async function handleSubmit() {
   background: #ffffff;
   padding: 24px;
   box-sizing: border-box;
+}
+
+.page-logo {
+  position: absolute;
+  top: 28px;
+  left: 32px;
+  height: 30px;
 }
 
 .form {
@@ -225,8 +296,8 @@ async function handleSubmit() {
   width: 450px;
   max-width: 100%;
   border-radius: 20px;
-  border: 1.5px solid #ecedec;
   box-sizing: border-box;
+  transform: translateY(-40px);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
     Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
 }
@@ -237,26 +308,20 @@ async function handleSubmit() {
   color: #9ca3af;
 }
 
-.form-logo {
-  height: 28px;
-  align-self: center;
-  margin-bottom: 6px;
-}
-
 .form-head {
   text-align: center;
-  margin-bottom: 8px;
+  margin-bottom: 14px;
 }
 
 .form-head h2 {
-  font-size: 22px;
+  font-size: 27px;
   font-weight: 650;
   color: #151717;
-  margin: 0 0 6px;
+  margin: 0 0 8px;
 }
 
 .form-head p {
-  font-size: 13.5px;
+  font-size: 15px;
   color: #6b7280;
   margin: 0;
 }
@@ -277,7 +342,8 @@ async function handleSubmit() {
   transition: 0.2s ease-in-out;
 }
 
-.inputForm svg {
+/* 仅作用于输入框左侧的引导图标（锁/用户/钥匙），避免覆盖眼睛线条图标的 fill="none" */
+.inputForm > svg {
   flex: 0 0 auto;
   fill: #151717;
 }
@@ -303,8 +369,23 @@ async function handleSubmit() {
   border: 1.5px solid #2d79f3;
 }
 
-.captcha-wrap {
-  margin-top: 4px;
+.toggle-pass {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #151717;
+  cursor: pointer;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.toggle-pass:hover {
+  opacity: 0.6;
 }
 
 .error-msg {
@@ -313,10 +394,13 @@ async function handleSubmit() {
 }
 
 .button-submit {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
   margin: 20px 0 10px 0;
   background-color: #151717;
-  border: none;
-  color: white;
+  border: 1.5px solid #151717;
+  color: #ffffff;
   font-size: 15px;
   font-weight: 500;
   letter-spacing: 0.06em;
@@ -324,11 +408,31 @@ async function handleSubmit() {
   height: 50px;
   width: 100%;
   cursor: pointer;
-  transition: background-color 0.2s ease-in-out;
+  transition: color 0.35s ease;
+}
+
+/* 触摸反转：白色从左向右扫入，文字转为深色 */
+.button-submit::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: #ffffff;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.35s ease;
 }
 
 .button-submit:hover:not(:disabled) {
-  background-color: #252727;
+  color: #151717;
+}
+
+.button-submit:hover:not(:disabled)::before {
+  transform: scaleX(1);
+}
+
+.button-submit:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .button-submit:disabled {
@@ -353,6 +457,78 @@ async function handleSubmit() {
 
 .span:hover {
   text-decoration: underline;
+}
+
+/* ============ 滑块验证弹窗 ============ */
+.captcha-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.captcha-modal {
+  position: relative;
+  width: 360px;
+  max-width: 100%;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 24px;
+  box-sizing: border-box;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+  /* 拼图浮层向上弹出，需允许溢出显示 */
+  overflow: visible;
+}
+
+.captcha-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.captcha-close:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.captcha-title {
+  font-size: 17px;
+  font-weight: 650;
+  color: #151717;
+  margin: 0 0 4px;
+}
+
+.captcha-sub {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0 0 18px;
+}
+
+.overlay-fade-enter-active,
+.overlay-fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+
+.overlay-fade-enter-from,
+.overlay-fade-leave-to {
+  opacity: 0;
 }
 
 /* ============ 滑块验证组件浅色适配 ============ */
@@ -431,7 +607,12 @@ async function handleSubmit() {
 @media (max-width: 520px) {
   .form {
     padding: 24px 20px;
-    border: none;
+  }
+
+  .page-logo {
+    top: 20px;
+    left: 20px;
+    height: 26px;
   }
 }
 </style>

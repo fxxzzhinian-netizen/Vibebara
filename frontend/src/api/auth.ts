@@ -15,6 +15,14 @@ export interface UserInfo {
   email: string | null
   avatar_url: string | null
   created_at: string | null
+  onboarded: boolean
+  dev_mode: string | null
+  favorite_tool: string | null
+}
+
+export interface OnboardingResponse {
+  success: boolean
+  error?: string
 }
 
 export interface UserResponse {
@@ -92,5 +100,16 @@ export async function login(
 
 export async function getMe(): Promise<UserResponse> {
   const { data } = await apiClient.get<UserResponse>('/auth/me')
+  return data
+}
+
+export async function saveOnboarding(
+  devMode: string,
+  favoriteTool: string,
+): Promise<OnboardingResponse> {
+  const { data } = await apiClient.post<OnboardingResponse>('/auth/onboarding', {
+    dev_mode: devMode,
+    favorite_tool: favoriteTool,
+  })
   return data
 }

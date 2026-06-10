@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import Boolean, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -27,6 +27,12 @@ class User(Base):
     invite_code_used: Mapped[str | None] = mapped_column(
         String(16), nullable=True
     )
+    # 首次登录引导：是否已完成引导流程
+    onboarded: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 引导问题：使用场景偏好（'solo' = 个人独立开发 / 'team' = 团队协同开发）
+    dev_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # 引导问题：最常用的 Vibe Coding 工具（平台适配 key，如 cursor/codex/...）
+    favorite_tool: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

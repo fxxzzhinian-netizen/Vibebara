@@ -67,7 +67,10 @@ export type LauncherToolId =
   | "codex-app"
   | "windsurf"
   | "claude-code"
-  | "claude-app";
+  | "claude-app"
+  | "kiro"
+  | "trae"
+  | "qoder";
 
 export interface LauncherToolInfo {
   id: LauncherToolId;

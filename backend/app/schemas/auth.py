@@ -35,11 +35,27 @@ class UserInfo(BaseModel):
     email: Optional[str] = None
     avatar_url: Optional[str] = None
     created_at: Optional[str] = None
+    # 首次登录引导状态与选择
+    onboarded: bool = False
+    dev_mode: Optional[str] = None
+    favorite_tool: Optional[str] = None
 
 
 class UserResponse(BaseModel):
     success: bool
     user: Optional[UserInfo] = None
+    error: Optional[str] = None
+
+
+class OnboardingRequest(BaseModel):
+    # 使用场景偏好：'solo' = 个人独立开发 / 'team' = 团队协同开发
+    dev_mode: str
+    # 最常用的 Vibe Coding 工具（平台适配 key）
+    favorite_tool: str
+
+
+class OnboardingResponse(BaseModel):
+    success: bool
     error: Optional[str] = None
 
 

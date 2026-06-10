@@ -18,6 +18,9 @@ export type DesktopToolId =
   | 'windsurf'
   | 'claude-code'
   | 'claude-app'
+  | 'kiro'
+  | 'trae'
+  | 'qoder'
 
 export interface DesktopToolInfo {
   id: DesktopToolId

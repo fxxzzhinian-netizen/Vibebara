@@ -8,6 +8,9 @@ export type ToolId =
   | 'windsurf'
   | 'claude-code'
   | 'claude-app'
+  | 'kiro'
+  | 'trae'
+  | 'qoder'
 
 export interface LaunchRequest {
   tool: ToolId
