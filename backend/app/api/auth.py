@@ -3,7 +3,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 
+from app.core.config import settings
 from app.schemas.auth import (
+    CaptchaChallengeResponse,
+    CaptchaVerifyRequest,
+    CaptchaVerifyResponse,
     GenerateApiKeyResponse,
     LoginRequest,
     RegisterRequest,
@@ -11,11 +15,20 @@ from app.schemas.auth import (
     UserInfo,
     UserResponse,
 )
-from app.services import auth_service
+from app.services import auth_service, captcha_service
 
 logger = logging.getLogger(__name__)
 
 api_router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _check_captcha(captcha_token: str) -> Optional[dict]:
+    """CAPTCHA_REQUIRED 开启时校验并消费滑块验证 token；失败返回错误响应。"""
+    if not settings.CAPTCHA_REQUIRED:
+        return None
+    if not captcha_service.consume_token(captcha_token):
+        return {"success": False, "error": "请先完成滑块验证"}
+    return None
 
 
 async def get_current_user_id(
@@ -35,8 +48,29 @@ async def get_current_user_id(
     return user_id
 
 
+@api_router.get("/captcha", response_model=CaptchaChallengeResponse)
+async def get_captcha():
+    try:
+        challenge = captcha_service.create_challenge()
+        return {"success": True, **challenge}
+    except Exception as e:
+        logger.exception("[auth/captcha] 生成滑块挑战失败")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.post("/captcha/verify", response_model=CaptchaVerifyResponse)
+async def verify_captcha(data: CaptchaVerifyRequest):
+    token = captcha_service.verify(data.captcha_id, data.x)
+    if not token:
+        return {"success": False, "error": "验证未通过，请重试"}
+    return {"success": True, "captcha_token": token}
+
+
 @api_router.post("/register", response_model=TokenResponse)
 async def register(data: RegisterRequest):
+    captcha_error = _check_captcha(data.captcha_token)
+    if captcha_error:
+        return captcha_error
     try:
         result = await auth_service.register(
             username=data.username,
@@ -53,6 +87,9 @@ async def register(data: RegisterRequest):
 
 @api_router.post("/login", response_model=TokenResponse)
 async def login(data: LoginRequest):
+    captcha_error = _check_captcha(data.captcha_token)
+    if captcha_error:
+        return captcha_error
     try:
         result = await auth_service.login(data.username, data.password)
         return result

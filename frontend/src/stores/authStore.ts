@@ -21,12 +21,19 @@ export const useAuthStore = defineStore('auth', () => {
     username: string,
     password: string,
     inviteCode: string,
+    captchaToken: string,
     displayName?: string,
   ) {
     loading.value = true
     error.value = ''
     try {
-      const res = await register(username, password, inviteCode, displayName)
+      const res = await register(
+        username,
+        password,
+        inviteCode,
+        captchaToken,
+        displayName,
+      )
       if (res.success) {
         token.value = res.token
         setToken(res.token)
@@ -45,11 +52,15 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function doLogin(username: string, password: string) {
+  async function doLogin(
+    username: string,
+    password: string,
+    captchaToken: string,
+  ) {
     loading.value = true
     error.value = ''
     try {
-      const res = await login(username, password)
+      const res = await login(username, password, captchaToken)
       if (res.success) {
         token.value = res.token
         setToken(res.token)

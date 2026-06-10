@@ -161,6 +161,7 @@ docker compose exec backend python scripts/generate_invites.py --disable VH-8K2M
 
 - `INVITE_CODE_REQUIRED`（默认 `true`）— 设为 `false` 可放开注册（本地开发用）
 - `ADMIN_USERNAMES`（默认 `["DAIL"]`）— 邀请码管理端点的管理员用户名白名单
+- `CAPTCHA_REQUIRED`（默认 `true`）— 登录/注册需通过滑块拼图人机验证；本地开发/脚本调试可设 `false`。挑战与 token 为进程内存态，依赖后端单进程部署（同 WS 约束）
 
 ### 日常运维
 

@@ -17,6 +17,9 @@ cryptography>=42.0.0
 # YAML parsing (native_skill_store)
 PyYAML>=6.0
 
+# 滑块人机验证拼图生成（登录/注册）
+Pillow>=10.0.0
+
 # File watching (Native Skill Store sync)
 watchfiles>=0.24.0
 
