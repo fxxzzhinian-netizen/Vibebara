@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/authStore'
 import { useProjectSyncStore } from '@/stores/projectSyncStore'
 import { listNativeSkills, type NativeSkillItem } from '@/api/skillStore'
 import { getPlatformInstalledStatus } from '@/api/orchestration'
@@ -16,7 +15,6 @@ import type { DiffRow, DiffRowType, InlinePair, SegOp } from '@/utils/diffView'
 
 const route = useRoute()
 const router = useRouter()
-const authStore = useAuthStore()
 const projectStore = useProjectSyncStore()
 const notificationStore = useNotificationStore()
 
@@ -408,7 +406,7 @@ function formatTime(ts: string): string {
 }
 
 function goBack() {
-  router.push('/teams')
+  router.push('/team/projects')
 }
 </script>
 
@@ -416,20 +414,23 @@ function goBack() {
   <div class="project-page">
     <AppTopNav />
 
-    <header class="top-bar">
-      <div class="left">
-        <button class="btn-sm" @click="goBack">&larr; 返回</button>
-        <h2>{{ projectStore.currentProject?.name || '项目' }}</h2>
-        <span class="sync-badge" :class="{ online: connected }">
-          {{ connected ? '实时同步中' : '离线' }}
-        </span>
-      </div>
-      <div class="user-info">
-        <span>{{ authStore.user?.display_name }}</span>
-      </div>
-    </header>
-
     <div class="content">
+      <!-- 顶部栏：参考 SKILL 详情（圆形返回 + 标题 + 同步徽章） -->
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <button class="btn-back" @click="goBack" title="返回" aria-label="返回">
+            <svg viewBox="0 0 1024 1024" width="22" height="22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M515.582162 1023.994371A516.343116 516.343116 0 0 1 204.957513 921.646875a502.014467 502.014467 0 0 1-113.60572-122.816995A486.662342 486.662342 0 0 1 20.73202 642.238212a511.737479 511.737479 0 0 1 990.723759-259.962639 40.938998 40.938998 0 0 1-3.582162 29.169036 36.333361 36.333361 0 0 1-23.539924 17.399074 36.845098 36.845098 0 0 1-29.169036-3.582162 38.892048 38.892048 0 0 1-18.42255-23.539924 436.000332 436.000332 0 0 0-420.13647-324.953299 446.235081 446.235081 0 0 0-111.047033 14.328649 434.976857 434.976857 0 1 0 538.859565 497.40883 37.868573 37.868573 0 0 1 37.356836-32.239462h6.652588a39.915523 39.915523 0 0 1 25.075136 15.863862 38.380311 38.380311 0 0 1 6.14085 28.657299 511.737479 511.737479 0 0 1-374.591835 405.296083 460.563731 460.563731 0 0 1-129.469582 17.910812z" fill="currentColor"></path>
+              <path d="M512 775.801694a35.821624 35.821624 0 0 1-27.122086-11.769962l-225.164491-224.652753a38.892048 38.892048 0 0 1 0-54.244173l225.164491-224.652753a39.915523 39.915523 0 0 1 27.122086-11.769962 37.868573 37.868573 0 0 1 27.122086 11.769962 39.915523 39.915523 0 0 1 11.769962 27.122086 35.821624 35.821624 0 0 1-11.769962 27.122086l-158.638618 158.638619h358.216235a38.892048 38.892048 0 1 1 0 77.272359h-358.216235l159.150356 159.150356a38.892048 38.892048 0 0 1 11.769962 27.122086 37.868573 37.868573 0 0 1-11.769962 27.122087 36.845098 36.845098 0 0 1-27.633824 11.769962z" fill="currentColor"></path>
+            </svg>
+          </button>
+          <h2 class="editor-title">{{ projectStore.currentProject?.name || '项目' }}</h2>
+          <span class="sync-badge" :class="{ online: connected }">
+            {{ connected ? '实时同步中' : '离线' }}
+          </span>
+        </div>
+      </div>
+
       <!-- 项目信息 -->
       <div class="project-info">
         <p class="desc">{{ projectStore.currentProject?.description || '暂无描述' }}</p>
@@ -530,9 +531,11 @@ function goBack() {
         暂无关联 Skill，点击"+ 关联 Skill"添加
       </div>
 
-      <!-- 项目动态消息列表 -->
+      <!-- 项目动态：与「项目 Skill」同级，标题置于卡片之外 -->
+      <div class="section-header section-header-log">
+        <h3>项目动态</h3>
+      </div>
       <div class="message-log">
-        <h4>项目动态</h4>
         <div v-if="notificationStore.messages.length === 0" class="empty-hint">
           暂无动态
         </div>
@@ -721,33 +724,55 @@ function goBack() {
 <style scoped>
 .project-page {
   min-height: 100vh;
-  background: #ffffff;
+  background: var(--canvas);
   color: #151717;
   font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, sans-serif;
 }
 
-/* —— 页面工具条（AppTopNav 之下） —— */
-.top-bar {
+/* —— 顶部栏：参考 SKILL 详情（透明、落在画布上） —— */
+.toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 56px;
-  padding: 0 2rem;
-  background: #ffffff;
-  border-bottom: 1px solid #ebedf0;
+  background: transparent;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
 }
 
-.top-bar .left {
+.toolbar-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 0.75rem;
 }
 
-.top-bar h2 {
+.btn-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #2c2c2c;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.12s ease,
+    box-shadow 0.18s ease;
+}
+.btn-back svg { display: block; transition: transform 0.18s ease; }
+.btn-back:hover { background: #f0f1f2; color: #151717; box-shadow: 0 2px 8px rgba(21, 23, 23, 0.08); }
+.btn-back:hover svg { transform: scale(1.18); }
+.btn-back:active { background: #e2e4e6; transform: scale(0.86); box-shadow: none; }
+
+.editor-title {
   margin: 0;
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1;
   letter-spacing: -0.01em;
   color: #151717;
 }
@@ -768,15 +793,10 @@ function goBack() {
   border-color: #bbf7d0;
 }
 
-.user-info {
-  font-size: 0.86rem;
-  color: #6b7280;
-}
-
 .content {
   max-width: 960px;
   margin: 0 auto;
-  padding: 32px 24px;
+  padding: 1.5rem 24px 2rem;
 }
 
 .project-info .desc {
@@ -906,21 +926,15 @@ function goBack() {
   color: #dc2626;
 }
 
-.message-log {
+.section-header-log {
   margin-top: 40px;
+}
+
+.message-log {
   background: #ffffff;
   border: 1px solid #ebedf0;
   border-radius: 16px;
   padding: 16px 20px;
-}
-
-.message-log h4 {
-  margin: 0 0 12px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #9ca3af;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .message-log ul {

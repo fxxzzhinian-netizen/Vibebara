@@ -9,10 +9,12 @@ import {
 } from '@/api/auth'
 import { ensureDeviceRegistered } from '@/api/devices'
 import { getToken, setToken, removeToken } from '@/runtime/tokenStorage'
+import { DEV_SKIP_AUTH, DEV_FAKE_USER } from '@/runtime/devAuth'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(getToken())
-  const user = ref<UserInfo | null>(null)
+  // 开发者模式：预置假用户，使 isLoggedIn 成立且不被引导页拦截。
+  const user = ref<UserInfo | null>(DEV_SKIP_AUTH ? DEV_FAKE_USER : null)
   const loading = ref(false)
   const error = ref('')
 
@@ -83,6 +85,11 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function fetchMe() {
+    // 开发者模式：不打后端，直接维持假用户（避免 401 触发 logout 清登录态）。
+    if (DEV_SKIP_AUTH) {
+      user.value = DEV_FAKE_USER
+      return
+    }
     if (!token.value) return
     try {
       const res = await getMe()
@@ -123,6 +130,11 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function init() {
+    // 开发者模式：跳过会话恢复（fetchMe）与设备注册，直接以假用户进入。
+    if (DEV_SKIP_AUTH) {
+      user.value = DEV_FAKE_USER
+      return
+    }
     if (token.value) {
       await fetchMe()
       // M5-b：已登录会话恢复时也确保设备已注册（幂等，桌面形态有效）。

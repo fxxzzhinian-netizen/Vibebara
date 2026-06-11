@@ -6,6 +6,7 @@ import {
   getTeam,
   joinTeam,
   listMembers,
+  updateTeam,
   updateTeamSettings,
   deleteTeam,
   type TeamInfo,
@@ -20,6 +21,17 @@ export const useTeamStore = defineStore('team', () => {
   const currentTeamId = ref<string | null>(null)
   const currentTeam = ref<TeamInfo | null>(null)
   const members = ref<TeamMemberInfo[]>([])
+
+  // 创建 / 加入团队弹窗的全局开关：弹窗由常驻的 AppTopNav 承载，
+  // 任意页面（如 Dashboard 空状态）可通过下面的 open* 方法唤起。
+  const createModalOpen = ref(false)
+  const joinModalOpen = ref(false)
+  function openCreateModal() {
+    createModalOpen.value = true
+  }
+  function openJoinModal() {
+    joinModalOpen.value = true
+  }
 
   const hasTeams = computed(() => teams.value.length > 0)
 
@@ -89,6 +101,25 @@ export const useTeamStore = defineStore('team', () => {
     return res
   }
 
+  // 修改团队名称 / 描述（owner/admin）。成功后同步 currentTeam 与列表中的对应项。
+  async function updateProfile(name?: string, description?: string) {
+    if (!currentTeamId.value) return { success: false, error: 'No team selected' }
+    try {
+      const res = await updateTeam(currentTeamId.value, name, description)
+      if (res.success && res.team) {
+        currentTeam.value = res.team
+        const idx = teams.value.findIndex((team) => team.id === res.team!.id)
+        if (idx >= 0) teams.value[idx] = res.team
+      }
+      return res
+    } catch (e: any) {
+      return {
+        success: false,
+        error: e?.response?.data?.detail || e.message || '保存团队信息失败',
+      }
+    }
+  }
+
   async function updateSettings(autoSkillHotUpdate: boolean) {
     if (!currentTeamId.value) return { success: false, error: 'No team selected' }
     const res = await updateTeamSettings(currentTeamId.value, autoSkillHotUpdate)
@@ -139,11 +170,16 @@ export const useTeamStore = defineStore('team', () => {
     currentTeamId,
     currentTeam,
     members,
+    createModalOpen,
+    joinModalOpen,
+    openCreateModal,
+    openJoinModal,
     hasTeams,
     fetchTeams,
     selectTeam,
     create,
     join,
+    updateProfile,
     updateSettings,
     remove,
     handleTeamDeleted,

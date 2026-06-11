@@ -10,11 +10,14 @@
  * getToken/setToken/removeToken，避免散落的 localStorage 直接访问。
  */
 import { getDesktopBridge } from './desktopBridge'
+import { DEV_SKIP_AUTH, DEV_FAKE_TOKEN } from './devAuth'
 
 const TOKEN_KEY = 'vibebara_token'
 
 /** 同步取登录 token（拦截器/路由守卫需要同步值）。 */
 export function getToken(): string {
+  // 开发者模式：跳过登录，返回假 token 让路由守卫放行（仅 vite dev 显式开启时生效）。
+  if (DEV_SKIP_AUTH) return DEV_FAKE_TOKEN
   const bridge = getDesktopBridge()
   if (bridge) {
     return bridge.token.getSync() || ''

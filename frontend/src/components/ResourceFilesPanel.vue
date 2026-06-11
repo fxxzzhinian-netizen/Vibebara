@@ -1,0 +1,444 @@
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { readResourceFile, writeResourceFile } from '@/api/skillStore'
+import ResourceTreeNode from './ResourceTreeNode.vue'
+import { fileIconUrl, type ResTreeNode } from './resourceTree'
+
+interface ResEntry {
+  path?: string
+  description?: string
+}
+
+const props = defineProps<{
+  skillId: string
+  resources: { scripts?: ResEntry[]; references?: ResEntry[]; assets?: ResEntry[] } | null | undefined
+  readonly?: boolean
+}>()
+
+const CATS = [
+  { key: 'scripts', label: 'Scripts' },
+  { key: 'references', label: 'References' },
+  { key: 'assets', label: 'Assets' },
+] as const
+
+type CatKey = (typeof CATS)[number]['key']
+
+function entriesFor(cat: CatKey): ResEntry[] {
+  const list = props.resources?.[cat]
+  return Array.isArray(list) ? (list as ResEntry[]) : []
+}
+
+function sortNodes(nodes: ResTreeNode[]) {
+  nodes.sort((a, b) => {
+    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
+    return a.name < b.name ? -1 : a.name > b.name ? 1 : 0
+  })
+  for (const n of nodes) if (n.children) sortNodes(n.children)
+}
+
+// 由扁平 path（含分类前缀，如 scripts/sub/foo.py）构建文件夹树，去掉首段分类前缀展示。
+function buildTree(files: ResEntry[]): ResTreeNode[] {
+  const root: ResTreeNode = { name: '', path: '', isDir: true, children: [] }
+  for (const f of files) {
+    const full = (f.path || '').replace(/\\/g, '/').replace(/^\/+/, '')
+    if (!full) continue
+    const all = full.split('/')
+    const cat = all[0]
+    const segs = all.slice(1)
+    if (segs.length === 0) continue
+    let node = root
+    let acc = cat
+    segs.forEach((seg, i) => {
+      acc += '/' + seg
+      const isLast = i === segs.length - 1
+      if (isLast) {
+        if (!node.children!.some((c) => c.name === seg && !c.isDir)) {
+          node.children!.push({ name: seg, path: acc, isDir: false })
+        }
+      } else {
+        let child = node.children!.find((c) => c.name === seg && c.isDir)
+        if (!child) {
+          child = { name: seg, path: acc, isDir: true, children: [] }
+          node.children!.push(child)
+        }
+        node = child
+      }
+    })
+  }
+  sortNodes(root.children!)
+  return root.children!
+}
+
+const trees = computed<Record<CatKey, ResTreeNode[]>>(() => ({
+  scripts: buildTree(entriesFor('scripts')),
+  references: buildTree(entriesFor('references')),
+  assets: buildTree(entriesFor('assets')),
+}))
+
+// ---- 文件编辑器（弹窗）----
+const editorOpen = ref(false)
+const loading = ref(false)
+const saving = ref(false)
+const dirty = ref(false)
+const errorMsg = ref('')
+const okMsg = ref('')
+const curPath = ref('')
+const curEncoding = ref<'utf8' | 'base64'>('utf8')
+const curContent = ref('')
+const isBinary = ref(false)
+const curSize = ref(0)
+
+const isImage = computed(() => /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(curPath.value))
+const isSvg = computed(() => /\.svg$/i.test(curPath.value))
+
+const imageSrc = computed(() => {
+  if (isSvg.value && !isBinary.value) {
+    return `data:image/svg+xml;utf8,${encodeURIComponent(curContent.value)}`
+  }
+  if (isBinary.value && isImage.value) {
+    const ext = (curPath.value.split('.').pop() || 'png').toLowerCase()
+    const mime = ext === 'jpg' ? 'jpeg' : ext === 'svg' ? 'svg+xml' : ext
+    return `data:image/${mime};base64,${curContent.value}`
+  }
+  return ''
+})
+
+async function openFile(path: string) {
+  editorOpen.value = true
+  loading.value = true
+  errorMsg.value = ''
+  okMsg.value = ''
+  dirty.value = false
+  curPath.value = path
+  curContent.value = ''
+  isBinary.value = false
+  curSize.value = 0
+  try {
+    const res = await readResourceFile(props.skillId, path)
+    if (!res.success) {
+      errorMsg.value = res.error || '读取失败'
+      return
+    }
+    curEncoding.value = res.encoding
+    curContent.value = res.content
+    isBinary.value = res.is_binary
+    curSize.value = res.size
+  } catch (e: unknown) {
+    errorMsg.value = (e as { message?: string })?.message || '读取失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+function onInput(e: Event) {
+  curContent.value = (e.target as HTMLTextAreaElement).value
+  dirty.value = true
+  okMsg.value = ''
+}
+
+const canSave = computed(
+  () => !props.readonly && !isBinary.value && !loading.value && !saving.value && dirty.value,
+)
+
+async function save() {
+  if (props.readonly || isBinary.value) return
+  saving.value = true
+  errorMsg.value = ''
+  okMsg.value = ''
+  try {
+    const res = await writeResourceFile(props.skillId, curPath.value, curContent.value, curEncoding.value)
+    if (!res.success) {
+      errorMsg.value = res.error || '保存失败'
+      return
+    }
+    dirty.value = false
+    okMsg.value = '已保存'
+  } catch (e: unknown) {
+    errorMsg.value = (e as { message?: string })?.message || '保存失败'
+  } finally {
+    saving.value = false
+  }
+}
+
+function close() {
+  if (dirty.value && !confirm('有未保存的修改，确定关闭吗？')) return
+  editorOpen.value = false
+}
+
+function fmtSize(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+</script>
+
+<template>
+  <div class="rfp">
+    <div v-for="cat in CATS" :key="cat.key" class="rfp-cat">
+      <h4 class="rfp-cat-title">{{ cat.label }}</h4>
+      <div v-if="trees[cat.key].length === 0" class="rfp-empty">暂无文件</div>
+      <div v-else class="rfp-tree">
+        <ResourceTreeNode
+          v-for="n in trees[cat.key]"
+          :key="n.path"
+          :node="n"
+          :depth="0"
+          :active-path="curPath"
+          @select="openFile"
+        />
+      </div>
+    </div>
+
+    <!-- File editor modal -->
+    <Teleport to="body">
+      <transition name="rfp-fade">
+        <div v-if="editorOpen" class="rfp-overlay" @click.self="close">
+          <div class="rfp-modal" role="dialog" aria-modal="true">
+            <div class="rfp-modal-head">
+              <img class="rfp-modal-icon" :src="fileIconUrl(curPath.split('/').pop() || '')" alt="" aria-hidden="true" />
+              <span class="rfp-modal-path" :title="curPath">{{ curPath }}</span>
+              <span v-if="curSize" class="rfp-modal-size">{{ fmtSize(curSize) }}</span>
+              <button type="button" class="rfp-modal-close" aria-label="关闭" @click="close">×</button>
+            </div>
+
+            <div class="rfp-modal-body">
+              <div v-if="loading" class="rfp-state">加载中…</div>
+              <div v-else-if="errorMsg && !curContent && !imageSrc" class="rfp-state rfp-err">{{ errorMsg }}</div>
+              <template v-else>
+                <div v-if="imageSrc" class="rfp-preview">
+                  <img :src="imageSrc" :alt="curPath" />
+                </div>
+                <textarea
+                  v-if="!isBinary"
+                  class="rfp-editor"
+                  :value="curContent"
+                  spellcheck="false"
+                  :placeholder="readonly ? '只读' : '在此编辑文件内容…'"
+                  :readonly="readonly"
+                  @input="onInput"
+                ></textarea>
+                <div v-else-if="!imageSrc" class="rfp-state">二进制文件，暂不支持在线编辑（{{ fmtSize(curSize) }}）</div>
+              </template>
+            </div>
+
+            <div class="rfp-modal-foot">
+              <span v-if="errorMsg" class="rfp-foot-msg rfp-err">{{ errorMsg }}</span>
+              <span v-else-if="okMsg" class="rfp-foot-msg rfp-ok">{{ okMsg }}</span>
+              <span v-else-if="dirty" class="rfp-foot-msg rfp-dirty">未保存</span>
+              <span class="rfp-foot-spacer"></span>
+              <button type="button" class="rfp-btn" @click="close">关闭</button>
+              <button
+                v-if="!isBinary && !readonly"
+                type="button"
+                class="rfp-btn rfp-btn-primary"
+                :disabled="!canSave"
+                @click="save"
+              >
+                {{ saving ? '保存中…' : '保存' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </Teleport>
+  </div>
+</template>
+
+<style scoped>
+.rfp {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.rfp-cat-title {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #151717;
+}
+
+.rfp-tree {
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 12px;
+  padding: 0.35rem 0.4rem;
+}
+
+.rfp-empty {
+  padding: 0.9rem 1rem;
+  font-size: 0.86rem;
+  color: #9ca3af;
+  background: #ffffff;
+  border: 1px dashed #e5e7eb;
+  border-radius: 12px;
+}
+
+/* Modal */
+.rfp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(17, 23, 23, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.rfp-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 860px;
+  height: 80vh;
+  max-height: 80vh;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.rfp-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem 1.1rem;
+  border-bottom: 1px solid #ebedf0;
+}
+.rfp-modal-icon {
+  flex-shrink: 0;
+  width: 1.15rem;
+  height: 1.15rem;
+  display: block;
+  object-fit: contain;
+}
+.rfp-modal-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #151717;
+}
+.rfp-modal-size {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: #9ca3af;
+}
+.rfp-modal-close {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: #9ca3af;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.rfp-modal-close:hover { background: #f3f4f6; color: #151717; }
+
+.rfp-modal-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.1rem;
+  gap: 0.8rem;
+  overflow: auto;
+}
+
+.rfp-state {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+.rfp-err { color: #dc2626; }
+.rfp-ok { color: #16a34a; }
+.rfp-dirty { color: #b45309; }
+
+.rfp-preview {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0.5rem;
+  background: #f6f7f8;
+  border: 1px solid #ebedf0;
+  border-radius: 10px;
+}
+.rfp-preview img {
+  max-width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+}
+
+.rfp-editor {
+  flex: 1;
+  min-height: 220px;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  padding: 0.85rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fbfbfc;
+  color: #151717;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  tab-size: 2;
+}
+.rfp-editor:focus {
+  outline: none;
+  border-color: #6366f1;
+  background: #ffffff;
+}
+
+.rfp-modal-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.8rem 1.1rem;
+  border-top: 1px solid #ebedf0;
+}
+.rfp-foot-msg { font-size: 0.84rem; }
+.rfp-foot-spacer { flex: 1; }
+
+.rfp-btn {
+  padding: 0.5rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 0.88rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.rfp-btn:hover:not(:disabled) { border-color: #d1d5db; color: #151717; }
+.rfp-btn-primary {
+  background: #151717;
+  border-color: #151717;
+  color: #ffffff;
+  font-weight: 600;
+}
+.rfp-btn-primary:hover:not(:disabled) { background: #2d2f2f; }
+.rfp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.rfp-fade-enter-active,
+.rfp-fade-leave-active { transition: opacity 0.18s ease; }
+.rfp-fade-enter-from,
+.rfp-fade-leave-to { opacity: 0; }
+</style>

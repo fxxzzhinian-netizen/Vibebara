@@ -725,6 +725,133 @@ class NativeSkillStore:
             "db": cls._row_to_dict(row) if row else None,
         }
 
+    # ------------------------------------------------------------------
+    # 单个资源文件读写（scripts/references/assets/**）—— 供网页文件树编辑器使用。
+    # 直接对对象存储（COS / 本地）按 {prefix}/{rel} 读写单个文件字节。
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _safe_resource_rel(rel_path: str) -> str:
+        """校验并规整资源相对路径：必须落在 scripts/references/assets 下且无逃逸。"""
+        p = (rel_path or "").replace("\\", "/").strip("/")
+        if not p:
+            raise ValueError("空路径")
+        parts = p.split("/")
+        if any(seg in ("", ".", "..") for seg in parts):
+            raise ValueError("非法路径")
+        if parts[0] not in ("scripts", "references", "assets"):
+            raise ValueError("仅允许 scripts/references/assets 下的文件")
+        if len(parts) < 2:
+            raise ValueError("路径必须指向具体文件")
+        return p
+
+    @classmethod
+    async def read_resource_file(
+        cls, skill_id: str, rel_path: str, user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """读取单个资源文件内容。文本返回 utf8，无法解码则返回 base64（标记为二进制）。"""
+        import base64
+
+        prefix, _scope = cls._resolve_prefix(skill_id)
+        if prefix is None:
+            raise FileNotFoundError(f"Skill '{skill_id}' not found")
+
+        async with async_session_factory() as session:
+            row, _ = await cls._get_row(session, skill_id)
+        if (
+            isinstance(row, PersonalSkill) and user_id
+            and row.owner_id and row.owner_id != user_id
+        ):
+            raise PermissionError("无权访问他人的个人 Skill")
+
+        safe = cls._safe_resource_rel(rel_path)
+        data = cls._store().get_bytes(prefix + "/" + safe)
+        if data is None:
+            raise FileNotFoundError(f"资源文件不存在: {safe}")
+
+        try:
+            text = data.decode("utf-8")
+            return {
+                "path": safe,
+                "encoding": "utf8",
+                "content": text,
+                "size": len(data),
+                "is_binary": False,
+            }
+        except UnicodeDecodeError:
+            return {
+                "path": safe,
+                "encoding": "base64",
+                "content": base64.b64encode(data).decode("ascii"),
+                "size": len(data),
+                "is_binary": True,
+            }
+
+    @classmethod
+    async def write_resource_file(
+        cls, skill_id: str, rel_path: str, content: str,
+        encoding: str = "utf8", user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """写入单个资源文件内容，并刷新资源清单与内容哈希。"""
+        import base64
+
+        prefix, scope = cls._resolve_prefix(skill_id)
+        if prefix is None:
+            raise FileNotFoundError(f"Skill '{skill_id}' not found")
+
+        is_team = scope == "team"
+        async with async_session_factory() as session:
+            row, _ = await cls._get_row(session, skill_id)
+            if is_team and (not user_id or user_id == "system"):
+                raise PermissionError("团队 Skill 编辑需要登录用户身份")
+            if (
+                isinstance(row, PersonalSkill) and user_id
+                and row.owner_id and row.owner_id != user_id
+            ):
+                raise PermissionError("无权修改他人的个人 Skill")
+
+        safe = cls._safe_resource_rel(rel_path)
+        key = prefix + "/" + safe
+        if not cls._store().exists(key):
+            raise FileNotFoundError(f"资源文件不存在: {safe}")
+
+        if encoding == "base64":
+            data = base64.b64decode(content or "")
+        else:
+            data = (content or "").encode("utf-8")
+        cls._store().put_bytes(key, data)
+
+        # 刷新资源清单（路径可能未变，但保持与对象存储一致）与内容哈希。
+        config = cls._read_store_config(prefix)
+        resources = cls._scan_store_resources(prefix)
+        if config.get("resources") != resources:
+            config["resources"] = resources
+            cls._write_store_config(prefix, config)
+        row = await cls._upsert_db(skill_id, config, prefix, scope=scope)
+
+        editor_id = user_id or "system"
+        try:
+            await SkillSyncService.on_skill_changed(
+                skill_id=skill_id,
+                user_id=editor_id,
+                action="updated",
+                diff_summary=f"编辑资源文件 {safe}",
+            )
+        except Exception as e:  # 同步通知失败不阻断保存
+            logger.warning(f"[write_resource_file] 同步通知失败 skill='{skill_id}': {e}")
+
+        if is_team:
+            try:
+                from app.services.project_service import mark_skill_deployments_outdated
+
+                await mark_skill_deployments_outdated(skill_id, editor_id)
+            except Exception as e:
+                logger.warning(
+                    f"[write_resource_file] 标记部署过期失败 skill='{skill_id}': {e}"
+                )
+
+        return {"path": safe, "content_hash": row.content_hash or ""}
+
     @classmethod
     async def create(
         cls, config: Dict[str, Any], vibeh_content: Optional[str] = None,

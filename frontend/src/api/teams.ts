@@ -1,4 +1,11 @@
 import apiClient from './client'
+import { DEV_SKIP_AUTH } from '@/runtime/devAuth'
+import {
+  devMockTeamList,
+  devMockTeam,
+  devMockUpdateTeam,
+  devMockMembers,
+} from '@/runtime/devMock'
 
 export interface TeamInfo {
   id: string
@@ -51,11 +58,14 @@ export async function createTeam(
 }
 
 export async function listTeams(): Promise<TeamListResponse> {
+  // 开发者模式（跳过登录）下后端会因假 token 返回 401，这里回放假数据预览样式。
+  if (DEV_SKIP_AUTH) return devMockTeamList()
   const { data } = await apiClient.get<TeamListResponse>('/teams')
   return data
 }
 
 export async function getTeam(teamId: string): Promise<TeamResponse> {
+  if (DEV_SKIP_AUTH) return devMockTeam(teamId)
   const { data } = await apiClient.get<TeamResponse>(`/teams/${teamId}`)
   return data
 }
@@ -65,6 +75,7 @@ export async function updateTeam(
   name?: string,
   description?: string,
 ): Promise<TeamResponse> {
+  if (DEV_SKIP_AUTH) return devMockUpdateTeam(teamId, name ?? null, description ?? null)
   const { data } = await apiClient.put<TeamResponse>(`/teams/${teamId}`, {
     name: name ?? null,
     description: description ?? null,
@@ -110,6 +121,7 @@ export async function joinTeam(
 export async function listMembers(
   teamId: string,
 ): Promise<MemberListResponse> {
+  if (DEV_SKIP_AUTH) return devMockMembers(teamId)
   const { data } = await apiClient.get<MemberListResponse>(
     `/teams/${teamId}/members`,
   )

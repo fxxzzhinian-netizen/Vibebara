@@ -292,7 +292,7 @@ function pathSegments(p: string) {
 
     <nav class="nav">
       <button @click="router.push('/skill-forge')">个人 Skill 仓库</button>
-      <button @click="router.push('/teams')">团队协作</button>
+      <button @click="router.push('/team/skills')">团队协作</button>
     </nav>
 
     <!-- ========== Project Launcher ========== -->

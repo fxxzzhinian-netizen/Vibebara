@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import SliderCaptcha from '@/components/SliderCaptcha.vue'
 import logoUrl from '@/img/logo.png'
+import loginBg from '@/img/login_bg.png'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -94,7 +95,7 @@ async function doSubmit() {
 </script>
 
 <template>
-  <div class="login-page">
+  <div class="login-page" :style="{ backgroundImage: `url(${loginBg})` }">
     <img class="page-logo" :src="logoUrl" alt="vibebara" draggable="false" />
 
     <form class="form" @submit.prevent="handleSubmit">
@@ -274,7 +275,10 @@ async function doSubmit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #ffffff;
+  background-color: #ffffff;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   padding: 24px;
   box-sizing: border-box;
 }
@@ -296,6 +300,7 @@ async function doSubmit() {
   max-width: 100%;
   border-radius: 20px;
   box-sizing: border-box;
+  box-shadow: 0 24px 60px rgba(21, 23, 23, 0.18);
   transform: translateY(-40px);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
     Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;

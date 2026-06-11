@@ -1,5 +1,7 @@
 import apiClient from './client'
 import { isOrchestrationEnabled } from '@/runtime/config'
+import { DEV_SKIP_AUTH } from '@/runtime/devAuth'
+import { devMockProjectList } from '@/runtime/devMock'
 import {
   deployProjectSkillOrchestrated,
   deployProjectSkillGlobalOrchestrated,
@@ -199,6 +201,8 @@ export async function createProject(
 export async function listProjects(
   teamId: string,
 ): Promise<ProjectListResponse> {
+  // 开发者模式（跳过登录）下后端会因假 token 返回 401，这里回放假数据预览样式。
+  if (DEV_SKIP_AUTH) return devMockProjectList(teamId)
   const { data } = await apiClient.get<ProjectListResponse>(
     `/teams/${teamId}/projects`,
   )

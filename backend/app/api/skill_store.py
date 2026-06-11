@@ -1,6 +1,8 @@
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.api.auth import get_current_user_id
@@ -97,6 +99,72 @@ async def get_skill(
         return {"success": True, **detail}
     except Exception as e:
         logger.exception(f"[store/get] {skill_id} 加载失败")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ResourceFileResponse(BaseModel):
+    success: bool
+    path: str = ""
+    encoding: str = "utf8"  # utf8 | base64
+    content: str = ""
+    size: int = 0
+    is_binary: bool = False
+    error: Optional[str] = None
+
+
+class ResourceFileWriteRequest(BaseModel):
+    path: str
+    content: str = ""
+    encoding: str = "utf8"  # utf8 | base64
+
+
+class ResourceFileWriteResponse(BaseModel):
+    success: bool
+    path: str = ""
+    content_hash: str = ""
+    error: Optional[str] = None
+
+
+@api_router.get("/{skill_id}/resource-file", response_model=ResourceFileResponse)
+async def read_resource_file(
+    skill_id: str, path: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """读取单个资源文件（scripts/references/assets/**）的真实内容。"""
+    try:
+        data = await NativeSkillStore.read_resource_file(skill_id, path, user_id=user_id)
+        return {"success": True, **data}
+    except (PermissionError, FileNotFoundError, ValueError) as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.exception(f"[store/resource-file:get] {skill_id} 读取失败: {path}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.put("/{skill_id}/resource-file", response_model=ResourceFileWriteResponse)
+async def write_resource_file(
+    skill_id: str, data: ResourceFileWriteRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """保存单个资源文件内容到对象存储（COS）。"""
+    try:
+        # 团队（平台）仓库 Skill：仅团队成员可编辑。
+        async with async_session_factory() as session:
+            team_row = await session.get(TeamSkill, skill_id)
+        if team_row is not None:
+            team_ids = await _user_team_ids(user_id)
+            if team_row.team_id not in team_ids:
+                return {"success": False, "error": "无权编辑该团队 Skill（非团队成员）"}
+
+        result = await NativeSkillStore.write_resource_file(
+            skill_id, data.path, data.content,
+            encoding=data.encoding, user_id=user_id,
+        )
+        return {"success": True, **result}
+    except (PermissionError, FileNotFoundError, ValueError) as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.exception(f"[store/resource-file:put] {skill_id} 保存失败: {data.path}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

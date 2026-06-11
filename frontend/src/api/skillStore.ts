@@ -3,6 +3,8 @@ import type { ChangeItem } from './projects'
 import type { UnifiedSkillPackage } from './skillForge'
 import { normalizeScanPackage } from './skillForge'
 import { isOrchestrationEnabled } from '@/runtime/config'
+import { DEV_SKIP_AUTH } from '@/runtime/devAuth'
+import { devMockSkillList, devMockSkillDetail } from '@/runtime/devMock'
 import * as localAgent from './localAgent'
 import {
   deployNativeSkillOrchestrated,
@@ -120,6 +122,8 @@ export interface PreviewResponse {
 export async function listNativeSkills(
   scope: 'personal' | 'team' = 'personal',
 ): Promise<NativeSkillListResponse> {
+  // 开发者模式（跳过登录）下后端会因假 token 返回 401，这里直接回放假数据预览样式。
+  if (DEV_SKIP_AUTH) return devMockSkillList(scope)
   const { data } = await apiClient.get<NativeSkillListResponse>(
     '/skill-forge/store/list',
     { params: { scope } },
@@ -128,6 +132,7 @@ export async function listNativeSkills(
 }
 
 export async function getNativeSkill(id: string): Promise<NativeSkillDetail> {
+  if (DEV_SKIP_AUTH) return devMockSkillDetail(id)
   const { data } = await apiClient.get<NativeSkillDetail>(
     `/skill-forge/store/${id}`,
   )
@@ -159,6 +164,50 @@ export async function updateNativeSkill(
       create_version: opts?.createVersion ?? false,
       version_label: opts?.versionLabel ?? '',
     },
+  )
+  return data
+}
+
+// ---- 单个资源文件读写（scripts/references/assets 文件树编辑器） ----
+export interface ResourceFileContent {
+  success: boolean
+  path: string
+  encoding: 'utf8' | 'base64'
+  content: string
+  size: number
+  is_binary: boolean
+  error?: string
+}
+
+export interface ResourceFileWriteResult {
+  success: boolean
+  path?: string
+  content_hash?: string
+  error?: string
+}
+
+/** 读取单个资源文件真实内容（从对象存储/COS）。 */
+export async function readResourceFile(
+  skillId: string,
+  path: string,
+): Promise<ResourceFileContent> {
+  const { data } = await apiClient.get<ResourceFileContent>(
+    `/skill-forge/store/${skillId}/resource-file`,
+    { params: { path } },
+  )
+  return data
+}
+
+/** 保存单个资源文件内容（写回对象存储/COS）。 */
+export async function writeResourceFile(
+  skillId: string,
+  path: string,
+  content: string,
+  encoding: 'utf8' | 'base64' = 'utf8',
+): Promise<ResourceFileWriteResult> {
+  const { data } = await apiClient.put<ResourceFileWriteResult>(
+    `/skill-forge/store/${skillId}/resource-file`,
+    { path, content, encoding },
   )
   return data
 }

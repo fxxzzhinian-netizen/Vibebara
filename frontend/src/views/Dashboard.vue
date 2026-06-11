@@ -116,15 +116,9 @@ onMounted(() => {
       <div class="toolbar">
         <div class="toolbar-titles">
           <h1 class="page-title">SKILL 仓库</h1>
-          <p class="page-subtitle">
-            <span :class="['space-tag', workspace.spaceType]">{{ spaceTitle }}</span>
-            <span v-if="!store.loading" class="count">共 {{ displaySkills.length }} 个 Skill</span>
-          </p>
+          <span v-if="!store.loading" class="count">共 {{ displaySkills.length }} 个 Skill</span>
         </div>
         <div class="toolbar-actions">
-          <button class="btn-ghost" :disabled="store.loading" @click="refresh">
-            {{ store.loading ? '加载中...' : '刷新' }}
-          </button>
           <button
             class="btn-primary"
             :disabled="isTeamSpace && !workspace.activeTeamId"
@@ -201,7 +195,10 @@ onMounted(() => {
         <template v-if="isTeamSpace && !teamStore.teams.length">
           <h2>还没有加入任何团队</h2>
           <p>创建或加入一个团队后，即可在团队空间共享 Skill</p>
-          <button class="btn-primary" @click="router.push('/teams')">去创建 / 加入团队</button>
+          <div class="empty-team-actions">
+            <button class="btn-primary" @click="teamStore.openCreateModal()">创建团队</button>
+            <button class="btn-ghost" @click="teamStore.openJoinModal()">加入团队</button>
+          </div>
         </template>
         <template v-else>
           <h2>{{ spaceTitle }}还没有 Skill</h2>
@@ -223,7 +220,7 @@ onMounted(() => {
 <style scoped>
 .home {
   min-height: 100vh;
-  background: #ffffff;
+  background: var(--canvas);
   color: #151717;
   font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, sans-serif;
@@ -244,19 +241,19 @@ onMounted(() => {
   margin-bottom: 1.75rem;
 }
 
+/* 标题与计数同一行，计数基线对齐贴在标题右下角 */
+.toolbar-titles {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
 .page-title {
   margin: 0;
   font-size: 1.6rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: #151717;
-}
-
-.page-subtitle {
-  margin: 0.5rem 0 0;
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
 }
 
 .space-tag {
@@ -420,6 +417,8 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1.1rem;
+  /* 卡片按内容高度排列，避免被拉伸到等高后底部留白 */
+  align-items: start;
 }
 
 .skill-card {
@@ -473,9 +472,9 @@ onMounted(() => {
   color: #6b7280;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: 2.6em;
 }
 
 .card-tags {
@@ -487,7 +486,7 @@ onMounted(() => {
 .tag {
   font-size: 0.72rem;
   color: #4b5563;
-  background: #f3f4f6;
+  background: #e5e7eb;
   border-radius: 999px;
   padding: 0.12rem 0.55rem;
 }
@@ -497,7 +496,6 @@ onMounted(() => {
 }
 
 .card-foot {
-  margin-top: auto;
   padding-top: 0.65rem;
   border-top: 1px solid #f3f4f6;
   display: flex;
@@ -509,15 +507,17 @@ onMounted(() => {
 .platform-icons {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.7rem;
 }
 
 .platform-icon {
   width: 16px;
   height: 16px;
   object-fit: contain;
-  opacity: 0.18;
-  filter: grayscale(1);
+  /* 未部署：部分去色 + 降透明度，保留 logo 形状与少量本色（避免浅色 logo 如 Trae 消失），
+     不再用 brightness(0) 压成纯黑剪影导致失真 */
+  opacity: 0.25;
+  filter: grayscale(0.15);
   transition: opacity 0.15s ease, filter 0.15s ease;
 }
 
@@ -598,6 +598,11 @@ onMounted(() => {
   margin: 0 0 1.5rem;
   font-size: 0.88rem;
   color: #9ca3af;
+}
+
+.empty-team-actions {
+  display: flex;
+  gap: 0.6rem;
 }
 
 @media (max-width: 768px) {

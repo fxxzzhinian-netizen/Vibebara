@@ -133,6 +133,28 @@ curl http://localhost:8000/health        # {"status":"healthy",...}
 | `DAIL` | `DAIL2026` |
 | `DAIL2` | `DAIL2027` |
 
+### 前端开发者模式（跳过登录直调 UI）
+
+只想调样式 / 改前端时，不必每次都登录 + 过滑块验证。开启后会注入一个「假登录态」直接进入主界面。
+
+**开启步骤：**
+
+```bash
+# 在 frontend/ 下创建 .env.local（已被 .gitignore 忽略，不会提交）
+echo "VITE_DEV_SKIP_AUTH=true" > frontend/.env.local
+
+# 重启开发服务器（env 变更需重启才生效）
+cd frontend && npm run dev
+```
+
+打开 `http://localhost:5173/` 即直达主页，无需登录。关闭时把值改为 `false` 或删除 `frontend/.env.local`，再重启即可。
+
+**说明与边界：**
+
+- **仅本地 dev 生效**：开关同时要求 `import.meta.env.DEV`（即 `vite dev`），`vite build` 产物里恒为关闭，不会泄漏到线上。
+- **只绕过前端鉴权**：后端接口仍会因 token 非法返回 `401`（控制台可见报错），页面以「空数据」渲染。**纯 UI/样式调试足够**；需要真实数据时请关闭本开关、正常登录（或配合后端 `CAPTCHA_REQUIRED=false` 免滑块登录）。
+- 实现位置：`frontend/src/runtime/devAuth.ts`（开关 + 假 token/假用户），在 `tokenStorage.getToken()`、`authStore`（`init`/`fetchMe`）三处接入。
+
 ### 邀请码（测试版注册收口）
 
 测试版注册需填写后台签发的邀请码（格式 `VH-XXXX-XXXX`，大小写不敏感、连字符可省略）。种子账号不受影响。

@@ -28,9 +28,20 @@ const router = createRouter({
       component: () => import('@/views/ProjectLauncher.vue'),
     },
     {
-      path: '/teams',
-      name: 'teams',
-      component: () => import('@/views/Teams.vue'),
+      // 团队工作台：与全局 AppTopNav 共用外壳，标签页由路由驱动。
+      path: '/team/skills',
+      name: 'team-skills',
+      component: () => import('@/views/TeamWorkspace.vue'),
+    },
+    {
+      path: '/team/projects',
+      name: 'team-projects',
+      component: () => import('@/views/TeamWorkspace.vue'),
+    },
+    {
+      path: '/team/manage',
+      name: 'team-manage',
+      component: () => import('@/views/TeamWorkspace.vue'),
     },
     {
       path: '/projects/:id',

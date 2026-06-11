@@ -77,7 +77,7 @@ async function handleCreate() {
 <style scoped>
 .sessions-page {
   min-height: 100vh;
-  background: #ffffff;
+  background: var(--canvas);
   color: #151717;
   font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, sans-serif;

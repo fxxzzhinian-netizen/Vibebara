@@ -95,7 +95,7 @@ function getMessageDisplay(msg: WebSocketMessage): string {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
+  background: var(--canvas);
   color: #151717;
   font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, sans-serif;
