@@ -6,7 +6,8 @@ import path from "node:path";
  * 云端地址等可覆盖配置（方案 B M5-a / 决策 C）。
  *
  * 策略：**内置默认 + 可由本机配置文件覆盖**。
- *   · 内置默认指向本机 cloud demo（DEPLOYMENT_MODE=cloud 后端）；
+ *   · 内置默认按是否打包区分：dev（未打包）指向本机 cloud demo，
+ *     打包安装包指向云端服务器（测试者无 env，必须 bake 真实地址）；
  *   · 用户可在 `<userData>/vibebara-desktop.config.json` 覆盖 cloudApiBase /
  *     cloudWsBase / writableRoots，从本地 demo 平滑切到真实云端无需改壳代码。
  *   · 也支持环境变量覆盖（便于联调）：VIBEBARA_CLOUD_API_BASE / VIBEBARA_CLOUD_WS_BASE /
@@ -22,11 +23,25 @@ export interface CloudConfig {
   writableRoots: string[];
 }
 
-const BUILTIN_DEFAULTS: CloudConfig = {
+// 本机 dev（未打包）默认：连本地 cloud demo 后端（零参数 build-desktop.ps1 起的 :8000）。
+const DEV_DEFAULTS: CloudConfig = {
   cloudApiBase: "http://127.0.0.1:8000/api/v1",
   cloudWsBase: "ws://127.0.0.1:8000",
   writableRoots: [],
 };
+
+// 打包安装包（测试版/正式版）默认：连云端服务器。
+// 测试者机器上没有 VIBEBARA_CLOUD_* 环境变量，故 packaged 默认必须直接指向真实云端，
+// 否则会回退到 127.0.0.1 而连不上。换服务器时改这里即可（env / 配置文件仍可覆盖）。
+const PACKAGED_DEFAULTS: CloudConfig = {
+  cloudApiBase: "http://43.136.128.162:8000/api/v1",
+  cloudWsBase: "ws://43.136.128.162:8000",
+  writableRoots: [],
+};
+
+function builtinDefaults(): CloudConfig {
+  return app.isPackaged ? { ...PACKAGED_DEFAULTS } : { ...DEV_DEFAULTS };
+}
 
 function configFile(): string {
   return path.join(app.getPath("userData"), "vibebara-desktop.config.json");
@@ -41,7 +56,7 @@ function splitRoots(raw: string | undefined): string[] {
 }
 
 export function loadCloudConfig(): CloudConfig {
-  let merged: CloudConfig = { ...BUILTIN_DEFAULTS };
+  let merged: CloudConfig = builtinDefaults();
 
   // 1) 配置文件覆盖
   try {

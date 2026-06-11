@@ -158,6 +158,13 @@ else {
 
 # ── 打包 ────────────────────────────────────────────────────
 
+# electron-builder 工具链（nsis 等）默认从 GitHub 拉，国内常被墙/VPN fake-ip 拦截。
+# 未显式设置时默认走 npmmirror 镜像；需走官方源时先 $env:ELECTRON_BUILDER_BINARIES_MIRROR=""。
+if (($Dist -or $Pack) -and (-not (Test-Path Env:\ELECTRON_BUILDER_BINARIES_MIRROR))) {
+    $env:ELECTRON_BUILDER_BINARIES_MIRROR = "https://npmmirror.com/mirrors/electron-builder-binaries/"
+    Write-Host "  [打包] 工具链镜像 → npmmirror（可设 ELECTRON_BUILDER_BINARIES_MIRROR 覆盖）" -ForegroundColor DarkGray
+}
+
 if ($Dist) {
     Write-Section "打包 NSIS 安装包"
     Write-Host "  首次会下载 electron + nsis 工具链，请耐心等待" -ForegroundColor Gray

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
 import { listAvailableTypes } from '@/api/adapters'
 import AppTopNav from '@/components/AppTopNav.vue'
+import BaseSelect from '@/components/BaseSelect.vue'
 
 const router = useRouter()
 const sessionStore = useSessionStore()
@@ -45,9 +46,12 @@ async function handleCreate() {
 
       <div v-if="showCreate" class="create-form">
         <input v-model="newName" placeholder="会话名称" />
-        <select v-model="newAdapter">
-          <option v-for="a in availableAdapters" :key="a" :value="a">{{ a }}</option>
-        </select>
+        <BaseSelect
+          v-model="newAdapter"
+          :options="availableAdapters.map((a) => ({ value: a, label: a }))"
+          placeholder="选择适配器"
+          :block="false"
+        />
         <button class="btn-primary" @click="handleCreate">创建</button>
         <button class="btn-ghost" @click="showCreate = false">取消</button>
       </div>
@@ -155,8 +159,7 @@ async function handleCreate() {
   border-radius: 12px;
 }
 
-.create-form input,
-.create-form select {
+.create-form input {
   flex: 1;
   padding: 0.55rem 0.75rem;
   background: #ffffff;
@@ -169,13 +172,16 @@ async function handleCreate() {
   transition: border-color 0.15s ease;
 }
 
-.create-form input:focus,
-.create-form select:focus {
+.create-form input:focus {
   border-color: #6366f1;
 }
 
 .create-form input::placeholder {
   color: #9ca3af;
+}
+
+.create-form .bs-trigger {
+  flex: 1;
 }
 
 /* —— 会话列表 —— */

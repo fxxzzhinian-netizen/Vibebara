@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import BaseModal from '@/components/BaseModal.vue'
 import { useSessionStore } from '@/stores/session'
 import { useProjectStore } from '@/stores/project'
 import { listTools, launchTool, type ToolInfo } from '@/api/launcher'
@@ -63,10 +64,6 @@ async function goToPath() {
   const p = pastePathInput.value.trim()
   if (!p) return
   await loadDir(p)
-}
-
-function closeBrowser() {
-  browserOpen.value = false
 }
 
 async function loadDir(path: string) {
@@ -273,6 +270,24 @@ function originLabel(o: string): string {
   return '未知'
 }
 
+const migrationTitle = computed(() => {
+  const label = originLabel(migrationTarget.value)
+  switch (migrationPhase.value) {
+    case 'adapting':
+      return `适配 Skill 到 ${label}`
+    case 'launching':
+      return `正在启动 ${label}...`
+    case 'complete':
+      return `项目已在 ${label} 中打开`
+    default:
+      return '迁移出现问题'
+  }
+})
+
+const migrationClosable = computed(
+  () => migrationPhase.value === 'complete' || migrationPhase.value === 'error',
+)
+
 function truncDesc(s: string, max = 100) {
   return s.length <= max ? s : s.slice(0, max) + '...'
 }
@@ -419,120 +434,90 @@ function pathSegments(p: string) {
     </section>
 
     <!-- ========== Folder Browser Modal ========== -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="browserOpen" class="modal-overlay" @click.self="closeBrowser">
-          <div class="modal-box">
-            <div class="modal-header">
-              <h2>选择项目文件夹</h2>
-              <button class="modal-close" @click="closeBrowser">✕</button>
-            </div>
-            <div class="paste-path-bar">
-              <input
-                v-model="pastePathInput"
-                class="paste-path-input"
-                placeholder="粘贴路径直接跳转，如 E:\Projects\my-app"
-                @keyup.enter="goToPath"
-              />
-              <button class="paste-path-go" :disabled="!pastePathInput.trim()" @click="goToPath">前往</button>
-            </div>
-            <div class="breadcrumb">
-              <button class="crumb-btn" @click="loadDir('')">根</button>
-              <template v-for="(seg, i) in pathSegments(browseCurrent)" :key="i">
-                <span class="crumb-sep">/</span>
-                <button class="crumb-btn" @click="loadDir(
-                  browseCurrent.replace(/\\/g, '/').split('/').slice(0, i + (/^[a-zA-Z]:/.test(browseCurrent) ? 1 : 0) + 1).join('/')
-                )">{{ seg }}</button>
-              </template>
-            </div>
-            <div class="dir-list" :class="{ loading: browseLoading }">
-              <button v-if="browseParent !== null || browseCurrent" class="dir-item parent" @click="goParent">
-                <span class="dir-icon">⬆</span><span>上级目录</span>
-              </button>
-              <button v-for="d in browseDirs" :key="d.abs_path" class="dir-item" @click="selectDir(d)">
-                <span class="dir-icon">{{ d.is_drive ? '💾' : '📁' }}</span><span>{{ d.name }}</span>
-              </button>
-              <div v-if="!browseLoading && browseDirs.length === 0 && browseCurrent" class="dir-empty">
-                此目录下没有子文件夹
-              </div>
-            </div>
-            <div v-if="browseError" class="browse-error">{{ browseError }}</div>
-            <div class="modal-footer">
-              <div class="selected-path">
-                <span v-if="browseCurrent">{{ browseCurrent }}</span>
-                <span v-else class="path-hint">请选择一个文件夹</span>
-                <button v-if="browseCurrent" class="btn-copy" @click="copyPath(browseCurrent)" title="复制路径">📋</button>
-              </div>
-              <div class="modal-btns">
-                <button class="btn-cancel" @click="closeBrowser">取消</button>
-                <button class="btn-confirm" :disabled="!browseCurrent" @click="confirmSelect">打开此目录</button>
-              </div>
-            </div>
-          </div>
+    <BaseModal v-model="browserOpen" title="选择项目文件夹" :width="560">
+      <div class="paste-path-bar">
+        <input
+          v-model="pastePathInput"
+          class="paste-path-input"
+          placeholder="粘贴路径直接跳转，如 E:\Projects\my-app"
+          @keyup.enter="goToPath"
+        />
+        <button class="paste-path-go" :disabled="!pastePathInput.trim()" @click="goToPath">前往</button>
+      </div>
+      <div class="breadcrumb">
+        <button class="crumb-btn" @click="loadDir('')">根</button>
+        <template v-for="(seg, i) in pathSegments(browseCurrent)" :key="i">
+          <span class="crumb-sep">/</span>
+          <button class="crumb-btn" @click="loadDir(
+            browseCurrent.replace(/\\/g, '/').split('/').slice(0, i + (/^[a-zA-Z]:/.test(browseCurrent) ? 1 : 0) + 1).join('/')
+          )">{{ seg }}</button>
+        </template>
+      </div>
+      <div class="dir-list" :class="{ loading: browseLoading }">
+        <button v-if="browseParent !== null || browseCurrent" class="dir-item parent" @click="goParent">
+          <span class="dir-icon">⬆</span><span>上级目录</span>
+        </button>
+        <button v-for="d in browseDirs" :key="d.abs_path" class="dir-item" @click="selectDir(d)">
+          <span class="dir-icon">{{ d.is_drive ? '💾' : '📁' }}</span><span>{{ d.name }}</span>
+        </button>
+        <div v-if="!browseLoading && browseDirs.length === 0 && browseCurrent" class="dir-empty">
+          此目录下没有子文件夹
         </div>
-      </Transition>
-    </Teleport>
+      </div>
+      <div v-if="browseError" class="browse-error">{{ browseError }}</div>
+      <div class="selected-path">
+        <span v-if="browseCurrent">{{ browseCurrent }}</span>
+        <span v-else class="path-hint">请选择一个文件夹</span>
+        <button v-if="browseCurrent" class="btn-copy" @click="copyPath(browseCurrent)" title="复制路径">📋</button>
+      </div>
+      <template #footer>
+        <button class="btn-confirm" :disabled="!browseCurrent" @click="confirmSelect">打开此目录</button>
+      </template>
+    </BaseModal>
 
     <!-- ========== Migration Flow Modal ========== -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="migrationOpen" class="modal-overlay" @click.self="migrationPhase === 'complete' || migrationPhase === 'error' ? closeMigration() : undefined">
-          <div class="modal-box migration-modal">
-            <div class="modal-header">
-              <h2>
-                <template v-if="migrationPhase === 'adapting'">适配 Skill 到 {{ originLabel(migrationTarget) }}</template>
-                <template v-else-if="migrationPhase === 'launching'">正在启动 {{ originLabel(migrationTarget) }}...</template>
-                <template v-else-if="migrationPhase === 'complete'">项目已在 {{ originLabel(migrationTarget) }} 中打开</template>
-                <template v-else>迁移出现问题</template>
-              </h2>
-              <button
-                v-if="migrationPhase === 'complete' || migrationPhase === 'error'"
-                class="modal-close"
-                @click="closeMigration"
-              >✕</button>
-            </div>
-
-            <div class="migration-steps">
-              <div
-                v-for="step in migrationSteps"
-                :key="step.id"
-                :class="['step-row', `step-${step.status}`]"
-              >
-                <span class="step-icon">
-                  <template v-if="step.status === 'pending'">○</template>
-                  <template v-else-if="step.status === 'running'"><span class="spinner-sm"></span></template>
-                  <template v-else-if="step.status === 'done'">✓</template>
-                  <template v-else-if="step.status === 'skip'">—</template>
-                  <template v-else>✗</template>
-                </span>
-                <span class="step-name">{{ step.name }}</span>
-                <span class="step-msg">{{ step.message }}</span>
-              </div>
-            </div>
-
-            <div class="migration-footer">
-              <template v-if="migrationPhase === 'adapting'">
-                <span class="phase-hint">正在适配中，请稍候...</span>
-              </template>
-              <template v-else-if="migrationPhase === 'launching'">
-                <span class="phase-hint"><span class="spinner-sm"></span> 正在启动终端...</span>
-              </template>
-              <template v-else-if="migrationPhase === 'complete'">
-                <span class="phase-hint phase-success">所有 Skill 已适配，项目已启动</span>
-                <button class="btn-confirm" @click="closeMigration">完成</button>
-              </template>
-              <template v-else>
-                <span class="phase-hint phase-error">部分操作失败，请检查后重试</span>
-                <div class="modal-btns">
-                  <button class="btn-cancel" @click="closeMigration">关闭</button>
-                  <button class="btn-confirm" @click="retryLaunch">仍然启动</button>
-                </div>
-              </template>
-            </div>
-          </div>
+    <BaseModal
+      :model-value="migrationOpen"
+      :title="migrationTitle"
+      :width="520"
+      :closable="migrationClosable"
+      @update:model-value="closeMigration"
+    >
+      <div class="migration-steps">
+        <div
+          v-for="step in migrationSteps"
+          :key="step.id"
+          :class="['step-row', `step-${step.status}`]"
+        >
+          <span class="step-icon">
+            <template v-if="step.status === 'pending'">○</template>
+            <template v-else-if="step.status === 'running'"><span class="spinner-sm"></span></template>
+            <template v-else-if="step.status === 'done'">✓</template>
+            <template v-else-if="step.status === 'skip'">—</template>
+            <template v-else>✗</template>
+          </span>
+          <span class="step-name">{{ step.name }}</span>
+          <span class="step-msg">{{ step.message }}</span>
         </div>
-      </Transition>
-    </Teleport>
+      </div>
+
+      <div class="migration-footer">
+        <template v-if="migrationPhase === 'adapting'">
+          <span class="phase-hint">正在适配中，请稍候...</span>
+        </template>
+        <template v-else-if="migrationPhase === 'launching'">
+          <span class="phase-hint"><span class="spinner-sm"></span> 正在启动终端...</span>
+        </template>
+        <template v-else-if="migrationPhase === 'complete'">
+          <span class="phase-hint phase-success">所有 Skill 已适配，项目已启动</span>
+          <button class="btn-confirm" @click="closeMigration">完成</button>
+        </template>
+        <template v-else>
+          <span class="phase-hint phase-error">部分操作失败，请检查后重试</span>
+          <button class="btn-confirm" @click="retryLaunch">仍然启动</button>
+        </template>
+      </div>
+    </BaseModal>
   </div>
 </template>
 
@@ -552,6 +537,7 @@ function pathSegments(p: string) {
   font-size: 2.5rem;
   background: linear-gradient(135deg, var(--primary), #a78bfa);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
@@ -770,43 +756,11 @@ function pathSegments(p: string) {
 .btn-open:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ========== Folder Browser Modal ========== */
-.modal-overlay {
-  position: fixed; inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 1000;
-}
-
-.modal-box {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  width: 580px;
-  max-width: 94vw;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-}
-
-.modal-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 1.25rem 1.5rem 0.75rem;
-}
-.modal-header h2 { font-size: 1.1rem; font-weight: 600; }
-
-.modal-close {
-  background: transparent; border: none; color: var(--text-muted);
-  font-size: 1.2rem; cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 6px;
-  transition: all 0.15s;
-}
-.modal-close:hover { background: var(--surface-hover); color: var(--text); }
-
 .paste-path-bar {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.5rem 1.5rem;
+  padding: 0.5rem 0 0.75rem;
   border-bottom: 1px solid var(--border);
 }
 .paste-path-input {
@@ -839,7 +793,7 @@ function pathSegments(p: string) {
 
 .breadcrumb {
   display: flex; align-items: center; gap: 0.1rem;
-  padding: 0.5rem 1.5rem; font-size: 0.82rem; flex-wrap: wrap;
+  padding: 0.5rem 0; font-size: 0.82rem; flex-wrap: wrap;
   border-bottom: 1px solid var(--border);
 }
 .crumb-btn {
@@ -863,17 +817,14 @@ function pathSegments(p: string) {
 .dir-item.parent { color: var(--text-muted); font-size: 0.85rem; }
 .dir-icon { font-size: 1.1rem; flex-shrink: 0; }
 .dir-empty { text-align: center; color: var(--text-muted); padding: 2rem 1rem; font-size: 0.85rem; }
-.browse-error { color: var(--danger); font-size: 0.82rem; padding: 0 1.5rem 0.5rem; }
+.browse-error { color: var(--danger); font-size: 0.82rem; padding: 0 0 0.5rem; }
 
-.modal-footer {
-  padding: 0.75rem 1.5rem 1.25rem; border-top: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-}
 .selected-path {
-  flex: 1; min-width: 0; font-size: 0.78rem;
+  min-width: 0; font-size: 0.78rem;
   font-family: 'JetBrains Mono', monospace; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   display: flex; align-items: center; gap: 0.4rem;
+  margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border);
 }
 .path-hint { color: var(--text-muted); }
 .btn-copy {
@@ -888,14 +839,6 @@ function pathSegments(p: string) {
   transition: all 0.15s;
 }
 .btn-copy:hover { background: var(--surface-hover); border-color: var(--primary); }
-.modal-btns { display: flex; gap: 0.5rem; flex-shrink: 0; }
-
-.btn-cancel {
-  padding: 0.5rem 1rem; background: transparent;
-  border: 1px solid var(--border); color: var(--text-muted);
-  border-radius: 8px; cursor: pointer; transition: all 0.2s;
-}
-.btn-cancel:hover { background: var(--surface-hover); color: var(--text); }
 
 .btn-confirm {
   padding: 0.5rem 1.2rem; background: var(--primary);
@@ -906,10 +849,8 @@ function pathSegments(p: string) {
 .btn-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ========== Migration Flow Modal ========== */
-.migration-modal { width: 520px; }
-
 .migration-steps {
-  padding: 0.75rem 1.5rem;
+  padding: 0;
   max-height: 350px;
   overflow-y: auto;
   display: flex;
@@ -947,7 +888,8 @@ function pathSegments(p: string) {
 .step-msg { margin-left: auto; font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; }
 
 .migration-footer {
-  padding: 1rem 1.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
   border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -972,13 +914,6 @@ function pathSegments(p: string) {
 .spinner-sm { width: 0.9em; height: 0.9em; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* ========== Transitions ========== */
-.modal-enter-active, .modal-leave-active { transition: opacity 0.2s ease; }
-.modal-enter-active .modal-box, .modal-leave-active .modal-box { transition: transform 0.2s ease; }
-.modal-enter-from, .modal-leave-to { opacity: 0; }
-.modal-enter-from .modal-box { transform: scale(0.95) translateY(10px); }
-.modal-leave-to .modal-box { transform: scale(0.95) translateY(10px); }
 
 /* ========== Responsive ========== */
 @media (max-width: 768px) {

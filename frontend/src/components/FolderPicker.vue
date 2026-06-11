@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { browseDirectory, type DirEntry } from '@/api/skillForge'
+import BaseModal from '@/components/BaseModal.vue'
 
 const props = defineProps<{
   modelValue: string
@@ -66,10 +67,6 @@ function selectCurrent() {
   showBrowser.value = false
 }
 
-function close() {
-  showBrowser.value = false
-}
-
 watch(() => props.modelValue, (val) => {
   if (!showBrowser.value) {
     currentPath.value = val
@@ -91,45 +88,35 @@ watch(() => props.modelValue, (val) => {
       <button type="button" class="browse-btn" @click="open">浏览...</button>
     </div>
 
-    <Teleport to="body">
-      <div v-if="showBrowser" class="fp-overlay" @click.self="close">
-        <div class="fp-dialog">
-          <div class="fp-header">
-            <span class="fp-title">选择文件夹</span>
-            <button class="fp-close" @click="close">&times;</button>
-          </div>
+    <BaseModal v-model="showBrowser" title="选择文件夹" :width="520">
+      <div class="fp-current">
+        <button class="fp-up-btn" :disabled="!parentPath && !currentPath" @click="goUp">↑</button>
+        <span class="fp-path">{{ currentPath || '我的电脑' }}</span>
+      </div>
 
-          <div class="fp-current">
-            <button class="fp-up-btn" :disabled="!parentPath && !currentPath" @click="goUp">↑</button>
-            <span class="fp-path">{{ currentPath || '我的电脑' }}</span>
-          </div>
+      <div v-if="browseError" class="fp-error">{{ browseError }}</div>
 
-          <div v-if="browseError" class="fp-error">{{ browseError }}</div>
-
-          <div class="fp-list" v-if="!loading">
-            <div v-if="dirs.length === 0" class="fp-empty">此目录下没有子文件夹</div>
-            <div
-              v-for="d in dirs"
-              :key="d.abs_path"
-              class="fp-item"
-              @dblclick="navigateTo(d)"
-              @click="navigateTo(d)"
-            >
-              <span class="fp-icon">{{ d.is_drive ? '💿' : '📁' }}</span>
-              <span class="fp-name">{{ d.name }}</span>
-            </div>
-          </div>
-          <div v-else class="fp-loading">加载中...</div>
-
-          <div class="fp-actions">
-            <button class="btn-sm" @click="close">取消</button>
-            <button class="btn-sm btn-primary" :disabled="!currentPath" @click="selectCurrent">
-              选择此文件夹
-            </button>
-          </div>
+      <div class="fp-list" v-if="!loading">
+        <div v-if="dirs.length === 0" class="fp-empty">此目录下没有子文件夹</div>
+        <div
+          v-for="d in dirs"
+          :key="d.abs_path"
+          class="fp-item"
+          @dblclick="navigateTo(d)"
+          @click="navigateTo(d)"
+        >
+          <span class="fp-icon">{{ d.is_drive ? '💿' : '📁' }}</span>
+          <span class="fp-name">{{ d.name }}</span>
         </div>
       </div>
-    </Teleport>
+      <div v-else class="fp-loading">加载中...</div>
+
+      <template #footer>
+        <button class="btn-sm btn-primary" :disabled="!currentPath" @click="selectCurrent">
+          选择此文件夹
+        </button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -189,59 +176,6 @@ watch(() => props.modelValue, (val) => {
 
 .browse-btn:hover {
   text-decoration: underline;
-}
-
-.fp-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(21, 23, 23, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-}
-
-.fp-dialog {
-  background: #ffffff;
-  border: 1px solid #ebedf0;
-  border-radius: 16px;
-  box-shadow: 0 20px 48px rgba(21, 23, 23, 0.16);
-  padding: 20px;
-  width: 520px;
-  max-width: 90vw;
-  max-height: 70vh;
-  display: flex;
-  flex-direction: column;
-  color: #151717;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, sans-serif;
-}
-
-.fp-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.fp-title {
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: #151717;
-}
-
-.fp-close {
-  background: none;
-  border: none;
-  color: #9ca3af;
-  font-size: 22px;
-  cursor: pointer;
-  line-height: 1;
-}
-
-.fp-close:hover {
-  color: #151717;
 }
 
 .fp-current {
@@ -341,13 +275,6 @@ watch(() => props.modelValue, (val) => {
   color: #9ca3af;
   font-size: 13px;
   padding: 24px;
-}
-
-.fp-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 14px;
 }
 
 .btn-sm {

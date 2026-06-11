@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import SliderCaptcha from '@/components/SliderCaptcha.vue'
+import BaseModal from '@/components/BaseModal.vue'
 import logoUrl from '@/img/logo.png'
 import loginBg from '@/img/login_bg.png'
 
@@ -52,10 +53,6 @@ function handleSubmit() {
   if (!validateFields()) return
   captchaToken.value = ''
   showCaptcha.value = true
-}
-
-function closeCaptcha() {
-  showCaptcha.value = false
 }
 
 async function onCaptchaVerified(token: string) {
@@ -249,22 +246,12 @@ async function doSubmit() {
     </form>
 
     <!-- 滑块验证弹窗：点击登录/注册后出现 -->
-    <transition name="overlay-fade">
-      <div v-if="showCaptcha" class="captcha-overlay" @click.self="closeCaptcha">
-        <div class="captcha-modal">
-          <button type="button" class="captcha-close" aria-label="关闭" @click="closeCaptcha">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-          <h3 class="captcha-title">安全验证</h3>
-          <p class="captcha-sub">拖动滑块完成拼图以继续</p>
-          <div class="captcha-slot">
-            <SliderCaptcha @verified="onCaptchaVerified" />
-          </div>
-        </div>
+    <BaseModal v-model="showCaptcha" title="安全验证" :width="360" :body-scroll="false">
+      <p class="captcha-sub">拖动滑块完成拼图以继续</p>
+      <div class="captcha-slot">
+        <SliderCaptcha @verified="onCaptchaVerified" />
       </div>
-    </transition>
+    </BaseModal>
   </div>
 </template>
 
@@ -464,75 +451,10 @@ async function doSubmit() {
 }
 
 /* ============ 滑块验证弹窗 ============ */
-.captcha-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(2px);
-  padding: 24px;
-  box-sizing: border-box;
-}
-
-.captcha-modal {
-  position: relative;
-  width: 360px;
-  max-width: 100%;
-  background: #ffffff;
-  border-radius: 16px;
-  padding: 24px;
-  box-sizing: border-box;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
-  /* 拼图浮层向上弹出，需允许溢出显示 */
-  overflow: visible;
-}
-
-.captcha-close {
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: #9ca3af;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.captcha-close:hover {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.captcha-title {
-  font-size: 17px;
-  font-weight: 650;
-  color: #151717;
-  margin: 0 0 4px;
-}
-
 .captcha-sub {
   font-size: 13px;
   color: #6b7280;
   margin: 0 0 18px;
-}
-
-.overlay-fade-enter-active,
-.overlay-fade-leave-active {
-  transition: opacity 0.18s ease;
-}
-
-.overlay-fade-enter-from,
-.overlay-fade-leave-to {
-  opacity: 0;
 }
 
 @media (max-width: 520px) {

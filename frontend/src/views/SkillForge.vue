@@ -11,6 +11,8 @@ import AddSkillModal from '@/components/AddSkillModal.vue'
 import PlatformStructurePanel from '@/components/PlatformStructurePanel.vue'
 import ResourceFilesPanel from '@/components/ResourceFilesPanel.vue'
 import HelpTip from '@/components/HelpTip.vue'
+import BaseModal from '@/components/BaseModal.vue'
+import BaseSelect from '@/components/BaseSelect.vue'
 
 const router = useRouter()
 const store = useSkillStore()
@@ -74,6 +76,11 @@ const TOOL_LABELS: Record<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 
   trae: 'Trae',
   qoder: 'Qoder',
 }
+/** 平台下拉选项（供 BaseSelect 复用）。 */
+const TOOL_OPTIONS = (Object.keys(TOOL_LABELS) as (keyof typeof TOOL_LABELS)[]).map((k) => ({
+  value: k,
+  label: TOOL_LABELS[k],
+}))
 const previewData = ref<{ target: string; contents: Record<string, string> }[]>([])
 const showPreview = ref(false)
 const previewLoading = ref(false)
@@ -577,213 +584,161 @@ onMounted(() => {
     <AddSkillModal v-model="showCreateModal" scope="personal" @done="onAddSkillDone" />
 
     <!-- ===== Copy to Team Repo Modal ===== -->
-    <Teleport to="body">
-      <div v-if="showTeamRepoModal" class="modal-mask" @click.self="showTeamRepoModal = false">
-        <div class="modal-box">
-          <h3>放入团队 Skill 仓库</h3>
-          <p class="modal-hint">将个人 Skill「{{ store.currentId }}」复制一份到所选团队的 Skill 仓库，个人仓库保留原件。</p>
-          <div v-if="teamStore.teams.length === 0" class="form-error">
-            你还没有加入任何团队，请先在「团队协作」中创建或加入团队。
-          </div>
-          <div v-else class="form-row">
-            <label>目标团队</label>
-            <select v-model="copyTeamId" class="form-input">
-              <option v-for="t in teamStore.teams" :key="t.id" :value="t.id">{{ t.name }}</option>
-            </select>
-          </div>
-          <p v-if="teamCopyMsg" :class="['form-msg', copyOk ? 'ok' : 'err']">{{ teamCopyMsg }}</p>
-          <div class="modal-actions">
-            <button class="btn cancel" @click="showTeamRepoModal = false">取消</button>
-            <button class="btn primary" :disabled="copyingTeam || !copyTeamId || teamStore.teams.length === 0" @click="handleCopyToTeam">
-              {{ copyingTeam ? '放入中...' : '确认放入' }}
-            </button>
-          </div>
-        </div>
+    <BaseModal v-model="showTeamRepoModal" title="放入团队 Skill 仓库">
+      <p class="modal-hint">将个人 Skill「{{ store.currentId }}」复制一份到所选团队的 Skill 仓库，个人仓库保留原件。</p>
+      <div v-if="teamStore.teams.length === 0" class="form-error">
+        你还没有加入任何团队，请先在「团队协作」中创建或加入团队。
       </div>
-    </Teleport>
+      <div v-else class="form-row">
+        <label>目标团队</label>
+        <BaseSelect
+          v-model="copyTeamId"
+          :options="teamStore.teams.map((t) => ({ value: t.id, label: t.name }))"
+          placeholder="选择团队"
+        />
+      </div>
+      <p v-if="teamCopyMsg" :class="['form-msg', copyOk ? 'ok' : 'err']">{{ teamCopyMsg }}</p>
+      <template #footer>
+        <button class="btn primary" :disabled="copyingTeam || !copyTeamId || teamStore.teams.length === 0" @click="handleCopyToTeam">
+          {{ copyingTeam ? '放入中...' : '确认放入' }}
+        </button>
+      </template>
+    </BaseModal>
 
     <!-- ===== Preview Modal ===== -->
-    <Teleport to="body">
-      <div v-if="showPreview" class="modal-mask" @click.self="showPreview = false">
-        <div class="modal-box wide">
-          <h3>构建预览 — {{ previewTarget }}</h3>
-          <div v-if="previewLoading" class="preview-loading"><span class="spinner"></span> 生成中...</div>
-          <div v-else-if="previewData.length === 0" class="preview-empty">无预览数据</div>
-          <div v-else class="preview-files">
-            <div v-for="item in previewData" :key="item.target" class="preview-target">
-              <h4>{{ item.target }}</h4>
-              <div v-for="(content, filename) in item.contents" :key="filename" class="preview-file">
-                <div class="preview-filename">{{ filename }}</div>
-                <pre class="preview-content">{{ content }}</pre>
-              </div>
-            </div>
-          </div>
-          <div class="modal-actions">
-            <button class="btn cancel" @click="showPreview = false">关闭</button>
+    <BaseModal v-model="showPreview" :title="`构建预览 — ${previewTarget}`" :width="720">
+      <div v-if="previewLoading" class="preview-loading"><span class="spinner"></span> 生成中...</div>
+      <div v-else-if="previewData.length === 0" class="preview-empty">无预览数据</div>
+      <div v-else class="preview-files">
+        <div v-for="item in previewData" :key="item.target" class="preview-target">
+          <h4>{{ item.target }}</h4>
+          <div v-for="(content, filename) in item.contents" :key="filename" class="preview-file">
+            <div class="preview-filename">{{ filename }}</div>
+            <pre class="preview-content">{{ content }}</pre>
           </div>
         </div>
       </div>
-    </Teleport>
+    </BaseModal>
 
     <!-- ===== Deploy Settings Modal（部署 / 预览设置） ===== -->
-    <Teleport to="body">
-      <div v-if="showDeployModal" class="modal-mask" @click.self="showDeployModal = false">
-        <div class="modal-box">
-          <h3>部署 Skill</h3>
-          <p class="modal-hint">选择目标平台与项目目录后部署；也可先预览各平台生成的构建产物。</p>
+    <BaseModal v-model="showDeployModal" title="部署 Skill">
+      <p class="modal-hint">选择目标平台与项目目录后部署；也可先预览各平台生成的构建产物。</p>
 
-          <div class="form-row">
-            <label>预览构建产物</label>
-            <div class="inline-row">
-              <select v-model="previewTarget" class="form-input">
-                <option value="cursor">Cursor</option>
-                <option value="codex">Codex</option>
-                <option value="windsurf">Windsurf</option>
-                <option value="claude">Claude Code</option>
-                <option value="kiro">Kiro</option>
-                <option value="trae">Trae</option>
-                <option value="qoder">Qoder</option>
-              </select>
-              <button class="btn" @click="handlePreview">预览</button>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <label>部署平台</label>
-            <select v-model="deployTarget" class="form-input">
-              <option value="cursor">Cursor</option>
-              <option value="codex">Codex</option>
-              <option value="windsurf">Windsurf</option>
-              <option value="claude">Claude Code</option>
-              <option value="kiro">Kiro</option>
-              <option value="trae">Trae</option>
-              <option value="qoder">Qoder</option>
-            </select>
-          </div>
-
-          <div class="form-row">
-            <label>项目目录</label>
-            <div class="inline-row">
-              <button class="btn" @click="openDirPicker">{{ projectDeployPath ? '更改目录' : '选择目录...' }}</button>
-              <span class="path-text" :title="projectDeployPath">{{ projectDeployPath || '未选择目录' }}</span>
-            </div>
-          </div>
-
-          <div class="form-row">
-            <label class="check-inline">
-              <input v-model="deployToGlobal" type="checkbox" />
-              <span>同时部署到全局 ~/.{{ deployTarget }}/skills</span>
-            </label>
-          </div>
-
-          <p v-if="deployMsg" :class="['form-msg', deployMsg.includes('失败') ? 'err' : 'ok']">{{ deployMsg }}</p>
-
-          <div class="modal-actions">
-            <button class="btn cancel" @click="showDeployModal = false">关闭</button>
-            <button class="btn primary" :disabled="isTeamSkill || deploying" @click="handleDeploy">
-              {{ deploying ? '部署中...' : '部署' }}
-            </button>
-          </div>
+      <div class="form-row">
+        <label>预览构建产物</label>
+        <div class="inline-row">
+          <BaseSelect v-model="previewTarget" :options="TOOL_OPTIONS" />
+          <button class="btn" @click="handlePreview">预览</button>
         </div>
       </div>
-    </Teleport>
+
+      <div class="form-row">
+        <label>部署平台</label>
+        <BaseSelect v-model="deployTarget" :options="TOOL_OPTIONS" />
+      </div>
+
+      <div class="form-row">
+        <label>项目目录</label>
+        <div class="inline-row">
+          <button class="btn" @click="openDirPicker">{{ projectDeployPath ? '更改目录' : '选择目录...' }}</button>
+          <span class="path-text" :title="projectDeployPath">{{ projectDeployPath || '未选择目录' }}</span>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label class="check-inline">
+          <input v-model="deployToGlobal" type="checkbox" />
+          <span>同时部署到全局 ~/.{{ deployTarget }}/skills</span>
+        </label>
+      </div>
+
+      <p v-if="deployMsg" :class="['form-msg', deployMsg.includes('失败') ? 'err' : 'ok']">{{ deployMsg }}</p>
+
+      <template #footer>
+        <button class="btn primary" :disabled="isTeamSkill || deploying" @click="handleDeploy">
+          {{ deploying ? '部署中...' : '部署' }}
+        </button>
+      </template>
+    </BaseModal>
 
     <!-- ===== Platform-Specific Fields Complete Modal ===== -->
-    <Teleport to="body">
-      <div v-if="showCompleteModal" class="modal-mask" @click.self="showCompleteModal = false">
-        <div class="modal-box">
-          <h3>{{ deployTarget === 'codex' ? 'Codex' : 'Cursor' }} 平台特有配置</h3>
-          <p class="hint">
-            以下字段为 {{ deployTarget === 'codex' ? 'Codex' : 'Cursor' }} 平台所需。
-            {{ Object.keys(completeSuggestions).length > 0 ? 'LLM 已生成建议值，请确认或修改后部署。' : '请填写后继续部署。' }}
-          </p>
-          <div v-for="field in completeFields" :key="field" class="form-row">
-            <label>{{ field }}</label>
-            <input :value="completeSuggestions[field] ?? ''" @input="completeSuggestions[field] = ($event.target as HTMLInputElement).value" class="form-input" />
-          </div>
-          <div class="modal-actions">
-            <button class="btn cancel" @click="showCompleteModal = false">取消</button>
-            <button class="btn cancel" @click="showCompleteModal = false; doDeploy()">跳过，直接部署</button>
-            <button class="btn primary" @click="handleConfirmComplete">确认并部署</button>
-          </div>
-        </div>
+    <BaseModal v-model="showCompleteModal" :title="`${deployTarget === 'codex' ? 'Codex' : 'Cursor'} 平台特有配置`">
+      <p class="hint">
+        以下字段为 {{ deployTarget === 'codex' ? 'Codex' : 'Cursor' }} 平台所需。
+        {{ Object.keys(completeSuggestions).length > 0 ? 'LLM 已生成建议值，请确认或修改后部署。' : '请填写后继续部署。' }}
+      </p>
+      <div v-for="field in completeFields" :key="field" class="form-row">
+        <label>{{ field }}</label>
+        <input :value="completeSuggestions[field] ?? ''" @input="completeSuggestions[field] = ($event.target as HTMLInputElement).value" class="form-input" />
       </div>
-    </Teleport>
+      <template #footer>
+        <button class="btn cancel" @click="showCompleteModal = false; doDeploy()">跳过，直接部署</button>
+        <button class="btn primary" @click="handleConfirmComplete">确认并部署</button>
+      </template>
+    </BaseModal>
 
     <!-- ===== LLM Test Modal ===== -->
-    <Teleport to="body">
-      <div v-if="showLLMTest" class="modal-mask" @click.self="showLLMTest = false">
-        <div class="modal-box">
-          <h3>LLM 连通性测试</h3>
-          <div v-if="llmTestLoading" class="preview-loading"><span class="spinner"></span> 测试中...</div>
-          <div v-else-if="llmTestResult" class="llm-test-result">
-            <div :class="['test-status', llmTestResult.success ? 'ok' : 'fail']">
-              {{ llmTestResult.success ? '连接成功' : '连接失败' }}
-            </div>
-            <div class="test-details">
-              <div><strong>模型:</strong> {{ llmTestResult.model }}</div>
-              <div><strong>Base URL:</strong> {{ llmTestResult.base_url }}</div>
-              <div v-if="llmTestResult.response"><strong>响应:</strong> {{ llmTestResult.response }}</div>
-              <div v-if="llmTestResult.usage">
-                <strong>Token 用量:</strong>
-                prompt={{ llmTestResult.usage.prompt_tokens }},
-                completion={{ llmTestResult.usage.completion_tokens }},
-                total={{ llmTestResult.usage.total_tokens }}
-              </div>
-              <div v-if="llmTestResult.error" class="test-error"><strong>错误:</strong> {{ llmTestResult.error }}</div>
-            </div>
+    <BaseModal v-model="showLLMTest" title="LLM 连通性测试">
+      <div v-if="llmTestLoading" class="preview-loading"><span class="spinner"></span> 测试中...</div>
+      <div v-else-if="llmTestResult" class="llm-test-result">
+        <div :class="['test-status', llmTestResult.success ? 'ok' : 'fail']">
+          {{ llmTestResult.success ? '连接成功' : '连接失败' }}
+        </div>
+        <div class="test-details">
+          <div><strong>模型:</strong> {{ llmTestResult.model }}</div>
+          <div><strong>Base URL:</strong> {{ llmTestResult.base_url }}</div>
+          <div v-if="llmTestResult.response"><strong>响应:</strong> {{ llmTestResult.response }}</div>
+          <div v-if="llmTestResult.usage">
+            <strong>Token 用量:</strong>
+            prompt={{ llmTestResult.usage.prompt_tokens }},
+            completion={{ llmTestResult.usage.completion_tokens }},
+            total={{ llmTestResult.usage.total_tokens }}
           </div>
-          <div class="modal-actions">
-            <button class="btn cancel" @click="showLLMTest = false">关闭</button>
-            <button class="btn primary" @click="handleLLMTest">重新测试</button>
-          </div>
+          <div v-if="llmTestResult.error" class="test-error"><strong>错误:</strong> {{ llmTestResult.error }}</div>
         </div>
       </div>
-    </Teleport>
+      <template #footer>
+        <button class="btn primary" @click="handleLLMTest">重新测试</button>
+      </template>
+    </BaseModal>
 
     <!-- ===== Directory Picker Modal ===== -->
-    <Teleport to="body">
-      <div v-if="showDirPicker" class="modal-mask" @click.self="showDirPicker = false">
-        <div class="modal-box wide">
-          <h3>选择项目目录</h3>
-          <p class="hint">Skill 将部署到所选目录下的 <code>{{ store.currentId }}/</code> 子目录中。</p>
+    <BaseModal v-model="showDirPicker" title="选择项目目录" :width="720">
+      <p class="hint">Skill 将部署到所选目录下的 <code>{{ store.currentId }}/</code> 子目录中。</p>
 
-          <div v-if="dirPickerCurrent" class="dir-current-path">
-            <span>{{ dirPickerCurrent }}</span>
-            <button class="btn-copy" @click="copyPath(dirPickerCurrent)" title="复制路径">📋</button>
+      <div v-if="dirPickerCurrent" class="dir-current-path">
+        <span>{{ dirPickerCurrent }}</span>
+        <button class="btn-copy" @click="copyPath(dirPickerCurrent)" title="复制路径">📋</button>
+      </div>
+
+      <div class="dir-list-container">
+        <div v-if="dirPickerLoading" class="preview-loading"><span class="spinner"></span></div>
+        <div v-else class="dir-list">
+          <div
+            v-if="dirPickerParent !== null"
+            class="dir-item parent"
+            @click="browseTo(dirPickerParent!)"
+          >
+            &#8592; 上级目录
           </div>
-
-          <div class="dir-list-container">
-            <div v-if="dirPickerLoading" class="preview-loading"><span class="spinner"></span></div>
-            <div v-else class="dir-list">
-              <div
-                v-if="dirPickerParent !== null"
-                class="dir-item parent"
-                @click="browseTo(dirPickerParent!)"
-              >
-                &#8592; 上级目录
-              </div>
-              <div v-if="dirPickerDirs.length === 0 && !dirPickerParent" class="dir-empty">无子目录</div>
-              <div
-                v-for="d in dirPickerDirs"
-                :key="d.abs_path"
-                class="dir-item"
-                @click="browseTo(d.abs_path)"
-              >
-                {{ d.is_drive ? d.name : d.name }}
-              </div>
-            </div>
-          </div>
-
-          <div class="modal-actions">
-            <button class="btn cancel" @click="showDirPicker = false">取消</button>
-            <button class="btn primary" :disabled="!dirPickerCurrent" @click="confirmDirPick">
-              选择此目录
-            </button>
+          <div v-if="dirPickerDirs.length === 0 && !dirPickerParent" class="dir-empty">无子目录</div>
+          <div
+            v-for="d in dirPickerDirs"
+            :key="d.abs_path"
+            class="dir-item"
+            @click="browseTo(d.abs_path)"
+          >
+            {{ d.is_drive ? d.name : d.name }}
           </div>
         </div>
       </div>
-    </Teleport>
+
+      <template #footer>
+        <button class="btn primary" :disabled="!dirPickerCurrent" @click="confirmDirPick">
+          选择此目录
+        </button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -1375,7 +1330,7 @@ onMounted(() => {
 .tab-side {
   width: 176px;
   min-width: 176px;
-  align-self: flex-start;
+  align-self: stretch;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -1383,8 +1338,6 @@ onMounted(() => {
   border: 1px solid #ebedf0;
   border-radius: 14px;
   padding: 0.5rem;
-  position: sticky;
-  top: 0;
 }
 
 .tab-side-item {
@@ -1621,6 +1574,7 @@ onMounted(() => {
   gap: 0.5rem;
 }
 .inline-row .form-input { flex: 1; min-width: 0; }
+.inline-row .bs-trigger { flex: 1; min-width: 0; }
 .inline-row .btn { white-space: nowrap; flex-shrink: 0; }
 
 .path-text {
@@ -1644,49 +1598,6 @@ onMounted(() => {
 .check-inline span { font-weight: 500; color: #374151; }
 
 /* Modals */
-.modal-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(21, 23, 23, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-box {
-  background: #ffffff;
-  border: 1px solid #ebedf0;
-  border-radius: 16px;
-  box-shadow: 0 20px 48px rgba(21, 23, 23, 0.16);
-  padding: 1.75rem;
-  width: 420px;
-  max-width: 90vw;
-  color: #151717;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, sans-serif;
-}
-
-.modal-box.wide {
-  width: 720px;
-  max-height: 80vh;
-  overflow-y: auto;
-}
-
-.modal-box h3 {
-  margin: 0 0 1rem;
-  font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1.25rem;
-}
-
 .btn.cancel { color: #6b7280; }
 .btn.primary {
   background: #151717;

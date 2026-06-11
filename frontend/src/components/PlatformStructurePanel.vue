@@ -2,6 +2,8 @@
 import { ref, computed, watch } from 'vue'
 import { useSkillStore } from '@/stores/skillStore'
 import FolderPicker from '@/components/FolderPicker.vue'
+import BaseModal from '@/components/BaseModal.vue'
+import BaseSelect from '@/components/BaseSelect.vue'
 import cursorIcon from '@/img/icon/cursor.svg'
 import codexIcon from '@/img/icon/codex.svg'
 import windsurfIcon from '@/img/icon/windsurf.svg'
@@ -261,9 +263,6 @@ const buildInfo: Record<string, string[]> = {
 const showBuildModal = ref(false)
 function openBuildModal() {
   if (buildInfo[activePlatform.value]) showBuildModal.value = true
-}
-function closeBuildModal() {
-  showBuildModal.value = false
 }
 // 切换平台时关闭弹窗，避免内容错位
 watch(activePlatform, () => {
@@ -622,24 +621,22 @@ watch(activePlatform, () => {
               :placeholder="field.placeholder"
             />
           </div>
-          <select
+          <BaseSelect
             v-else-if="field.type === 'select'"
-            :value="getFieldValue(field)"
-            @change="setFieldValue(field, ($event.target as HTMLSelectElement).value)"
-            class="form-input"
-          >
-            <option v-for="opt in (field.options || [])" :key="opt" :value="opt">{{ opt || '未设置（默认）' }}</option>
-          </select>
-          <select
+            :model-value="getFieldValue(field)"
+            :options="(field.options || []).map((opt) => ({ value: opt, label: opt || '未设置（默认）' }))"
+            @update:model-value="setFieldValue(field, String($event))"
+          />
+          <BaseSelect
             v-else-if="field.type === 'boolean'"
-            :value="getTriValue(field)"
-            @change="setTriValue(field, ($event.target as HTMLSelectElement).value)"
-            class="form-input"
-          >
-            <option value="">未设置（默认 true）</option>
-            <option value="true">true</option>
-            <option value="false">false</option>
-          </select>
+            :model-value="getTriValue(field)"
+            :options="[
+              { value: '', label: '未设置（默认 true）' },
+              { value: 'true', label: 'true' },
+              { value: 'false', label: 'false' },
+            ]"
+            @update:model-value="setTriValue(field, String($event))"
+          />
           <textarea
             v-else-if="field.type === 'textarea'"
             :value="getFieldValue(field)"
@@ -698,20 +695,15 @@ watch(activePlatform, () => {
       </div>
 
       <!-- Build info modal (triggered by clicking the platform icon) -->
-      <transition name="modal-fade">
-        <div v-if="showBuildModal" class="build-modal-overlay" @click.self="closeBuildModal">
-          <div class="build-modal" role="dialog" aria-modal="true" aria-labelledby="build-modal-title">
-            <div class="build-modal-header">
-              <img class="build-modal-icon" :src="platformIcons[activePlatform]" alt="" aria-hidden="true" />
-              <h3 id="build-modal-title">{{ platformMeta[activePlatform].name }} · 构建说明</h3>
-              <button type="button" class="build-modal-close" @click="closeBuildModal" aria-label="关闭">×</button>
-            </div>
-            <ul class="build-modal-list">
-              <li v-for="(item, i) in (buildInfo[activePlatform] || [])" :key="i" v-html="item"></li>
-            </ul>
-          </div>
+      <BaseModal v-model="showBuildModal" :title="`${platformMeta[activePlatform].name} · 构建说明`" :width="520">
+        <div class="build-modal-titlebar">
+          <img class="build-modal-icon" :src="platformIcons[activePlatform]" alt="" aria-hidden="true" />
+          <span>{{ platformMeta[activePlatform].name }}</span>
         </div>
-      </transition>
+        <ul class="build-modal-list">
+          <li v-for="(item, i) in (buildInfo[activePlatform] || [])" :key="i" v-html="item"></li>
+        </ul>
+      </BaseModal>
     </section>
   </div>
 </template>
@@ -1046,70 +1038,24 @@ svg.seg-icon { color: inherit; filter: none; }
 }
 
 /* Build info modal */
-.build-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
+.build-modal-titlebar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-  background: rgba(17, 23, 23, 0.45);
-  backdrop-filter: blur(2px);
-}
-
-.build-modal {
-  width: 100%;
-  max-width: 560px;
-  max-height: 80vh;
-  overflow-y: auto;
-  background: #ffffff;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
-  padding: 1.5rem 1.75rem;
-}
-
-.build-modal-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  gap: 0.6rem;
   margin-bottom: 1rem;
   padding-bottom: 0.85rem;
   border-bottom: 1px solid #ebedf0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #6b7280;
 }
 
 .build-modal-icon {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
   object-fit: contain;
 }
-
-.build-modal-header h3 {
-  flex: 1;
-  font-size: 1.18rem;
-  font-weight: 700;
-  color: #151717;
-  margin: 0;
-}
-
-.build-modal-close {
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  font-size: 1.6rem;
-  line-height: 1;
-  color: #9ca3af;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.build-modal-close:hover { background: #f3f4f6; color: #151717; }
 
 .build-modal-list {
   list-style: none;
@@ -1141,11 +1087,6 @@ svg.seg-icon { color: inherit; filter: none; }
   font-family: 'JetBrains Mono', monospace;
   color: #151717;
 }
-
-.modal-fade-enter-active,
-.modal-fade-leave-active { transition: opacity 0.2s ease; }
-.modal-fade-enter-from,
-.modal-fade-leave-to { opacity: 0; }
 
 @media (max-width: 768px) {
   .segment-nav { overflow-x: auto; }

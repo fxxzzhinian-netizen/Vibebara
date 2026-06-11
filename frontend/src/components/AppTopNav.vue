@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { useTeamStore } from '@/stores/teamStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
+import BaseModal from '@/components/BaseModal.vue'
 import logoUrl from '@/img/logo.png'
 
 // 全局顶部导航：左 logo / 中分选栏 / 右头像（点击展开：用户信息 + 空间切换 + 退出）。
@@ -362,52 +363,40 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 创建团队弹窗 -->
-    <Teleport to="body">
-      <div
-        v-if="teamStore.createModalOpen"
-        class="modal-overlay"
-        @click.self="teamStore.createModalOpen = false"
-      >
-        <div class="modal">
-          <h3>创建团队</h3>
-          <div class="field">
-            <label>团队名称</label>
-            <input v-model="newTeamName" placeholder="输入团队名称" @keyup.enter="submitCreateTeam" />
-          </div>
-          <div class="field">
-            <label>描述（可选）</label>
-            <input v-model="newTeamDesc" placeholder="团队描述" @keyup.enter="submitCreateTeam" />
-          </div>
-          <div v-if="teamActionError" class="error-msg">{{ teamActionError }}</div>
-          <div class="modal-actions">
-            <button class="btn-sm" @click="teamStore.createModalOpen = false">取消</button>
-            <button class="btn-sm btn-primary" @click="submitCreateTeam">创建</button>
-          </div>
-        </div>
+    <BaseModal
+      :model-value="teamStore.createModalOpen"
+      title="创建团队"
+      @update:model-value="teamStore.createModalOpen = $event"
+    >
+      <div class="field">
+        <label>团队名称</label>
+        <input v-model="newTeamName" placeholder="输入团队名称" @keyup.enter="submitCreateTeam" />
       </div>
-    </Teleport>
+      <div class="field">
+        <label>描述（可选）</label>
+        <input v-model="newTeamDesc" placeholder="团队描述" @keyup.enter="submitCreateTeam" />
+      </div>
+      <div v-if="teamActionError" class="error-msg">{{ teamActionError }}</div>
+      <template #footer>
+        <button class="btn-sm btn-primary" @click="submitCreateTeam">创建</button>
+      </template>
+    </BaseModal>
 
     <!-- 加入团队弹窗 -->
-    <Teleport to="body">
-      <div
-        v-if="teamStore.joinModalOpen"
-        class="modal-overlay"
-        @click.self="teamStore.joinModalOpen = false"
-      >
-        <div class="modal">
-          <h3>加入团队</h3>
-          <div class="field">
-            <label>邀请码</label>
-            <input v-model="joinCode" placeholder="输入邀请码" @keyup.enter="submitJoinTeam" />
-          </div>
-          <div v-if="teamActionError" class="error-msg">{{ teamActionError }}</div>
-          <div class="modal-actions">
-            <button class="btn-sm" @click="teamStore.joinModalOpen = false">取消</button>
-            <button class="btn-sm btn-primary" @click="submitJoinTeam">加入</button>
-          </div>
-        </div>
+    <BaseModal
+      :model-value="teamStore.joinModalOpen"
+      title="加入团队"
+      @update:model-value="teamStore.joinModalOpen = $event"
+    >
+      <div class="field">
+        <label>邀请码</label>
+        <input v-model="joinCode" placeholder="输入邀请码" @keyup.enter="submitJoinTeam" />
       </div>
-    </Teleport>
+      <div v-if="teamActionError" class="error-msg">{{ teamActionError }}</div>
+      <template #footer>
+        <button class="btn-sm btn-primary" @click="submitJoinTeam">加入</button>
+      </template>
+    </BaseModal>
   </header>
 </template>
 
@@ -807,33 +796,6 @@ onBeforeUnmount(() => {
 }
 
 /* —— 创建 / 加入团队弹窗 —— */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(21, 23, 23, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: #ffffff;
-  border: 1px solid #ebedf0;
-  border-radius: 16px;
-  padding: 28px;
-  width: 400px;
-  max-width: 90vw;
-  box-shadow: 0 24px 48px rgba(21, 23, 23, 0.12);
-}
-
-.modal h3 {
-  margin: 0 0 20px;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #151717;
-}
-
 .field {
   margin-bottom: 16px;
 }
@@ -868,13 +830,6 @@ onBeforeUnmount(() => {
   color: #dc2626;
   font-size: 0.82rem;
   margin-bottom: 12px;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 20px;
 }
 
 .btn-sm {

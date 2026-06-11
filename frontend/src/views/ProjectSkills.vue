@@ -9,6 +9,8 @@ import { useSkillSync } from '@/composables/useSkillSync'
 import { promptInput } from '@/composables/useInputDialog'
 import AppTopNav from '@/components/AppTopNav.vue'
 import FolderPicker from '@/components/FolderPicker.vue'
+import BaseModal from '@/components/BaseModal.vue'
+import BaseSelect from '@/components/BaseSelect.vue'
 import type { ChangeItem, UserSkillDeploymentInfo } from '@/api/projects'
 import { parseUnifiedDiff, inlineSegments } from '@/utils/diffView'
 import type { DiffRow, DiffRowType, InlinePair, SegOp } from '@/utils/diffView'
@@ -32,6 +34,15 @@ const addError = ref('')
 const showDeployModal = ref(false)
 const deploySkillId = ref('')
 const deployTool = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'>('cursor')
+const TOOL_OPTIONS = [
+  { value: 'cursor', label: 'Cursor' },
+  { value: 'codex', label: 'Codex' },
+  { value: 'windsurf', label: 'Windsurf' },
+  { value: 'claude', label: 'Claude Code' },
+  { value: 'kiro', label: 'Kiro' },
+  { value: 'trae', label: 'Trae' },
+  { value: 'qoder', label: 'Qoder' },
+]
 const deployPath = ref('')
 const deployOverwrite = ref(false)
 const deployToGlobal = ref(false)
@@ -558,88 +569,68 @@ function goBack() {
     </div>
 
     <!-- 添加 Skill 弹窗 -->
-    <Teleport to="body">
-      <div v-if="showAddSkill" class="modal-overlay" @click.self="showAddSkill = false">
-        <div class="modal">
-          <h3>关联 Skill 到项目</h3>
-          <p class="hint">从团队仓库选择 Skill。添加后只进入项目列表，不会自动部署到本地目录。</p>
+    <BaseModal v-model="showAddSkill" title="关联 Skill 到项目">
+      <p class="hint">从团队仓库选择 Skill。添加后只进入项目列表，不会自动部署到本地目录。</p>
 
-          <div v-if="availableSkills.length === 0" class="empty-hint">
-            所有 Skill 已关联，或 Skill 库为空
-          </div>
-
-          <ul class="add-skill-list">
-            <li v-for="skill in availableSkills" :key="skill.id">
-              <div>
-                <strong>{{ skill.display_name || skill.id }}</strong>
-                <span class="sub">{{ skill.short_description }}</span>
-              </div>
-              <button class="btn-sm btn-primary" @click="addSkillToProject(skill.id)">
-                添加
-              </button>
-            </li>
-          </ul>
-
-          <div v-if="addError" class="error-msg">{{ addError }}</div>
-
-          <div class="modal-actions">
-            <button class="btn-sm" @click="showAddSkill = false">关闭</button>
-          </div>
-        </div>
+      <div v-if="availableSkills.length === 0" class="empty-hint">
+        所有 Skill 已关联，或 Skill 库为空
       </div>
-    </Teleport>
 
-    <Teleport to="body">
-      <div v-if="showDeployModal" class="modal-overlay" @click.self="showDeployModal = false">
-        <div class="modal">
-          <h3>部署 Skill 到本机项目</h3>
-          <p class="hint">部署后才会跟踪该本地 Skill 实例，团队仓库自动热更新由团队设置控制。</p>
-
-          <div class="field">
-            <label>Vibe Coding 工具</label>
-            <select v-model="deployTool">
-              <option value="cursor">Cursor</option>
-              <option value="codex">Codex</option>
-              <option value="windsurf">Windsurf</option>
-              <option value="claude">Claude Code</option>
-              <option value="kiro">Kiro</option>
-              <option value="trae">Trae</option>
-              <option value="qoder">Qoder</option>
-            </select>
+      <ul class="add-skill-list">
+        <li v-for="skill in availableSkills" :key="skill.id">
+          <div>
+            <strong>{{ skill.display_name || skill.id }}</strong>
+            <span class="sub">{{ skill.short_description }}</span>
           </div>
+          <button class="btn-sm btn-primary" @click="addSkillToProject(skill.id)">
+            添加
+          </button>
+        </li>
+      </ul>
 
-          <div class="field">
-            <label>本机项目路径</label>
-            <FolderPicker v-model="deployPath" placeholder="点击选择项目文件夹" />
-          </div>
+      <div v-if="addError" class="error-msg">{{ addError }}</div>
+    </BaseModal>
 
-          <label class="check-line">
-            <input v-model="deployToGlobal" type="checkbox" />
-            <span>同时部署到全局（额外安装到 ~/.{{ deployTool }}/skills，对所有项目生效；一次性、不跟踪同步）</span>
-          </label>
+    <BaseModal v-model="showDeployModal" title="部署 Skill 到本机项目">
+      <p class="hint">部署后才会跟踪该本地 Skill 实例，团队仓库自动热更新由团队设置控制。</p>
 
-          <label class="check-line">
-            <input v-model="deployOverwrite" type="checkbox" />
-            <span>覆盖已存在的同名 Skill</span>
-          </label>
-
-          <div v-if="deployError" class="error-msg">{{ deployError }}</div>
-
-          <div class="modal-actions">
-            <button class="btn-sm" @click="showDeployModal = false">取消</button>
-            <button class="btn-sm btn-primary" :disabled="deployLoading" @click="submitDeploy">
-              {{ deployLoading ? '部署中...' : '部署' }}
-            </button>
-          </div>
-        </div>
+      <div class="field">
+        <label>Vibe Coding 工具</label>
+        <BaseSelect v-model="deployTool" :options="TOOL_OPTIONS" />
       </div>
-    </Teleport>
+
+      <div class="field">
+        <label>本机项目路径</label>
+        <FolderPicker v-model="deployPath" placeholder="点击选择项目文件夹" />
+      </div>
+
+      <label class="check-line">
+        <input v-model="deployToGlobal" type="checkbox" />
+        <span>同时部署到全局（额外安装到 ~/.{{ deployTool }}/skills，对所有项目生效；一次性、不跟踪同步）</span>
+      </label>
+
+      <label class="check-line">
+        <input v-model="deployOverwrite" type="checkbox" />
+        <span>覆盖已存在的同名 Skill</span>
+      </label>
+
+      <div v-if="deployError" class="error-msg">{{ deployError }}</div>
+
+      <template #footer>
+        <button class="btn-sm btn-primary" :disabled="deployLoading" @click="submitDeploy">
+          {{ deployLoading ? '部署中...' : '部署' }}
+        </button>
+      </template>
+    </BaseModal>
 
     <!-- 改动详情弹窗：diff-match-patch 高亮 -->
-    <Teleport to="body">
-      <div v-if="detailMsg" class="modal-overlay" @click.self="closeDetail">
-        <div class="modal diff-modal">
-          <h3>改动详情</h3>
+    <BaseModal
+      :model-value="!!detailMsg"
+      title="改动详情"
+      :width="760"
+      @update:model-value="closeDetail"
+    >
+      <template v-if="detailMsg">
           <p class="diff-meta">
             {{ detailMsg.user_display_name }} · {{ detailMsg.skill_display_name }}
             · {{ formatTime(detailMsg.timestamp) }}
@@ -712,12 +703,8 @@ function goBack() {
             </div>
           </div>
 
-          <div class="modal-actions">
-            <button class="btn-sm" @click="closeDetail">关闭</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -977,11 +964,6 @@ function goBack() {
 }
 
 /* —— 改动详情弹窗 —— */
-.diff-modal {
-  width: 760px;
-  max-width: 94vw;
-}
-
 .diff-meta {
   margin: 0 0 4px;
   font-size: 0.76rem;
@@ -1228,33 +1210,6 @@ function goBack() {
   cursor: not-allowed;
 }
 
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(21, 23, 23, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: #ffffff;
-  border: 1px solid #ebedf0;
-  border-radius: 16px;
-  padding: 28px;
-  width: 480px;
-  max-width: 90vw;
-  box-shadow: 0 24px 48px rgba(21, 23, 23, 0.12);
-}
-
-.modal h3 {
-  margin: 0 0 12px;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #151717;
-}
-
 .field {
   margin-bottom: 14px;
 }
@@ -1317,10 +1272,4 @@ function goBack() {
   cursor: pointer;
 }
 
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 20px;
-}
 </style>

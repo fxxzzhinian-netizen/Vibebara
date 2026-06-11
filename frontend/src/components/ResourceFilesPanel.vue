@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { readResourceFile, writeResourceFile } from '@/api/skillStore'
 import ResourceTreeNode from './ResourceTreeNode.vue'
+import BaseModal from '@/components/BaseModal.vue'
 import { fileIconUrl, type ResTreeNode } from './resourceTree'
 
 interface ResEntry {
@@ -190,57 +191,53 @@ function fmtSize(n: number): string {
     </div>
 
     <!-- File editor modal -->
-    <Teleport to="body">
-      <transition name="rfp-fade">
-        <div v-if="editorOpen" class="rfp-overlay" @click.self="close">
-          <div class="rfp-modal" role="dialog" aria-modal="true">
-            <div class="rfp-modal-head">
-              <img class="rfp-modal-icon" :src="fileIconUrl(curPath.split('/').pop() || '')" alt="" aria-hidden="true" />
-              <span class="rfp-modal-path" :title="curPath">{{ curPath }}</span>
-              <span v-if="curSize" class="rfp-modal-size">{{ fmtSize(curSize) }}</span>
-              <button type="button" class="rfp-modal-close" aria-label="关闭" @click="close">×</button>
-            </div>
+    <BaseModal
+      :model-value="editorOpen"
+      :title="curPath.split('/').pop() || '文件'"
+      :width="860"
+      @update:model-value="close"
+    >
+      <div class="rfp-modal-titlebar">
+        <img class="rfp-modal-icon" :src="fileIconUrl(curPath.split('/').pop() || '')" alt="" aria-hidden="true" />
+        <span class="rfp-modal-path" :title="curPath">{{ curPath }}</span>
+        <span v-if="curSize" class="rfp-modal-size">{{ fmtSize(curSize) }}</span>
+      </div>
 
-            <div class="rfp-modal-body">
-              <div v-if="loading" class="rfp-state">加载中…</div>
-              <div v-else-if="errorMsg && !curContent && !imageSrc" class="rfp-state rfp-err">{{ errorMsg }}</div>
-              <template v-else>
-                <div v-if="imageSrc" class="rfp-preview">
-                  <img :src="imageSrc" :alt="curPath" />
-                </div>
-                <textarea
-                  v-if="!isBinary"
-                  class="rfp-editor"
-                  :value="curContent"
-                  spellcheck="false"
-                  :placeholder="readonly ? '只读' : '在此编辑文件内容…'"
-                  :readonly="readonly"
-                  @input="onInput"
-                ></textarea>
-                <div v-else-if="!imageSrc" class="rfp-state">二进制文件，暂不支持在线编辑（{{ fmtSize(curSize) }}）</div>
-              </template>
-            </div>
-
-            <div class="rfp-modal-foot">
-              <span v-if="errorMsg" class="rfp-foot-msg rfp-err">{{ errorMsg }}</span>
-              <span v-else-if="okMsg" class="rfp-foot-msg rfp-ok">{{ okMsg }}</span>
-              <span v-else-if="dirty" class="rfp-foot-msg rfp-dirty">未保存</span>
-              <span class="rfp-foot-spacer"></span>
-              <button type="button" class="rfp-btn" @click="close">关闭</button>
-              <button
-                v-if="!isBinary && !readonly"
-                type="button"
-                class="rfp-btn rfp-btn-primary"
-                :disabled="!canSave"
-                @click="save"
-              >
-                {{ saving ? '保存中…' : '保存' }}
-              </button>
-            </div>
+      <div class="rfp-modal-body">
+        <div v-if="loading" class="rfp-state">加载中…</div>
+        <div v-else-if="errorMsg && !curContent && !imageSrc" class="rfp-state rfp-err">{{ errorMsg }}</div>
+        <template v-else>
+          <div v-if="imageSrc" class="rfp-preview">
+            <img :src="imageSrc" :alt="curPath" />
           </div>
-        </div>
-      </transition>
-    </Teleport>
+          <textarea
+            v-if="!isBinary"
+            class="rfp-editor"
+            :value="curContent"
+            spellcheck="false"
+            :placeholder="readonly ? '只读' : '在此编辑文件内容…'"
+            :readonly="readonly"
+            @input="onInput"
+          ></textarea>
+          <div v-else-if="!imageSrc" class="rfp-state">二进制文件，暂不支持在线编辑（{{ fmtSize(curSize) }}）</div>
+        </template>
+      </div>
+
+      <template v-if="!isBinary && !readonly" #footer>
+        <span v-if="errorMsg" class="rfp-foot-msg rfp-err">{{ errorMsg }}</span>
+        <span v-else-if="okMsg" class="rfp-foot-msg rfp-ok">{{ okMsg }}</span>
+        <span v-else-if="dirty" class="rfp-foot-msg rfp-dirty">未保存</span>
+        <span class="rfp-foot-spacer"></span>
+        <button
+          type="button"
+          class="rfp-btn rfp-btn-primary"
+          :disabled="!canSave"
+          @click="save"
+        >
+          {{ saving ? '保存中…' : '保存' }}
+        </button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -275,36 +272,12 @@ function fmtSize(n: number): string {
 }
 
 /* Modal */
-.rfp-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem;
-  background: rgba(17, 23, 23, 0.45);
-  backdrop-filter: blur(2px);
-}
-
-.rfp-modal {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 860px;
-  height: 80vh;
-  max-height: 80vh;
-  background: #ffffff;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
-  overflow: hidden;
-}
-
-.rfp-modal-head {
+.rfp-modal-titlebar {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.9rem 1.1rem;
+  margin-bottom: 0.8rem;
+  padding-bottom: 0.8rem;
   border-bottom: 1px solid #ebedf0;
 }
 .rfp-modal-icon {
@@ -330,32 +303,10 @@ function fmtSize(n: number): string {
   font-size: 0.78rem;
   color: #9ca3af;
 }
-.rfp-modal-close {
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  font-size: 1.5rem;
-  line-height: 1;
-  color: #9ca3af;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.rfp-modal-close:hover { background: #f3f4f6; color: #151717; }
-
 .rfp-modal-body {
-  flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 1rem 1.1rem;
   gap: 0.8rem;
-  overflow: auto;
 }
 
 .rfp-state {
@@ -385,7 +336,7 @@ function fmtSize(n: number): string {
 
 .rfp-editor {
   flex: 1;
-  min-height: 220px;
+  min-height: 55vh;
   width: 100%;
   box-sizing: border-box;
   resize: none;
@@ -405,13 +356,6 @@ function fmtSize(n: number): string {
   background: #ffffff;
 }
 
-.rfp-modal-foot {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.8rem 1.1rem;
-  border-top: 1px solid #ebedf0;
-}
 .rfp-foot-msg { font-size: 0.84rem; }
 .rfp-foot-spacer { flex: 1; }
 
@@ -436,9 +380,4 @@ function fmtSize(n: number): string {
 }
 .rfp-btn-primary:hover:not(:disabled) { background: #2d2f2f; }
 .rfp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.rfp-fade-enter-active,
-.rfp-fade-leave-active { transition: opacity 0.18s ease; }
-.rfp-fade-enter-from,
-.rfp-fade-leave-to { opacity: 0; }
 </style>

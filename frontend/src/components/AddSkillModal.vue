@@ -13,6 +13,7 @@ import {
 } from '@/api/skillStore'
 import { rescanSkills, scanIdeGlobalSkills, type UnifiedSkillPackage, type IdeSkillGroup } from '@/api/skillForge'
 import FolderPicker from '@/components/FolderPicker.vue'
+import BaseModal from '@/components/BaseModal.vue'
 
 // 共享「新建/新增 Skill」模态：个人仓库（SkillForge）与团队仓库（Teams）共用。
 // scope='personal'：手动新建 / 从链接导入 / 从本地文件夹 / 从 IDE 工具导入（预留）。
@@ -467,11 +468,12 @@ async function confirmAddFromIde() {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-if="modelValue" class="modal-overlay" @click.self="close">
-      <div class="modal add-skill-modal">
-        <h3>{{ scope === 'team' ? '新增 Skill' : '新建 Skill' }}</h3>
-
+  <BaseModal
+    :model-value="modelValue"
+    :title="scope === 'team' ? '新增 Skill' : '新建 Skill'"
+    :width="520"
+    @update:model-value="emit('update:modelValue', $event)"
+  >
         <div class="method-tabs">
           <button
             v-for="m in methods"
@@ -707,9 +709,7 @@ async function confirmAddFromIde() {
 
         <div v-if="addSkillError" class="error-msg">{{ addSkillError }}</div>
 
-        <div class="modal-actions">
-          <button class="btn-sm" @click="close">取消</button>
-
+        <template #footer>
           <button
             v-if="addMethod === 'manual'"
             class="btn-sm btn-primary"
@@ -783,56 +783,21 @@ async function confirmAddFromIde() {
               {{ addSkillLoading ? '导入中...' : `导入所选 (${selectedIdePaths.length})` }}
             </button>
           </template>
-        </div>
-      </div>
-    </div>
-  </Teleport>
+        </template>
+  </BaseModal>
 </template>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(21, 23, 23, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: #ffffff;
-  border: 1px solid #ebedf0;
-  border-radius: 16px;
-  box-shadow: 0 20px 48px rgba(21, 23, 23, 0.16);
-  padding: 28px;
-  width: 400px;
-  max-width: 90vw;
-  color: #151717;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, sans-serif;
-}
-
-.modal h3 {
-  margin: 0 0 20px;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.add-skill-modal {
-  width: 480px;
-}
-
 .method-tabs {
   display: flex;
   gap: 6px;
   margin-bottom: 16px;
+  flex-shrink: 0;
 }
 
 .method-tab {
   flex: 1;
-  padding: 8px 6px;
+  padding: 8px 4px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #ffffff;
@@ -840,6 +805,7 @@ async function confirmAddFromIde() {
   font-size: 13px;
   font-family: inherit;
   cursor: pointer;
+  white-space: nowrap;
   transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
@@ -862,6 +828,12 @@ async function confirmAddFromIde() {
 
 .method-body {
   min-height: 80px;
+  /* grow=0：内容少时模态贴合内容；内容多到触顶 max-height 时本区域收缩并出现唯一滚动条 */
+  flex: 0 1 auto;
+  overflow-y: auto;
+  /* 给滚动条留出与内容的间距，避免滑块压住卡片右边框 */
+  margin-right: -8px;
+  padding-right: 8px;
 }
 
 .hint {
@@ -907,8 +879,6 @@ async function confirmAddFromIde() {
 }
 
 .personal-list {
-  max-height: 280px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -959,6 +929,7 @@ async function confirmAddFromIde() {
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 1;
+  line-clamp: 1;
   -webkit-box-orient: vertical;
 }
 
@@ -991,8 +962,6 @@ async function confirmAddFromIde() {
 }
 
 .scan-list {
-  max-height: 260px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1063,8 +1032,6 @@ async function confirmAddFromIde() {
 }
 
 .ide-groups {
-  max-height: 320px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1159,20 +1126,14 @@ async function confirmAddFromIde() {
 }
 
 .error-msg {
-  margin-bottom: 12px;
+  margin-top: 12px;
   padding: 8px 12px;
   border-radius: 8px;
   background: #fef2f2;
   border: 1px solid #fecaca;
   color: #dc2626;
   font-size: 13px;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 20px;
+  flex-shrink: 0;
 }
 
 .btn-sm {

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session } from "electron";
+import { app, BrowserWindow, Menu, session } from "electron";
 import path from "node:path";
 import {
   getEffectiveDeviceId,
@@ -138,10 +138,14 @@ async function configureProxy(): Promise<void> {
 
 function createWindow(): void {
   const { frontendIndex } = resolvePaths();
+  // 移除 Electron 默认应用菜单（File/Edit/View/Window/Help）：本应用 UI 完全由前端承载，
+  // 不需要原生菜单栏。不显式置 null，Electron 会自动挂上内置默认菜单。
+  Menu.setApplicationMenu(null);
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     title: "Vibebara",
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "index.js"),
       contextIsolation: true,

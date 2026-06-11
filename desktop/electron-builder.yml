@@ -15,8 +15,16 @@ extraResources:
   - from: ../local-agent/dist
     to: local-agent/dist
     filter: ["**/*"]
-  - from: ../local-agent/node_modules
-    to: local-agent/node_modules
+  # 仅打入 local-agent 的生产依赖（ws / js-yaml / argparse），不要整个 node_modules
+  # （含 vite/vitest/typescript 等 ~50MB 开发工具链）。新增运行时依赖时需在此补充。
+  - from: ../local-agent/node_modules/ws
+    to: local-agent/node_modules/ws
+    filter: ["**/*"]
+  - from: ../local-agent/node_modules/js-yaml
+    to: local-agent/node_modules/js-yaml
+    filter: ["**/*"]
+  - from: ../local-agent/node_modules/argparse
+    to: local-agent/node_modules/argparse
     filter: ["**/*"]
   - from: ../local-agent/package.json
     to: local-agent/package.json
@@ -29,6 +37,7 @@ files:
   - package.json
 
 win:
+  icon: build/icon.ico
   target:
     - nsis
   # 代码签名（M5-c）：证书到位后配置 certificateFile / certificatePassword 或

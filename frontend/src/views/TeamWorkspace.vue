@@ -10,6 +10,7 @@ import { listNativeSkills, type NativeSkillItem } from '@/api/skillStore'
 import { useSkillStore } from '@/stores/skillStore'
 import AppTopNav from '@/components/AppTopNav.vue'
 import AddSkillModal from '@/components/AddSkillModal.vue'
+import BaseModal from '@/components/BaseModal.vue'
 import cursorIcon from '@/img/icon/cursor.svg'
 import codexIcon from '@/img/icon/codex.svg'
 import windsurfIcon from '@/img/icon/windsurf.svg'
@@ -548,26 +549,20 @@ watch(
     </main>
 
     <!-- 创建项目弹窗 -->
-    <Teleport to="body">
-      <div v-if="showCreateProject" class="modal-overlay" @click.self="showCreateProject = false">
-        <div class="modal">
-          <h3>新建项目</h3>
-          <div class="field">
-            <label>项目名称</label>
-            <input v-model="newProjectName" placeholder="输入项目名称" />
-          </div>
-          <div class="field">
-            <label>描述（可选）</label>
-            <input v-model="newProjectDesc" placeholder="项目描述" />
-          </div>
-          <div v-if="actionError" class="error-msg">{{ actionError }}</div>
-          <div class="modal-actions">
-            <button class="btn-sm" @click="showCreateProject = false">取消</button>
-            <button class="btn-sm btn-primary" @click="createProject">创建</button>
-          </div>
-        </div>
+    <BaseModal v-model="showCreateProject" title="新建项目">
+      <div class="field">
+        <label>项目名称</label>
+        <input v-model="newProjectName" placeholder="输入项目名称" />
       </div>
-    </Teleport>
+      <div class="field">
+        <label>描述（可选）</label>
+        <input v-model="newProjectDesc" placeholder="项目描述" />
+      </div>
+      <div v-if="actionError" class="error-msg">{{ actionError }}</div>
+      <template #footer>
+        <button class="btn-sm btn-primary" @click="createProject">创建</button>
+      </template>
+    </BaseModal>
 
     <!-- 新增 Skill 到团队仓库（方式/解析/导入逻辑见共享组件 AddSkillModal） -->
     <AddSkillModal
@@ -1175,33 +1170,6 @@ watch(
   color: #dc2626;
 }
 
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(21, 23, 23, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: #ffffff;
-  border: 1px solid #ebedf0;
-  border-radius: 16px;
-  padding: 28px;
-  width: 400px;
-  max-width: 90vw;
-  box-shadow: 0 24px 48px rgba(21, 23, 23, 0.12);
-}
-
-.modal h3 {
-  margin: 0 0 20px;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #151717;
-}
-
 .field {
   margin-bottom: 16px;
 }
@@ -1236,13 +1204,6 @@ watch(
   color: #dc2626;
   font-size: 0.82rem;
   margin-bottom: 12px;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 20px;
 }
 
 .link-btn {

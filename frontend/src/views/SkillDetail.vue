@@ -19,6 +19,7 @@ import AppTopNav from '@/components/AppTopNav.vue'
 import HelpTip from '@/components/HelpTip.vue'
 import ResourceFilesPanel from '@/components/ResourceFilesPanel.vue'
 import PlatformStructurePanel from '@/components/PlatformStructurePanel.vue'
+import BaseModal from '@/components/BaseModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -697,50 +698,46 @@ function timeAgo(ts: string | null | undefined): string {
     </div>
 
     <!-- 版本内容查看弹窗 -->
-    <div v-if="viewingVersion" class="ver-modal-mask" @click.self="closeVersionView">
-      <div class="ver-modal">
-        <header class="ver-modal-head">
-          <h3>版本 v{{ viewingVersion.seq }} 内容快照</h3>
-          <span class="ver-modal-sub">
-            {{ sourceLabel(viewingVersion.source) }} · {{ viewingVersion.created_by_name }} · {{ timeAgo(viewingVersion.created_at) }}
-          </span>
-          <span class="spacer" />
-          <button class="back-btn" @click="closeVersionView" title="关闭">×</button>
-        </header>
-        <div class="ver-modal-body">
-          <div class="field">
-            <label>描述 (description)</label>
-            <div class="value pre">{{ (viewingVersion.config as any)?.description || '暂无描述' }}</div>
-          </div>
-          <div class="field">
-            <label>VibeSkill.md 正文</label>
-            <pre class="ver-code">{{ viewingVersion.vibeh_content || '（空）' }}</pre>
-          </div>
-          <div class="field">
-            <label>资源文件（scripts / references / assets）</label>
-            <ul v-if="viewingVersion.resources && viewingVersion.resources.length" class="ver-res-list">
-              <li v-for="p in viewingVersion.resources" :key="p">{{ p }}</li>
-            </ul>
-            <div v-else class="value">无资源文件</div>
-          </div>
-          <div class="field">
-            <label>skill.config.yaml（JSON 快照）</label>
-            <pre class="ver-code">{{ JSON.stringify(viewingVersion.config, null, 2) }}</pre>
-          </div>
+    <BaseModal
+      :model-value="!!viewingVersion"
+      :title="viewingVersion ? `版本 v${viewingVersion.seq} 内容快照` : ''"
+      :width="820"
+      @update:model-value="closeVersionView"
+    >
+      <template v-if="viewingVersion">
+        <p class="ver-modal-sub">
+          {{ sourceLabel(viewingVersion.source) }} · {{ viewingVersion.created_by_name }} · {{ timeAgo(viewingVersion.created_at) }}
+        </p>
+        <div class="field">
+          <label>描述 (description)</label>
+          <div class="value pre">{{ (viewingVersion.config as any)?.description || '暂无描述' }}</div>
         </div>
-        <footer class="ver-modal-foot">
-          <button
-            v-if="canEdit"
-            class="hdr-btn primary"
-            :disabled="restoringId === viewingVersion.id"
-            @click="restore(viewingVersion); closeVersionView()"
-          >
-            回滚到此版本
-          </button>
-          <button class="hdr-btn ghost" @click="closeVersionView">关闭</button>
-        </footer>
-      </div>
-    </div>
+        <div class="field">
+          <label>VibeSkill.md 正文</label>
+          <pre class="ver-code">{{ viewingVersion.vibeh_content || '（空）' }}</pre>
+        </div>
+        <div class="field">
+          <label>资源文件（scripts / references / assets）</label>
+          <ul v-if="viewingVersion.resources && viewingVersion.resources.length" class="ver-res-list">
+            <li v-for="p in viewingVersion.resources" :key="p">{{ p }}</li>
+          </ul>
+          <div v-else class="value">无资源文件</div>
+        </div>
+        <div class="field">
+          <label>skill.config.yaml（JSON 快照）</label>
+          <pre class="ver-code">{{ JSON.stringify(viewingVersion.config, null, 2) }}</pre>
+        </div>
+      </template>
+      <template v-if="canEdit && viewingVersion" #footer>
+        <button
+          class="hdr-btn primary"
+          :disabled="restoringId === viewingVersion.id"
+          @click="restore(viewingVersion); closeVersionView()"
+        >
+          回滚到此版本
+        </button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -937,7 +934,7 @@ function timeAgo(ts: string | null | undefined): string {
 .tab-side {
   width: 176px;
   min-width: 176px;
-  align-self: flex-start;
+  align-self: stretch;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -945,8 +942,6 @@ function timeAgo(ts: string | null | undefined): string {
   border: 1px solid #ebedf0;
   border-radius: 14px;
   padding: 0.5rem;
-  position: sticky;
-  top: 0;
 }
 .tab-side-item {
   text-align: left;
@@ -1080,21 +1075,7 @@ function timeAgo(ts: string | null | undefined): string {
 .hint-action { display: inline-block; margin-left: 0.5rem; color: #4f46e5; cursor: pointer; font-weight: 500; }
 .hint-action:hover { text-decoration: underline; }
 
-/* 版本弹窗复用的方形返回/文字按钮 */
-.back-btn {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  color: #6b7280;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  cursor: pointer;
-  font-size: 16px;
-  flex-shrink: 0;
-  transition: border-color 0.15s ease, color 0.15s ease;
-}
-.back-btn:hover { border-color: #d1d5db; color: #151717; }
-.spacer { flex: 1; }
+/* 版本弹窗底部操作按钮 */
 .hdr-btn {
   border: 1px solid #e5e7eb;
   background: #ffffff;
@@ -1111,7 +1092,6 @@ function timeAgo(ts: string | null | undefined): string {
 .hdr-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .hdr-btn.primary { background: #151717; border-color: #151717; color: #ffffff; font-weight: 600; }
 .hdr-btn.primary:hover:not(:disabled) { background: #2d2f2f; border-color: #2d2f2f; color: #ffffff; }
-.hdr-btn.ghost { background: #ffffff; color: #6b7280; }
 
 .state-box { margin: 32px auto; text-align: center; color: #9ca3af; }
 .state-box.err { color: #dc2626; }
@@ -1247,43 +1227,7 @@ function timeAgo(ts: string | null | undefined): string {
   padding: 2px 0;
 }
 
-.ver-modal-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(21, 23, 23, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 24px;
-}
-.ver-modal {
-  background: #ffffff;
-  border: 1px solid #ebedf0;
-  border-radius: 16px;
-  box-shadow: 0 20px 48px rgba(21, 23, 23, 0.16);
-  width: min(820px, 100%);
-  max-height: 86vh;
-  display: flex;
-  flex-direction: column;
-}
-.ver-modal-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 18px;
-  border-bottom: 1px solid #f3f4f6;
-}
-.ver-modal-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
-.ver-modal-sub { font-size: 12px; color: #9ca3af; }
-.ver-modal-body { padding: 16px 18px; overflow: auto; }
-.ver-modal-foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 18px;
-  border-top: 1px solid #f3f4f6;
-}
+.ver-modal-sub { font-size: 12px; color: #9ca3af; margin: 0 0 12px; }
 .ver-code {
   background: #f6f7f8;
   border: 1px solid #ebedf0;
