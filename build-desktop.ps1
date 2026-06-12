@@ -66,6 +66,45 @@ function Build-Node($dir, $name) {
     Write-Host "OK" -ForegroundColor Green
 }
 
+function Set-DesktopBuildVersion {
+    # 打包前在终端「手动输入」本次打包的版本号，写入 desktop/package.json。
+    # 版本号有两个作用：
+    #   1) 决定安装包文件名 Vibebara Setup <version>.exe（不同版本不会互相覆盖、易区分）；
+    #   2) 决定升级识别：appId 不变 → GUID 不变，只要新版本号比已装的高，安装时会
+    #      自动卸掉旧版并装到同一目录，用户无需先手动卸载（详见 electron-builder.yml）。
+    # 必须显式按 UTF-8 读写：PS 5.1 的 Get-Content -Raw 会把无 BOM 的 UTF-8 当 GBK 解码，
+    # 导致 description 里的中文变乱码、写回后掺入非法控制字符，npm 解析 package.json 直接报错。
+    $pkgPath = Join-Path $desktopDir "package.json"
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    $content = [System.IO.File]::ReadAllText($pkgPath, $utf8)
+
+    $cur = if ($content -match '"version"\s*:\s*"([^"]*)"') { $Matches[1] } else { "0.0.0" }
+    # 默认建议：把当前版本的「修订号」+1（合法时），直接回车即可采用。
+    $suggest = $cur
+    if ($cur -match '^(\d+)\.(\d+)\.(\d+)$') {
+        $suggest = "{0}.{1}.{2}" -f $Matches[1], $Matches[2], ([int]$Matches[3] + 1)
+    }
+
+    $ver = $null
+    while (-not $ver) {
+        $verInput = Read-Host "  请输入本次打包版本号 (当前 $cur，直接回车用 $suggest)"
+        if ([string]::IsNullOrWhiteSpace($verInput)) { $verInput = $suggest }
+        $verInput = $verInput.Trim()
+        if ($verInput -match '^(\d+)\.(\d+)\.(\d+)$' -and
+            [int]$Matches[1] -le 65535 -and [int]$Matches[2] -le 65535 -and [int]$Matches[3] -le 65535) {
+            $ver = $verInput
+        }
+        else {
+            Write-Host "  [无效] 需为 主.次.修订 三段数字，每段 0-65535（如 1.2.3）。请重输。" -ForegroundColor Yellow
+        }
+    }
+
+    $content = [regex]::Replace($content, '("version"\s*:\s*")[^"]*(")', "`${1}$ver`${2}")
+    [System.IO.File]::WriteAllText($pkgPath, $content, $utf8)
+    Write-Host "  [打包] 版本号 → $ver  (desktop/package.json，安装包名将含此版本)" -ForegroundColor Cyan
+    return $ver
+}
+
 function Ensure-Backend-Venv {
     if (-not (Test-Path $venvPython)) {
         Write-Host "  [后端] 创建虚拟环境 + 安装依赖..." -ForegroundColor Yellow
@@ -167,6 +206,7 @@ if (($Dist -or $Pack) -and (-not (Test-Path Env:\ELECTRON_BUILDER_BINARIES_MIRRO
 
 if ($Dist) {
     Write-Section "打包 NSIS 安装包"
+    Set-DesktopBuildVersion | Out-Null
     Write-Host "  首次会下载 electron + nsis 工具链，请耐心等待" -ForegroundColor Gray
     Invoke-In $desktopDir { npm run dist:win } "electron-builder dist"
     Write-Host "  [OK] 输出: $(Join-Path $desktopDir 'release')" -ForegroundColor Green
@@ -174,6 +214,7 @@ if ($Dist) {
 }
 if ($Pack) {
     Write-Section "打包解压即用目录"
+    Set-DesktopBuildVersion | Out-Null
     Write-Host "  首次会下载 electron 工具链，请耐心等待" -ForegroundColor Gray
     Invoke-In $desktopDir { npm run pack:win } "electron-builder pack"
     Write-Host "  [OK] 输出: $(Join-Path $desktopDir 'release')" -ForegroundColor Green

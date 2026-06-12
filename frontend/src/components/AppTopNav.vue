@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { useTeamStore } from '@/stores/teamStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
+import { toast } from '@/composables/useToast'
 import BaseModal from '@/components/BaseModal.vue'
 import logoUrl from '@/img/logo.png'
 
@@ -109,46 +110,43 @@ function pickTeam(teamId: string) {
 const newTeamName = ref('')
 const newTeamDesc = ref('')
 const joinCode = ref('')
-const teamActionError = ref('')
 
 function openCreateTeam() {
   closeUserMenu()
   newTeamName.value = ''
   newTeamDesc.value = ''
-  teamActionError.value = ''
   teamStore.openCreateModal()
 }
 
 function openJoinTeam() {
   closeUserMenu()
   joinCode.value = ''
-  teamActionError.value = ''
   teamStore.openJoinModal()
 }
 
 async function submitCreateTeam() {
   if (!newTeamName.value.trim()) return
-  teamActionError.value = ''
   const res = await teamStore.create(newTeamName.value.trim(), newTeamDesc.value.trim())
   if (res.success && teamStore.currentTeamId) {
     teamStore.createModalOpen = false
     workspace.switchToTeam(teamStore.currentTeamId)
+    toast.success('团队已创建')
     router.push('/team/skills')
   } else if (!res.success) {
-    teamActionError.value = res.error || '创建失败'
+    toast.error(res.error || '创建失败')
   }
 }
 
 async function submitJoinTeam() {
   if (!joinCode.value.trim()) return
-  teamActionError.value = ''
   const res = await teamStore.join(joinCode.value.trim())
   if (res.success && teamStore.currentTeamId) {
     teamStore.joinModalOpen = false
     workspace.switchToTeam(teamStore.currentTeamId)
+    toast.success('已加入团队')
     router.push('/team/skills')
   } else if (!res.success) {
-    teamActionError.value = res.error || '加入失败'
+    toast.error(res.error || '加入失败')
   }
 }
 
@@ -376,7 +374,6 @@ onBeforeUnmount(() => {
         <label>描述（可选）</label>
         <input v-model="newTeamDesc" placeholder="团队描述" @keyup.enter="submitCreateTeam" />
       </div>
-      <div v-if="teamActionError" class="error-msg">{{ teamActionError }}</div>
       <template #footer>
         <button class="btn-sm btn-primary" @click="submitCreateTeam">创建</button>
       </template>
@@ -392,7 +389,6 @@ onBeforeUnmount(() => {
         <label>邀请码</label>
         <input v-model="joinCode" placeholder="输入邀请码" @keyup.enter="submitJoinTeam" />
       </div>
-      <div v-if="teamActionError" class="error-msg">{{ teamActionError }}</div>
       <template #footer>
         <button class="btn-sm btn-primary" @click="submitJoinTeam">加入</button>
       </template>
@@ -810,7 +806,7 @@ onBeforeUnmount(() => {
 .field input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #e5e7eb;
+  border: 2px solid #e5e7eb;
   border-radius: 9px;
   background: #f6f7f8;
   color: #151717;

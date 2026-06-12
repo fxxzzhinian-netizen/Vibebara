@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { browseDirectory, type DirEntry } from '@/api/skillForge'
+import { toast } from '@/composables/useToast'
 import BaseModal from '@/components/BaseModal.vue'
 
 const props = defineProps<{
@@ -17,7 +18,6 @@ const loading = ref(false)
 const currentPath = ref('')
 const parentPath = ref<string | null>(null)
 const dirs = ref<DirEntry[]>([])
-const browseError = ref('')
 
 async function open() {
   showBrowser.value = true
@@ -30,18 +30,17 @@ function onInput(e: Event) {
 
 async function browse(path: string) {
   loading.value = true
-  browseError.value = ''
   try {
     const res = await browseDirectory(path)
     if (!res.success) {
-      browseError.value = res.error || '无法访问'
+      toast.error(res.error || '无法访问该目录')
       return
     }
     currentPath.value = res.current
     parentPath.value = res.parent
     dirs.value = res.dirs
   } catch (e: any) {
-    browseError.value = e.message || '请求失败'
+    toast.error(e.message || '请求失败')
   } finally {
     loading.value = false
   }
@@ -94,8 +93,6 @@ watch(() => props.modelValue, (val) => {
         <span class="fp-path">{{ currentPath || '我的电脑' }}</span>
       </div>
 
-      <div v-if="browseError" class="fp-error">{{ browseError }}</div>
-
       <div class="fp-list" v-if="!loading">
         <div v-if="dirs.length === 0" class="fp-empty">此目录下没有子文件夹</div>
         <div
@@ -131,7 +128,7 @@ watch(() => props.modelValue, (val) => {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
-  border: 1px solid #e5e7eb;
+  border: 2px solid #e5e7eb;
   border-radius: 8px;
   background: #f6f7f8;
   color: #151717;

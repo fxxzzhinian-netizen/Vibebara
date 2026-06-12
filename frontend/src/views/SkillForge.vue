@@ -13,20 +13,18 @@ import ResourceFilesPanel from '@/components/ResourceFilesPanel.vue'
 import HelpTip from '@/components/HelpTip.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import BaseSelect from '@/components/BaseSelect.vue'
+import { toast } from '@/composables/useToast'
 
 const router = useRouter()
 const store = useSkillStore()
 const teamStore = useTeamStore()
 
 const showCreateModal = ref(false)
-const repoMsg = ref('')
-let repoMsgTimer: ReturnType<typeof setTimeout> | undefined
 
 const deployTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'>('cursor')
 // 部署始终落项目目录（需选目录）；勾选后「同时」再额外落一份到全局 ~/.{tool}/skills。
 const deployToGlobal = ref(false)
 const deploying = ref(false)
-const deployMsg = ref('')
 
 const showDirPicker = ref(false)
 const dirPickerDirs = ref<{ name: string; abs_path: string; is_drive?: boolean }[]>([])
@@ -113,11 +111,7 @@ function setNestedField(parent: string, key: string, val: unknown) {
 }
 
 function flashRepoMsg(msg: string) {
-  repoMsg.value = msg
-  if (repoMsgTimer) clearTimeout(repoMsgTimer)
-  repoMsgTimer = setTimeout(() => {
-    repoMsg.value = ''
-  }, 4000)
+  toast.success(msg)
 }
 
 // AddSkillModal 完成回调：刷新个人列表；新建/导入到单个 Skill 时选中进入编辑器；
@@ -167,8 +161,7 @@ function getPlatformSpecificMissing(target: 'cursor' | 'codex' | 'windsurf' | 'c
 async function handleDeploy() {
   if (!store.currentId) return
   if (isTeamSkill.value) {
-    deployMsg.value = '团队仓库 Skill 只能从项目部署实例提升或部署'
-    setTimeout(() => { deployMsg.value = '' }, 3000)
+    toast.warning('团队仓库 Skill 只能从项目部署实例提升或部署')
     return
   }
 
@@ -198,17 +191,15 @@ async function handleDeploy() {
 async function doDeploy() {
   if (!store.currentId) return
   if (!projectDeployPath.value) {
-    deployMsg.value = '请先选择项目目录'
-    setTimeout(() => { deployMsg.value = '' }, 3000)
+    toast.warning('请先选择项目目录')
     return
   }
   deploying.value = true
-  deployMsg.value = ''
   try {
     // 基础动作：部署到项目目录（destPath 有值 → scope=project）。
     const res = await store.deploy(store.currentId, deployTarget.value, projectDeployPath.value)
     if (!res.success) {
-      deployMsg.value = res.error || '部署失败'
+      toast.error(res.error || '部署失败')
       return
     }
     // 附加动作：勾选「全局」→ 再落一份到 ~/.{tool}/skills（destPath 省略 → scope=platform）。
@@ -216,7 +207,7 @@ async function doDeploy() {
     if (deployToGlobal.value) {
       const gres = await store.deploy(store.currentId, deployTarget.value, undefined)
       if (!gres.success) {
-        deployMsg.value = `已部署到项目，但全局部署失败：${gres.error || ''}`
+        toast.error(`已部署到项目，但全局部署失败：${gres.error || ''}`)
         return
       }
       globalNote = ' + 全局'
@@ -224,15 +215,14 @@ async function doDeploy() {
     const toolLabel = TOOL_LABELS[deployTarget.value]
     // 启动器支持 cursor/codex/claude 自动打开；windsurf/kiro/trae/qoder 部署成功但不自动打开。
     if (deployTarget.value === 'windsurf') {
-      deployMsg.value = `已部署到项目 .windsurf/skills${globalNote}（请在 Windsurf 中手动打开项目）`
+      toast.success(`已部署到项目 .windsurf/skills${globalNote}（请在 Windsurf 中手动打开项目）`)
     } else if (deployTarget.value === 'kiro') {
-      deployMsg.value = `已部署到项目 .kiro/skills${globalNote}（请在 Kiro 中手动打开项目）`
+      toast.success(`已部署到项目 .kiro/skills${globalNote}（请在 Kiro 中手动打开项目）`)
     } else if (deployTarget.value === 'trae') {
-      deployMsg.value = `已部署到项目 .trae/skills${globalNote}（请在 Trae 中手动打开项目）`
+      toast.success(`已部署到项目 .trae/skills${globalNote}（请在 Trae 中手动打开项目）`)
     } else if (deployTarget.value === 'qoder') {
-      deployMsg.value = `已部署到项目 .qoder/skills${globalNote}（请在 Qoder 中手动打开项目）`
+      toast.success(`已部署到项目 .qoder/skills${globalNote}（请在 Qoder 中手动打开项目）`)
     } else {
-      deployMsg.value = `已部署${globalNote}，正在打开 ${toolLabel}...`
       const tool =
         deployTarget.value === 'cursor'
           ? 'cursor'
@@ -241,16 +231,15 @@ async function doDeploy() {
             : 'codex-app'
       try {
         await launchTool({ tool, project_path: projectDeployPath.value })
-        deployMsg.value = `已部署${globalNote}并打开 ${toolLabel}`
+        toast.success(`已部署${globalNote}并打开 ${toolLabel}`)
       } catch {
-        deployMsg.value = '已部署，但打开平台失败，请手动打开'
+        toast.warning('已部署，但打开平台失败，请手动打开')
       }
     }
   } catch (e: any) {
-    deployMsg.value = e.message
+    toast.error(e.message || '部署失败')
   } finally {
     deploying.value = false
-    setTimeout(() => { deployMsg.value = '' }, 5000)
   }
 }
 
@@ -298,13 +287,9 @@ async function handleLLMTest() {
 const showTeamRepoModal = ref(false)
 const copyTeamId = ref('')
 const copyingTeam = ref(false)
-const teamCopyMsg = ref('')
-const copyOk = ref(false)
 
 function openTeamRepoModal() {
   if (!store.currentId || isTeamSkill.value) return
-  teamCopyMsg.value = ''
-  copyOk.value = false
   copyTeamId.value = teamStore.teams[0]?.id || ''
   showTeamRepoModal.value = true
 }
@@ -312,20 +297,17 @@ function openTeamRepoModal() {
 async function handleCopyToTeam() {
   if (!store.currentId || !copyTeamId.value) return
   copyingTeam.value = true
-  teamCopyMsg.value = ''
-  copyOk.value = false
   try {
     const res = await copySkillToTeam(copyTeamId.value, store.currentId)
     if (res.success) {
       const teamName = teamStore.teams.find((t) => t.id === copyTeamId.value)?.name || '团队'
-      teamCopyMsg.value = `已放入「${teamName}」Skill 仓库`
-      copyOk.value = true
-      setTimeout(() => { showTeamRepoModal.value = false }, 1200)
+      toast.success(`已放入「${teamName}」Skill 仓库`)
+      showTeamRepoModal.value = false
     } else {
-      teamCopyMsg.value = res.error || '放入失败'
+      toast.error(res.error || '放入失败')
     }
   } catch (e: any) {
-    teamCopyMsg.value = e?.response?.data?.detail || e.message
+    toast.error(e?.response?.data?.detail || e.message || '放入失败')
   } finally {
     copyingTeam.value = false
   }
@@ -411,10 +393,6 @@ onMounted(() => {
               部署
             </button>
           </div>
-        </div>
-
-        <div v-if="deployMsg" :class="['deploy-msg', deployMsg.includes('失败') ? 'err' : 'ok']">
-          {{ deployMsg }}
         </div>
 
         <!-- Body: 左侧圆角卡片导航 + 右侧无底色正文 -->
@@ -597,7 +575,6 @@ onMounted(() => {
           placeholder="选择团队"
         />
       </div>
-      <p v-if="teamCopyMsg" :class="['form-msg', copyOk ? 'ok' : 'err']">{{ teamCopyMsg }}</p>
       <template #footer>
         <button class="btn primary" :disabled="copyingTeam || !copyTeamId || teamStore.teams.length === 0" @click="handleCopyToTeam">
           {{ copyingTeam ? '放入中...' : '确认放入' }}
@@ -651,8 +628,6 @@ onMounted(() => {
           <span>同时部署到全局 ~/.{{ deployTarget }}/skills</span>
         </label>
       </div>
-
-      <p v-if="deployMsg" :class="['form-msg', deployMsg.includes('失败') ? 'err' : 'ok']">{{ deployMsg }}</p>
 
       <template #footer>
         <button class="btn primary" :disabled="isTeamSkill || deploying" @click="handleDeploy">
@@ -865,7 +840,7 @@ onMounted(() => {
 .skill-item {
   padding: 0.6rem 1rem;
   cursor: pointer;
-  border-left: 3px solid transparent;
+  border-left: 4px solid transparent;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
@@ -1105,6 +1080,13 @@ onMounted(() => {
   flex-shrink: 0;
   display: block;
 }
+.tool-btn svg path {
+  stroke: currentColor;
+  stroke-width: 28;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  paint-order: stroke fill;
+}
 .tool-btn.save svg {
   width: 14px;
   height: 14px;
@@ -1127,50 +1109,50 @@ onMounted(() => {
 }
 
 .tool-btn.save {
-  background: #e0f2fe;
-  color: #0369a1;
-  border-color: #7dd3fc;
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
 }
 .tool-btn.save:hover:not(:disabled) {
-  background: #bae6fd;
-  border-color: #38bdf8;
-  color: #075985;
+  background: #0369a1;
+  border-color: #0369a1;
+  color: #ffffff;
   box-shadow: 0 6px 14px rgba(2, 132, 199, 0.18);
 }
 
 .tool-btn.deploy {
-  background: #dcfce7;
-  color: #15803d;
-  border-color: #6ee7a0;
+  background: #16a34a;
+  color: #ffffff;
+  border-color: #16a34a;
 }
 .tool-btn.deploy:hover:not(:disabled) {
-  background: #bbf7d0;
-  border-color: #4ade80;
-  color: #166534;
+  background: #15803d;
+  border-color: #15803d;
+  color: #ffffff;
   box-shadow: 0 6px 14px rgba(22, 163, 74, 0.2);
 }
 
 .tool-btn.team-repo {
-  background: #e0e7ff;
-  color: #4338ca;
-  border-color: #a5b4fc;
+  background: #4f46e5;
+  color: #ffffff;
+  border-color: #4f46e5;
 }
 .tool-btn.team-repo:hover:not(:disabled) {
-  background: #c7d2fe;
-  border-color: #818cf8;
-  color: #3730a3;
+  background: #4338ca;
+  border-color: #4338ca;
+  color: #ffffff;
   box-shadow: 0 6px 14px rgba(79, 70, 229, 0.2);
 }
 
 .tool-btn.danger {
-  background: #fee2e2;
-  color: #dc2626;
-  border-color: #fca5a5;
+  background: #dc2626;
+  color: #ffffff;
+  border-color: #dc2626;
 }
 .tool-btn.danger:hover:not(:disabled) {
-  background: #fecaca;
-  border-color: #f87171;
-  color: #b91c1c;
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #ffffff;
   box-shadow: 0 6px 14px rgba(220, 38, 38, 0.2);
 }
 
@@ -1474,7 +1456,7 @@ onMounted(() => {
   width: 100%;
   padding: 0.55rem 0.75rem;
   background: #ffffff;
-  border: 1px solid #e5e7eb;
+  border: 2px solid #e5e7eb;
   border-radius: 8px;
   color: #151717;
   font-size: 0.88rem;

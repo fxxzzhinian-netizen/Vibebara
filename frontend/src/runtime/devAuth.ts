@@ -7,9 +7,14 @@
  * 生产构建（`vite build`）下 `import.meta.env.DEV` 为 false，本开关恒为关闭，
  * 不会被打进线上产物，杜绝误绕过鉴权。
  *
- * 行为：注入一个假 token + 假用户（`onboarded=true`），让路由守卫直接放行，
- * 跳过登录页与引导页。注意：后端接口仍会因 token 非法返回 401（控制台可见报错），
- * 页面以「空数据」渲染——这对纯 UI/样式调试足够；需要真实数据时请关闭本开关正常登录。
+ * 行为：注入一个假 token + 假用户，让路由守卫判定为「已登录」，跳过登录页。
+ * 注意：后端接口仍会因 token 非法返回 401（控制台可见报错），页面以「空数据」渲染
+ * ——这对纯 UI/样式调试足够；需要真实数据时请关闭本开关正常登录。
+ *
+ * 引导页联调：假用户 `onboarded=false`，因此每次进入都会被守卫强制先走一遍引导页
+ * （过场动画 → 场景选择 → 工具选择）。完成引导后 completeOnboarding 在 dev 下本地置
+ * onboarded=true 直接进入工作台；刷新页面会重新从引导页开始，方便反复联调引导 UI。
+ * 若想跳过引导页直达工作台，把下方 `onboarded` 改回 true 即可。
  */
 import type { UserInfo } from '@/api/auth'
 
@@ -22,7 +27,7 @@ export const DEV_SKIP_AUTH =
 /** 开发者模式下注入的假 token（仅用于让守卫/拦截器判定为「已登录」）。 */
 export const DEV_FAKE_TOKEN = 'dev-skip-auth'
 
-/** 开发者模式下注入的假用户（onboarded=true，避免被引导页拦截）。 */
+/** 开发者模式下注入的假用户（onboarded=false：每次先走引导页过场，便于联调引导 UI）。 */
 export const DEV_FAKE_USER: UserInfo = {
   id: 'dev-user',
   username: 'dev',
@@ -30,7 +35,7 @@ export const DEV_FAKE_USER: UserInfo = {
   email: null,
   avatar_url: null,
   created_at: null,
-  onboarded: true,
+  onboarded: false,
   dev_mode: null,
   favorite_tool: null,
 }

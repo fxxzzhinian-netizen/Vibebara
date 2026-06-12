@@ -730,7 +730,7 @@ watch(activePlatform, () => {
   margin-bottom: -1px;
   background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-bottom: 3px solid transparent;
   color: #6b7280;
   font-size: 1.02rem;
   font-weight: 500;

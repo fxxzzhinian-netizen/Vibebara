@@ -43,10 +43,15 @@ win:
   # 代码签名（M5-c）：证书到位后配置 certificateFile / certificatePassword 或
   # 走 Azure Trusted Signing / EV 证书。证书申请为长周期项，需提前并行启动（见 M5 实施计划 §5）。
 
+# 覆盖升级机制：appId 固定（com.vibebara.desktop）→ 安装器用其派生的 GUID 在注册表里
+# 识别"这台机器上已装的 Vibebara"。只要本次打包的版本号高于已装版本，运行安装包时会
+# 自动卸掉旧版、装到同一目录，用户无需先手动卸载。（首次安装才会建目录；升级时跳过选目录页、
+# 沿用原安装位置。）配套前提：每次打包用递增的版本号——见 build-desktop.ps1 的 Set-DesktopBuildVersion。
 nsis:
-  oneClick: false
-  perMachine: false
-  allowToChangeInstallationDirectory: true
+  oneClick: false                           # 带"下一步"的精简向导；想要全自动零点击升级可改成 true
+  perMachine: false                         # 装到当前用户（%LOCALAPPDATA%\Programs\Vibebara），免管理员
+  allowToChangeInstallationDirectory: false # 锁定安装目录，避免装到不同目录产生重复副本
+  deleteAppDataOnUninstall: false           # 升级时静默卸旧版并保留用户数据
 
 # 自动更新（M5-c）：electron-updater + 发布通道（generic / github）。
 # publish:

@@ -7,6 +7,7 @@ import { getPlatformInstalledStatus } from '@/api/orchestration'
 import { useNotificationStore, formatNotification } from '@/stores/notificationStore'
 import { useSkillSync } from '@/composables/useSkillSync'
 import { promptInput } from '@/composables/useInputDialog'
+import { toast } from '@/composables/useToast'
 import AppTopNav from '@/components/AppTopNav.vue'
 import FolderPicker from '@/components/FolderPicker.vue'
 import BaseModal from '@/components/BaseModal.vue'
@@ -30,7 +31,6 @@ const { connected } = useSkillSync(() => projectId.value, async () => {
 let pollTimer: ReturnType<typeof setInterval> | undefined
 
 const showAddSkill = ref(false)
-const addError = ref('')
 const showDeployModal = ref(false)
 const deploySkillId = ref('')
 const deployTool = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'>('cursor')
@@ -46,11 +46,9 @@ const TOOL_OPTIONS = [
 const deployPath = ref('')
 const deployOverwrite = ref(false)
 const deployToGlobal = ref(false)
-const deployError = ref('')
 const deployLoading = ref(false)
 const pushingId = ref('')
 const pullingId = ref('')
-const actionMsg = ref('')
 
 const localStatusMap = ref<Record<string, boolean>>({})
 // 恢复跟踪时本地目录缺失 → 标记该部署需走「重新部署」（编排模式不打云端，纯前端提示）
@@ -178,7 +176,6 @@ async function loadTeamRepoSkills() {
 }
 
 function openAddSkill() {
-  addError.value = ''
   showAddSkill.value = true
   loadTeamRepoSkills()
 }
@@ -189,19 +186,19 @@ const availableSkills = computed(() => {
 })
 
 async function addSkillToProject(skillId: string) {
-  addError.value = ''
   const res = await projectStore.addSkill(projectId.value, skillId)
   if (!res.success) {
-    addError.value = res.error || '添加失败'
+    toast.error(res.error || '添加失败')
   } else {
     showAddSkill.value = false
+    toast.success('已添加 Skill 到项目')
   }
 }
 
 async function removeSkill(skillId: string) {
   const skill = projectStore.projectSkills.find((s) => s.skill_id === skillId)
   if (skill?.deployment?.tracking_enabled) {
-    actionMsg.value = '该 Skill 正在本机跟踪中，请先「停止跟踪」再移除'
+    toast.warning('该 Skill 正在本机跟踪中，请先「停止跟踪」再移除')
     return
   }
   if (!window.confirm('确认从项目移除该 Skill？移除后项目成员将无法再部署它。')) {
@@ -209,7 +206,9 @@ async function removeSkill(skillId: string) {
   }
   const res = await projectStore.removeSkill(projectId.value, skillId)
   if (!res.success) {
-    actionMsg.value = res.error || '移除失败'
+    toast.error(res.error || '移除失败')
+  } else {
+    toast.success('已从项目移除该 Skill')
   }
 }
 
@@ -219,18 +218,16 @@ function openDeploy(skillId: string) {
   deployPath.value = ''
   deployOverwrite.value = false
   deployToGlobal.value = false
-  deployError.value = ''
   showDeployModal.value = true
 }
 
 async function submitDeploy() {
   if (!deploySkillId.value) return
   if (!deployPath.value.trim()) {
-    deployError.value = '请选择本机项目路径'
+    toast.warning('请选择本机项目路径')
     return
   }
   deployLoading.value = true
-  deployError.value = ''
   // 基础动作：部署到项目（带跟踪同步）。
   const res = await projectStore.deploySkill(
     projectId.value,
@@ -241,7 +238,7 @@ async function submitDeploy() {
   )
   if (!res.success) {
     deployLoading.value = false
-    deployError.value = res.error || '部署失败'
+    toast.error(res.error || '部署失败')
     return
   }
   // 附加动作：勾选「同时部署到全局」→ 再落一份到 ~/.{tool}/skills（一次性、不跟踪、同名覆盖）。
@@ -253,12 +250,12 @@ async function submitDeploy() {
     )
     if (!gres.success) {
       deployLoading.value = false
-      deployError.value = `已部署到项目，但全局部署失败：${gres.error || ''}`
+      toast.error(`已部署到项目，但全局部署失败：${gres.error || ''}`)
       return
     }
   }
   deployLoading.value = false
-  actionMsg.value = deployToGlobal.value ? '已部署到项目并同步到全局' : '已部署到项目'
+  toast.success(deployToGlobal.value ? '已部署到项目并同步到全局' : '已部署到项目')
   showDeployModal.value = false
 }
 
@@ -267,21 +264,20 @@ async function stopTracking(deploymentId: string) {
 }
 
 async function resumeTracking(deploymentId: string) {
-  actionMsg.value = ''
   const res = await projectStore.resumeTracking(deploymentId)
   if (!res.success) {
     if (res.status === 'missing') {
       redeployHintIds.value = { ...redeployHintIds.value, [deploymentId]: true }
-      actionMsg.value = '本地部署目录缺失，请点「重新部署」'
+      toast.warning('本地部署目录缺失，请点「重新部署」')
     } else {
-      actionMsg.value = res.error || '恢复跟踪失败'
+      toast.error(res.error || '恢复跟踪失败')
     }
     return
   }
   const next = { ...redeployHintIds.value }
   delete next[deploymentId]
   redeployHintIds.value = next
-  actionMsg.value = '已恢复跟踪'
+  toast.success('已恢复跟踪')
   await refreshLocalStatuses()
 }
 
@@ -307,23 +303,24 @@ async function pushDeploy(deploymentId: string) {
     })
     versionLabel = (label ?? '').trim()
   }
-  actionMsg.value = ''
   pushingId.value = deploymentId
   const res = await projectStore.push(deploymentId, { createVersion, versionLabel })
   pushingId.value = ''
   if (!res.success) {
-    actionMsg.value = res.conflict
-      ? '团队仓库已更新，请先点"更新本地"再推送'
-      : res.error || '推送失败'
+    if (res.conflict) {
+      toast.warning('团队仓库已更新，请先点"更新本地"再推送')
+    } else {
+      toast.error(res.error || '推送失败')
+    }
     await refreshLocalStatuses()
     return
   }
   if (res.no_change) {
-    actionMsg.value = '本地无改动，无需推送'
+    toast.info('本地无改动，无需推送')
   } else if (res.version) {
-    actionMsg.value = `已推送并同步到项目，已创建版本 v${res.version.seq}`
+    toast.success(`已推送并同步到项目，已创建版本 v${res.version.seq}`)
   } else {
-    actionMsg.value = '已推送并同步到项目'
+    toast.success('已推送并同步到项目')
   }
   await loadMessageHistory()
   await refreshLocalStatuses()
@@ -337,7 +334,6 @@ async function pullUpdate(deploymentId: string, status?: string) {
   if (!window.confirm(message)) {
     return
   }
-  actionMsg.value = ''
   pullingId.value = deploymentId
   let res = await projectStore.pullUpdate(deploymentId, localConflict)
   if (!res.success && res.conflict && !localConflict) {
@@ -350,10 +346,10 @@ async function pullUpdate(deploymentId: string, status?: string) {
   }
   pullingId.value = ''
   if (!res.success) {
-    actionMsg.value = res.error || '更新失败'
+    toast.error(res.error || '更新失败')
     return
   }
-  actionMsg.value = '已更新本地到团队最新'
+  toast.success('已更新本地到团队最新')
   // 全局部署不跟踪更新；若该 Skill 也已全局部署，提示是否把本次更新同步覆盖到全局。
   await maybePullToGlobal(deploymentId)
   await loadMessageHistory()
@@ -392,9 +388,11 @@ async function maybePullToGlobal(deploymentId: string) {
     return
   }
   const gres = await projectStore.deploySkillGlobal(projectId.value, dep.team_skill_id, tool)
-  actionMsg.value = gres.success
-    ? '已更新本地并同步到全局'
-    : `本地已更新，但全局同步失败：${gres.error || ''}`
+  if (gres.success) {
+    toast.success('已更新本地并同步到全局')
+  } else {
+    toast.error(`本地已更新，但全局同步失败：${gres.error || ''}`)
+  }
 }
 
 function statusLabel(status?: string): string {
@@ -453,10 +451,6 @@ function goBack() {
         <button class="btn-sm btn-primary" @click="openAddSkill">
           + 关联 Skill
         </button>
-      </div>
-
-      <div v-if="actionMsg" class="action-banner" @click="actionMsg = ''">
-        {{ actionMsg }}
       </div>
 
       <div class="skill-list">
@@ -588,7 +582,6 @@ function goBack() {
         </li>
       </ul>
 
-      <div v-if="addError" class="error-msg">{{ addError }}</div>
     </BaseModal>
 
     <BaseModal v-model="showDeployModal" title="部署 Skill 到本机项目">
@@ -613,8 +606,6 @@ function goBack() {
         <input v-model="deployOverwrite" type="checkbox" />
         <span>覆盖已存在的同名 Skill</span>
       </label>
-
-      <div v-if="deployError" class="error-msg">{{ deployError }}</div>
 
       <template #footer>
         <button class="btn-sm btn-primary" :disabled="deployLoading" @click="submitDeploy">
@@ -1226,7 +1217,7 @@ function goBack() {
   width: 100%;
   box-sizing: border-box;
   padding: 10px 12px;
-  border: 1px solid #e5e7eb;
+  border: 2px solid #e5e7eb;
   border-radius: 9px;
   background: #f6f7f8;
   color: #151717;

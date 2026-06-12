@@ -103,6 +103,16 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function completeOnboarding(devMode: string, favoriteTool: string) {
+    // 开发者模式：不打后端（假 token 会 401），本地置 onboarded=true 让引导页能正常收尾进入工作台。
+    if (DEV_SKIP_AUTH) {
+      user.value = {
+        ...(user.value ?? DEV_FAKE_USER),
+        onboarded: true,
+        dev_mode: devMode,
+        favorite_tool: favoriteTool,
+      }
+      return { success: true }
+    }
     try {
       const res = await saveOnboarding(devMode, favoriteTool)
       if (res.success && user.value) {

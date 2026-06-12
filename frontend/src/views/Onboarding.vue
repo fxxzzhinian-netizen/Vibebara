@@ -3,7 +3,9 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { listTools, type ToolInfo, type ToolId } from '@/api/launcher'
+import { toast } from '@/composables/useToast'
 import logoUrl from '@/img/logo.png'
+import loginBg from '@/img/login_bg.png'
 import soloIllus from '@/img/card/solo.png'
 import teamIllus from '@/img/card/team.png'
 import cursorIcon from '@/img/icon/cursor.svg'
@@ -14,7 +16,7 @@ import kiroIcon from '@/img/icon/kiro.svg'
 import traeIcon from '@/img/icon/trae.svg'
 import qoderIcon from '@/img/icon/qoder.svg'
 
-type Phase = 'intro' | 'scene' | 'tools'
+type Phase = 'scene' | 'tools'
 type DevMode = 'solo' | 'team'
 type PlatformKey =
   | 'cursor'
@@ -34,13 +36,12 @@ interface PlatformTool {
 const router = useRouter()
 const auth = useAuthStore()
 
-const phase = ref<Phase>('intro')
+const phase = ref<Phase>('scene')
 const devMode = ref<DevMode | null>(null)
 const selectedTool = ref<PlatformKey | null>(null)
 const detecting = ref(false)
 const detected = ref<Set<PlatformKey>>(new Set())
 const submitting = ref(false)
-const errorMsg = ref('')
 
 const PLATFORM_TOOLS: PlatformTool[] = [
   { key: 'cursor', label: 'Cursor', icon: cursorIcon },
@@ -171,10 +172,6 @@ function nextTool() {
 onMounted(() => {
   updateViewportWidth()
   window.addEventListener('resize', updateViewportWidth)
-  // 过场动画后自动进入场景选择
-  window.setTimeout(() => {
-    if (phase.value === 'intro') phase.value = 'scene'
-  }, 1600)
 })
 
 onBeforeUnmount(() => {
@@ -190,7 +187,6 @@ function chooseScene(mode: DevMode) {
 
 async function runDetection() {
   detecting.value = true
-  errorMsg.value = ''
   try {
     const tools: ToolInfo[] = await listTools()
     const set = new Set<PlatformKey>()
@@ -208,10 +204,10 @@ async function runDetection() {
   }
 }
 
-// 底部圆点步骤指示（过场动画阶段不计入）
-const STEPS: Exclude<Phase, 'intro'>[] = ['scene', 'tools']
+// 底部圆点步骤指示
+const STEPS: Phase[] = ['scene', 'tools']
 
-function goStep(s: Exclude<Phase, 'intro'>) {
+function goStep(s: Phase) {
   if (s === 'scene') {
     phase.value = 'scene'
   } else if (s === 'tools' && devMode.value) {
@@ -222,32 +218,21 @@ function goStep(s: Exclude<Phase, 'intro'>) {
 async function finish() {
   if (!devMode.value || !selectedTool.value || submitting.value) return
   submitting.value = true
-  errorMsg.value = ''
   const res = await auth.completeOnboarding(devMode.value, selectedTool.value)
   submitting.value = false
   if (res.success) {
     router.replace('/')
   } else {
-    errorMsg.value = res.error || '保存失败，请重试'
+    toast.error(res.error || '保存失败，请重试')
   }
 }
 </script>
 
 <template>
-  <div class="onboarding-page">
+  <div class="onboarding-page" :style="{ backgroundImage: `url(${loginBg})` }">
     <img class="page-logo" :src="logoUrl" alt="vibebara" draggable="false" />
 
-    <!-- 阶段一：过场动画 -->
-    <transition name="fade">
-      <div v-if="phase === 'intro'" class="stage intro-stage">
-        <div class="intro-mark">
-          <img :src="logoUrl" alt="vibebara" class="intro-logo" draggable="false" />
-        </div>
-        <p class="intro-tip">正在为你准备专属工作台…</p>
-      </div>
-    </transition>
-
-    <!-- 阶段二：使用场景二选一 -->
+    <!-- 阶段一：使用场景二选一 -->
     <transition name="slide-fade">
       <div v-if="phase === 'scene'" class="stage scene-stage">
         <div class="stage-head">
@@ -271,7 +256,7 @@ async function finish() {
       </div>
     </transition>
 
-    <!-- 阶段三：工具检索与选择 -->
+    <!-- 阶段二：工具检索与选择 -->
     <transition name="slide-fade">
       <div v-if="phase === 'tools'" class="stage tools-stage">
         <div class="stage-head">
@@ -329,8 +314,6 @@ async function finish() {
           </button>
         </div>
 
-        <p v-if="errorMsg" class="err-text">{{ errorMsg }}</p>
-
         <button
           type="button"
           class="finish-btn"
@@ -344,7 +327,7 @@ async function finish() {
 
     <!-- 底部圆点步骤指示 -->
     <transition name="fade">
-      <div v-if="phase !== 'intro'" class="step-dots">
+      <div class="step-dots">
         <button
           v-for="(s, i) in STEPS"
           :key="s"
@@ -366,7 +349,10 @@ async function finish() {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  background: #ffffff;
+  background-color: #ffffff;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   padding: clamp(72px, 13vh, 150px) 24px 24px;
   box-sizing: border-box;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
@@ -393,55 +379,6 @@ async function finish() {
 /* 工具步骤：铺满页面宽度；箭头按间距贴在最外侧图标旁 */
 .tools-stage {
   max-width: none;
-}
-
-/* 过场动画 */
-.intro-stage {
-  position: absolute;
-  inset: 0;
-  justify-content: center;
-  gap: 22px;
-}
-
-.intro-mark {
-  animation: pop-in 1s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.intro-logo {
-  height: 64px;
-}
-
-.intro-tip {
-  color: #6b7280;
-  font-size: 15px;
-  letter-spacing: 0.02em;
-  animation: rise-in 0.9s ease 0.35s both;
-}
-
-@keyframes pop-in {
-  0% {
-    opacity: 0;
-    transform: scale(0.6);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(1.06);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .stage-head {
@@ -479,9 +416,9 @@ async function finish() {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  padding: 30px 32px 34px;
+  padding: 40px 48px 44px;
   background: #ffffff;
-  border: 1.5px solid #ecedec;
+  border: 2px solid transparent;
   border-radius: 22px;
   cursor: pointer;
   color: #151717;

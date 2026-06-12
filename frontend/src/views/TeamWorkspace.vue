@@ -8,6 +8,7 @@ import { useProjectSyncStore } from '@/stores/projectSyncStore'
 import { useTeamSync } from '@/composables/useTeamSync'
 import { listNativeSkills, type NativeSkillItem } from '@/api/skillStore'
 import { useSkillStore } from '@/stores/skillStore'
+import { toast } from '@/composables/useToast'
 import AppTopNav from '@/components/AppTopNav.vue'
 import AddSkillModal from '@/components/AddSkillModal.vue'
 import BaseModal from '@/components/BaseModal.vue'
@@ -70,8 +71,13 @@ const activeTab = computed<'skill' | 'projects' | 'manage'>(() => {
 const showCreateProject = ref(false)
 const newProjectName = ref('')
 const newProjectDesc = ref('')
-const actionError = ref('')
-const projectError = ref('')
+// 删除项目确认弹窗（应用内弹窗，替代浏览器 window.confirm）
+const showDeleteProject = ref(false)
+const deleteTarget = ref<{ id: string; name: string } | null>(null)
+const deletingProject = ref(false)
+// 解散团队确认弹窗（应用内弹窗，替代浏览器 window.confirm）
+const showDissolveTeam = ref(false)
+const dissolvingTeam = ref(false)
 const settingsSaving = ref(false)
 const teamSkills = ref<NativeSkillItem[]>([])
 // 区分“真的没有 Skill”与“加载失败（慢/弱网/全局 VPN 抖动超时）”：
@@ -80,8 +86,6 @@ const teamSkillsError = ref(false)
 
 // —— 新增 Skill 到团队仓库（弹窗内的方式/解析/导入逻辑见 AddSkillModal 组件）——
 const showAddSkill = ref(false)
-const skillRepoMsg = ref('')
-let skillRepoMsgTimer: ReturnType<typeof setTimeout> | undefined
 
 const myRole = computed(() => {
   const uid = authStore.user?.id
@@ -170,11 +174,7 @@ function upsertTeamSkill(skill: NativeSkillItem) {
 }
 
 function flashSkillRepoMsg(msg: string) {
-  skillRepoMsg.value = msg
-  if (skillRepoMsgTimer) clearTimeout(skillRepoMsgTimer)
-  skillRepoMsgTimer = setTimeout(() => {
-    skillRepoMsg.value = ''
-  }, 4000)
+  toast.success(msg)
 }
 
 // AddSkillModal 完成回调：
@@ -190,7 +190,6 @@ function onAddSkillDone(payload: { message: string; skills?: NativeSkillItem[] }
 
 async function createProject() {
   if (!newProjectName.value.trim() || !teamStore.currentTeamId) return
-  actionError.value = ''
   const res = await projectStore.create(
     teamStore.currentTeamId,
     newProjectName.value.trim(),
@@ -200,8 +199,9 @@ async function createProject() {
     showCreateProject.value = false
     newProjectName.value = ''
     newProjectDesc.value = ''
+    toast.success('项目已创建')
   } else {
-    actionError.value = res.error || '创建失败'
+    toast.error(res.error || '创建失败')
   }
 }
 
@@ -210,12 +210,11 @@ async function toggleAutoHotUpdate(event: Event) {
   const checked = (event.target as HTMLInputElement).checked
   const previous = teamStore.currentTeam.auto_skill_hot_update
   settingsSaving.value = true
-  actionError.value = ''
   teamStore.currentTeam.auto_skill_hot_update = checked
   const res = await teamStore.updateSettings(checked)
   if (!res.success) {
     teamStore.currentTeam.auto_skill_hot_update = previous
-    actionError.value = res.error || '保存团队设置失败'
+    toast.error(res.error || '保存团队设置失败')
   }
   settingsSaving.value = false
 }
@@ -230,7 +229,6 @@ function startEditProfile() {
   if (!teamStore.currentTeam) return
   editName.value = teamStore.currentTeam.name
   editDesc.value = teamStore.currentTeam.description || ''
-  actionError.value = ''
   editingProfile.value = true
 }
 
@@ -242,17 +240,17 @@ async function saveProfile() {
   if (!teamStore.currentTeam) return
   const name = editName.value.trim()
   if (!name) {
-    actionError.value = '团队名称不能为空'
+    toast.warning('团队名称不能为空')
     return
   }
   profileSaving.value = true
-  actionError.value = ''
   const res = await teamStore.updateProfile(name, editDesc.value.trim())
   profileSaving.value = false
   if (res.success) {
     editingProfile.value = false
+    toast.success('团队信息已保存')
   } else {
-    actionError.value = res.error || '保存团队信息失败'
+    toast.error(res.error || '保存团队信息失败')
   }
 }
 
@@ -260,39 +258,43 @@ function goToProject(projectId: string) {
   router.push(`/projects/${projectId}`)
 }
 
-async function removeProject(projectId: string, name: string) {
-  if (
-    !window.confirm(
-      `确认删除项目「${name}」？\n该项目下的 Skill 关联、部署记录与动态将一并删除，且不可恢复。`,
-    )
-  ) {
-    return
-  }
-  projectError.value = ''
-  const res = await projectStore.remove(projectId)
-  if (!res.success) {
-    projectError.value = res.error || '删除项目失败'
+function askRemoveProject(projectId: string, name: string) {
+  deleteTarget.value = { id: projectId, name }
+  showDeleteProject.value = true
+}
+
+async function confirmRemoveProject() {
+  const target = deleteTarget.value
+  if (!target || deletingProject.value) return
+  deletingProject.value = true
+  const res = await projectStore.remove(target.id)
+  deletingProject.value = false
+  if (res.success) {
+    showDeleteProject.value = false
+    deleteTarget.value = null
+    toast.success('项目已删除')
+  } else {
+    toast.error(res.error || '删除项目失败')
   }
 }
 
-async function removeTeam() {
+function askRemoveTeam() {
+  if (!teamStore.currentTeam) return
+  showDissolveTeam.value = true
+}
+
+async function confirmRemoveTeam() {
   const team = teamStore.currentTeam
-  if (!team) return
-  if (
-    !window.confirm(
-      `确认解散团队「${team.name}」？\n` +
-        `该团队下的所有项目、团队 Skill 仓库、部署记录、动态与成员关系将一并删除，且不可恢复。\n` +
-        `各成员本地已部署的文件需自行清理。`,
-    )
-  ) {
-    return
-  }
-  actionError.value = ''
+  if (!team || dissolvingTeam.value) return
+  dissolvingTeam.value = true
   const res = await teamStore.remove(team.id)
+  dissolvingTeam.value = false
   if (res.success) {
+    showDissolveTeam.value = false
+    toast.success('团队已解散')
     backToManage()
   } else {
-    actionError.value = res.error || '删除团队失败'
+    toast.error(res.error || '删除团队失败')
   }
 }
 
@@ -355,7 +357,6 @@ watch(
               <span class="plus">+</span> 新增 Skill
             </button>
           </div>
-          <div v-if="skillRepoMsg" class="success-msg">{{ skillRepoMsg }}</div>
           <div v-if="teamSkills.length" class="skill-grid">
             <div
               v-for="s in teamSkills"
@@ -418,8 +419,6 @@ watch(
             </button>
           </div>
 
-          <div v-if="projectError" class="error-msg project-error">{{ projectError }}</div>
-
           <div class="project-grid">
             <div
               v-for="project in projectStore.projects"
@@ -431,7 +430,7 @@ watch(
                 v-if="canManageProjects"
                 class="project-delete"
                 title="删除项目"
-                @click.stop="removeProject(project.id, project.name)"
+                @click.stop="askRemoveProject(project.id, project.name)"
               >
                 ×
               </button>
@@ -485,13 +484,11 @@ watch(
               v-if="isOwner"
               class="btn-add btn-add-danger"
               title="解散团队（不可恢复）"
-              @click="removeTeam"
+              @click="askRemoveTeam"
             >
               解散团队
             </button>
           </div>
-
-          <div v-if="actionError" class="error-msg manage-error">{{ actionError }}</div>
 
           <!-- 团队信息（标题在卡片外） -->
           <div class="manage-section-title">团队信息</div>
@@ -558,9 +555,54 @@ watch(
         <label>描述（可选）</label>
         <input v-model="newProjectDesc" placeholder="项目描述" />
       </div>
-      <div v-if="actionError" class="error-msg">{{ actionError }}</div>
       <template #footer>
         <button class="btn-sm btn-primary" @click="createProject">创建</button>
+      </template>
+    </BaseModal>
+
+    <!-- 删除项目确认弹窗 -->
+    <BaseModal
+      v-model="showDeleteProject"
+      title="删除项目"
+      :closable="!deletingProject"
+      :close-on-overlay="!deletingProject"
+    >
+      <p class="confirm-text">
+        确认删除项目「<strong>{{ deleteTarget?.name }}</strong>」？
+      </p>
+      <p class="confirm-hint">
+        该项目下的 Skill 关联、部署记录与动态将一并删除，且不可恢复。
+      </p>
+      <template #footer>
+        <button class="btn-sm" :disabled="deletingProject" @click="showDeleteProject = false">
+          取消
+        </button>
+        <button class="btn-sm btn-danger" :disabled="deletingProject" @click="confirmRemoveProject">
+          {{ deletingProject ? '删除中…' : '确认删除' }}
+        </button>
+      </template>
+    </BaseModal>
+
+    <!-- 解散团队确认弹窗 -->
+    <BaseModal
+      v-model="showDissolveTeam"
+      title="解散团队"
+      :closable="!dissolvingTeam"
+      :close-on-overlay="!dissolvingTeam"
+    >
+      <p class="confirm-text">
+        确认解散团队「<strong>{{ teamStore.currentTeam?.name }}</strong>」？
+      </p>
+      <p class="confirm-hint">
+        该团队下的所有项目、团队 Skill 仓库、部署记录、动态与成员关系将一并删除，且不可恢复。各成员本地已部署的文件需自行清理。
+      </p>
+      <template #footer>
+        <button class="btn-sm" :disabled="dissolvingTeam" @click="showDissolveTeam = false">
+          取消
+        </button>
+        <button class="btn-sm btn-danger" :disabled="dissolvingTeam" @click="confirmRemoveTeam">
+          {{ dissolvingTeam ? '解散中…' : '确认解散' }}
+        </button>
       </template>
     </BaseModal>
 
@@ -675,7 +717,7 @@ watch(
 /* 可编辑内容：维持原样式，仅加下划线提示可编辑 */
 .repo-title-edit {
   border: none;
-  border-bottom: 2px solid #d1d5db;
+  border-bottom: 3px solid #d1d5db;
   border-radius: 0;
   background: transparent;
   padding: 0 2px 2px;
@@ -691,7 +733,7 @@ watch(
 .info-value-edit {
   flex: 1;
   border: none;
-  border-bottom: 1px solid #d1d5db;
+  border-bottom: 2px solid #d1d5db;
   border-radius: 0;
   background: transparent;
   padding: 2px 2px 4px;
@@ -1184,7 +1226,7 @@ watch(
 .field input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #e5e7eb;
+  border: 2px solid #e5e7eb;
   border-radius: 9px;
   background: #f6f7f8;
   color: #151717;
@@ -1204,6 +1246,25 @@ watch(
   color: #dc2626;
   font-size: 0.82rem;
   margin-bottom: 12px;
+}
+
+.confirm-text {
+  margin: 0 0 8px;
+  font-size: 0.92rem;
+  color: #151717;
+  line-height: 1.5;
+}
+
+.confirm-text strong {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.confirm-hint {
+  margin: 0 0 4px;
+  font-size: 0.82rem;
+  color: #6b7280;
+  line-height: 1.5;
 }
 
 .link-btn {

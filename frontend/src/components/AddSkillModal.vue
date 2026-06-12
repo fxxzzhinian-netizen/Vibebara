@@ -858,7 +858,7 @@ async function confirmAddFromIde() {
 .field input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #e5e7eb;
+  border: 2px solid #e5e7eb;
   border-radius: 8px;
   background: #f6f7f8;
   color: #151717;
@@ -889,7 +889,7 @@ async function confirmAddFromIde() {
   align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid #ebedf0;
+  border: 2px solid #ebedf0;
   border-radius: 10px;
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
@@ -972,7 +972,7 @@ async function confirmAddFromIde() {
   align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid #ebedf0;
+  border: 2px solid #ebedf0;
   border-radius: 10px;
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
@@ -1094,7 +1094,7 @@ async function confirmAddFromIde() {
 .url-input {
   flex: 1;
   padding: 9px 12px;
-  border: 1px solid #e5e7eb;
+  border: 2px solid #e5e7eb;
   border-radius: 8px;
   background: #f6f7f8;
   color: #151717;

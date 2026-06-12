@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   getNativeSkill,
   updateNativeSkill,
+  deleteNativeSkill,
   listSkillVersions,
   getSkillVersion,
   restoreSkillVersion,
@@ -15,6 +16,7 @@ import type { ChangeItem } from '@/api/projects'
 import { useTeamStore } from '@/stores/teamStore'
 import { useSkillStore } from '@/stores/skillStore'
 import { promptInput } from '@/composables/useInputDialog'
+import { toast } from '@/composables/useToast'
 import AppTopNav from '@/components/AppTopNav.vue'
 import HelpTip from '@/components/HelpTip.vue'
 import ResourceFilesPanel from '@/components/ResourceFilesPanel.vue'
@@ -50,23 +52,18 @@ const canEdit = computed(() => isTeamSkill.value && isTeamMember.value)
 // 编辑态（仅对团队 Skill 开放）
 const editing = ref(false)
 const saving = ref(false)
-const saveMsg = ref('')
-const saveOk = ref(false)
 const draft = ref<Record<string, any> | null>(null)
 const draftVibeh = ref('')
 
 function startEdit() {
   draft.value = JSON.parse(JSON.stringify(cfg.value ?? {}))
   draftVibeh.value = vibeh.value
-  saveMsg.value = ''
-  saveOk.value = false
   editing.value = true
 }
 
 function cancelEdit() {
   editing.value = false
   draft.value = null
-  saveMsg.value = ''
 }
 
 function setDraft(key: string, val: unknown) {
@@ -107,8 +104,6 @@ async function save() {
     versionLabel = (label ?? '').trim()
   }
   saving.value = true
-  saveMsg.value = ''
-  saveOk.value = false
   try {
     const res = await updateNativeSkill(skillId.value, draft.value, draftVibeh.value, {
       createVersion,
@@ -117,25 +112,25 @@ async function save() {
     if (res.success) {
       if (res.no_change) {
         // 未检测到实质改动：不退出编辑、不打扰其他成员，提示后让用户继续编辑
-        saveOk.value = false
-        saveMsg.value = '未检测到修改，无需保存'
+        toast.info('未检测到修改，无需保存')
       } else {
-        saveOk.value = true
         const summary = res.diff_summary && res.diff_summary !== '无改动' ? res.diff_summary : ''
         const verNote = res.version ? `已创建版本 v${res.version.seq}，` : ''
-        saveMsg.value = summary
-          ? `已保存：${summary}，${verNote}已记入「项目动态」，其他成员可在项目页「更新本地」`
-          : `已保存，${verNote}已记入「项目动态」，其他成员可在项目页「更新本地」`
+        toast.success(
+          summary
+            ? `已保存：${summary}，${verNote}已记入「项目动态」，其他成员可在项目页「更新本地」`
+            : `已保存，${verNote}已记入「项目动态」，其他成员可在项目页「更新本地」`,
+        )
         editing.value = false
         draft.value = null
         await load()
         if (versionsLoaded.value) await loadVersions()
       }
     } else {
-      saveMsg.value = res.error || '保存失败'
+      toast.error(res.error || '保存失败')
     }
   } catch (e: any) {
-    saveMsg.value = e?.response?.data?.detail || e.message || '保存失败'
+    toast.error(e?.response?.data?.detail || e.message || '保存失败')
   } finally {
     saving.value = false
   }
@@ -145,8 +140,6 @@ async function save() {
 const versions = ref<SkillVersionItem[]>([])
 const versionsLoading = ref(false)
 const versionsLoaded = ref(false)
-const versionsError = ref('')
-const versionActionMsg = ref('')
 const expandedVersionId = ref('')
 const restoringId = ref('')
 const viewingVersion = ref<SkillVersionDetail | null>(null)
@@ -154,17 +147,16 @@ const viewLoading = ref(false)
 
 async function loadVersions() {
   versionsLoading.value = true
-  versionsError.value = ''
   try {
     const res = await listSkillVersions(skillId.value)
     if (res.success) {
       versions.value = res.versions
       versionsLoaded.value = true
     } else {
-      versionsError.value = res.error || '加载版本失败'
+      toast.error(res.error || '加载版本失败')
     }
   } catch (e: any) {
-    versionsError.value = e?.response?.data?.detail || e.message || '请求异常'
+    toast.error(e?.response?.data?.detail || e.message || '请求异常')
   } finally {
     versionsLoading.value = false
   }
@@ -182,24 +174,18 @@ watch(activeTab, (tab) => {
 
 // 平台结构改动经 skillStore 暂存（dirty），与基本信息的 draft/版本流相互独立，单独保存。
 const platformSaving = ref(false)
-const platformSaveMsg = ref('')
-const platformSaveOk = ref(false)
 async function savePlatform() {
   platformSaving.value = true
-  platformSaveMsg.value = ''
   try {
     await skillStore.saveCurrentSkill()
     if (skillStore.error) {
-      platformSaveOk.value = false
-      platformSaveMsg.value = skillStore.error
+      toast.error(skillStore.error)
     } else {
-      platformSaveOk.value = true
-      platformSaveMsg.value = '平台结构已保存'
+      toast.success('平台结构已保存')
       await load()
     }
   } catch (e: any) {
-    platformSaveOk.value = false
-    platformSaveMsg.value = e?.response?.data?.detail || e.message || '保存失败'
+    toast.error(e?.response?.data?.detail || e.message || '保存失败')
   } finally {
     platformSaving.value = false
   }
@@ -211,16 +197,15 @@ function toggleVersion(id: string) {
 
 async function viewVersion(v: SkillVersionItem) {
   viewLoading.value = true
-  versionActionMsg.value = ''
   try {
     const res = await getSkillVersion(skillId.value, v.id)
     if (res.success && res.version) {
       viewingVersion.value = res.version
     } else {
-      versionActionMsg.value = res.error || '查看版本失败'
+      toast.error(res.error || '查看版本失败')
     }
   } catch (e: any) {
-    versionActionMsg.value = e?.response?.data?.detail || e.message || '请求异常'
+    toast.error(e?.response?.data?.detail || e.message || '请求异常')
   } finally {
     viewLoading.value = false
   }
@@ -239,20 +224,19 @@ async function restore(v: SkillVersionItem) {
     return
   }
   restoringId.value = v.id
-  versionActionMsg.value = ''
   try {
     const res = await restoreSkillVersion(skillId.value, v.id)
     if (res.success) {
-      versionActionMsg.value = res.version
-        ? `已回滚到 v${v.seq}（新版本 v${res.version.seq}）`
-        : `已回滚到 v${v.seq}`
+      toast.success(
+        res.version ? `已回滚到 v${v.seq}（新版本 v${res.version.seq}）` : `已回滚到 v${v.seq}`,
+      )
       await load()
       await loadVersions()
     } else {
-      versionActionMsg.value = res.error || '回滚失败'
+      toast.error(res.error || '回滚失败')
     }
   } catch (e: any) {
-    versionActionMsg.value = e?.response?.data?.detail || e.message || '请求异常'
+    toast.error(e?.response?.data?.detail || e.message || '请求异常')
   } finally {
     restoringId.value = ''
   }
@@ -333,6 +317,33 @@ function goBack() {
   else router.push(isTeamSkill.value ? '/team/skills' : '/')
 }
 
+// —— 删除 Skill（应用内确认弹窗）——
+const showDeleteSkill = ref(false)
+const deletingSkill = ref(false)
+
+function askDeleteSkill() {
+  showDeleteSkill.value = true
+}
+
+async function confirmDeleteSkill() {
+  if (deletingSkill.value) return
+  deletingSkill.value = true
+  try {
+    const res = await deleteNativeSkill(skillId.value)
+    if (res.success) {
+      showDeleteSkill.value = false
+      toast.success('已删除该 Skill')
+      goBack()
+    } else {
+      toast.error('删除失败')
+    }
+  } catch (e: any) {
+    toast.error(e?.response?.data?.detail || e.message || '删除失败')
+  } finally {
+    deletingSkill.value = false
+  }
+}
+
 function timeAgo(ts: string | null | undefined): string {
   if (!ts) return '—'
   const t = new Date(ts).getTime()
@@ -383,14 +394,16 @@ function timeAgo(ts: string | null | undefined): string {
                 </svg>
               </button>
               <h2 class="editor-title">{{ cfg.name || skillId }}</h2>
-              <span v-if="isTeamSkill && canEdit" class="editable-badge">团队仓库 · 可编辑</span>
-              <span v-else-if="isTeamSkill" class="readonly-badge">团队仓库只读</span>
-              <span v-else-if="db" class="personal-badge">个人 Skill</span>
+              <span v-if="db?.version" class="version-chip">v{{ db.version }}</span>
+              <span v-if="isTeamSkill && !canEdit" class="readonly-badge">团队仓库只读</span>
+              <span v-else-if="!isTeamSkill && db" class="personal-badge">个人 Skill</span>
             </div>
             <div class="toolbar-right">
-              <span v-if="db?.version" class="version-chip">v{{ db.version }}</span>
               <template v-if="canEdit && cfg">
-                <button v-if="!editing" class="btn tool-btn edit" @click="startEdit">编辑</button>
+                <template v-if="!editing">
+                  <button class="btn tool-btn delete" @click="askDeleteSkill">删除</button>
+                  <button class="btn tool-btn edit" @click="startEdit">编辑</button>
+                </template>
                 <template v-else>
                   <button class="btn tool-btn" :disabled="saving" @click="cancelEdit">取消</button>
                   <button class="btn tool-btn save" :disabled="saving" @click="save">
@@ -400,8 +413,6 @@ function timeAgo(ts: string | null | undefined): string {
               </template>
             </div>
           </div>
-
-          <div v-if="saveMsg" :class="['deploy-msg', saveOk ? 'ok' : 'err']">{{ saveMsg }}</div>
 
           <!-- Body: 左侧圆角卡片导航 + 右侧无底色正文 -->
           <div class="editor-body">
@@ -628,9 +639,6 @@ function timeAgo(ts: string | null | undefined): string {
                   </button>
                 </div>
 
-                <div v-if="versionActionMsg" class="deploy-msg ok">{{ versionActionMsg }}</div>
-                <div v-if="versionsError" class="state-box err">{{ versionsError }}</div>
-
                 <div v-if="versionsLoading && !versions.length" class="state-box">
                   <span class="spinner" /> 加载中...
                 </div>
@@ -688,7 +696,6 @@ function timeAgo(ts: string | null | undefined): string {
                       {{ platformSaving ? '保存中...' : '保存平台结构' }}
                     </button>
                   </div>
-                  <div v-if="platformSaveMsg" :class="['deploy-msg', platformSaveOk ? 'ok' : 'err']">{{ platformSaveMsg }}</div>
                 </template>
               </section>
             </div>
@@ -735,6 +742,29 @@ function timeAgo(ts: string | null | undefined): string {
           @click="restore(viewingVersion); closeVersionView()"
         >
           回滚到此版本
+        </button>
+      </template>
+    </BaseModal>
+
+    <!-- 删除 Skill 确认弹窗 -->
+    <BaseModal
+      v-model="showDeleteSkill"
+      title="删除 Skill"
+      :closable="!deletingSkill"
+      :close-on-overlay="!deletingSkill"
+    >
+      <p class="confirm-text">
+        确认删除 Skill「<strong>{{ cfg?.name || skillId }}</strong>」？
+      </p>
+      <p class="confirm-hint">
+        删除后该 Skill 将从{{ isTeamSkill ? '团队仓库' : '个人仓库' }}移除，关联的部署记录与版本快照将一并删除，且不可恢复。
+      </p>
+      <template #footer>
+        <button class="btn tool-btn" :disabled="deletingSkill" @click="showDeleteSkill = false">
+          取消
+        </button>
+        <button class="btn tool-btn delete" :disabled="deletingSkill" @click="confirmDeleteSkill">
+          {{ deletingSkill ? '删除中…' : '确认删除' }}
         </button>
       </template>
     </BaseModal>
@@ -838,6 +868,8 @@ function timeAgo(ts: string | null | undefined): string {
   line-height: 1;
   letter-spacing: -0.01em;
   color: #151717;
+  position: relative;
+  top: -3px;
 }
 
 .editable-badge,
@@ -877,6 +909,23 @@ function timeAgo(ts: string | null | undefined): string {
   border-radius: 999px;
 }
 
+.confirm-text {
+  margin: 0 0 8px;
+  font-size: 0.92rem;
+  color: #151717;
+  line-height: 1.5;
+}
+.confirm-text strong {
+  font-weight: 600;
+  word-break: break-all;
+}
+.confirm-hint {
+  margin: 0 0 4px;
+  font-size: 0.82rem;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
 .btn {
   padding: 0.42rem 0.85rem;
   border: 1px solid #e5e7eb;
@@ -897,8 +946,11 @@ function timeAgo(ts: string | null | undefined): string {
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
+  box-sizing: border-box;
+  min-width: 76px;
   height: 36px;
   padding: 0 0.95rem;
+  border: 1px solid #e5e7eb;
   border-radius: 10px;
   font-size: 0.88rem;
   font-weight: 600;
@@ -912,6 +964,8 @@ function timeAgo(ts: string | null | undefined): string {
 .tool-btn.edit:hover:not(:disabled) { background: #2d2f2f; border-color: #2d2f2f; color: #ffffff; }
 .tool-btn.save { background: #e0f2fe; color: #0369a1; border-color: #7dd3fc; }
 .tool-btn.save:hover:not(:disabled) { background: #bae6fd; border-color: #38bdf8; color: #075985; box-shadow: 0 6px 14px rgba(2, 132, 199, 0.18); }
+.tool-btn.delete { background: #dc2626; border-color: #dc2626; color: #ffffff; }
+.tool-btn.delete:hover:not(:disabled) { background: #b91c1c; border-color: #b91c1c; color: #ffffff; }
 
 .deploy-msg {
   margin-top: 0.75rem;
@@ -1032,7 +1086,7 @@ function timeAgo(ts: string | null | undefined): string {
   width: 100%;
   padding: 0.55rem 0.75rem;
   background: #ffffff;
-  border: 1px solid #e5e7eb;
+  border: 2px solid #e5e7eb;
   border-radius: 8px;
   color: #151717;
   font-size: 0.88rem;

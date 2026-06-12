@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
+import { toast } from '@/composables/useToast'
 import SliderCaptcha from '@/components/SliderCaptcha.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import logoUrl from '@/img/logo.png'
@@ -17,7 +18,6 @@ const confirmPassword = ref('')
 const inviteCode = ref('')
 const captchaToken = ref('')
 const loading = ref(false)
-const error = ref('')
 const showCaptcha = ref(false)
 const showPassword = ref(false)
 const showConfirmPassword = ref(false)
@@ -25,22 +25,21 @@ const showConfirmPassword = ref(false)
 function switchMode(target: 'login' | 'register') {
   if (mode.value === target) return
   mode.value = target
-  error.value = ''
   captchaToken.value = ''
 }
 
 function validateFields(): boolean {
   if (!username.value || !password.value) {
-    error.value = '请输入用户名和密码'
+    toast.warning('请输入用户名和密码')
     return false
   }
   if (mode.value === 'register') {
     if (!inviteCode.value.trim()) {
-      error.value = '请输入邀请码'
+      toast.warning('请输入邀请码')
       return false
     }
     if (password.value !== confirmPassword.value) {
-      error.value = '两次输入的密码不一致'
+      toast.warning('两次输入的密码不一致')
       return false
     }
   }
@@ -49,7 +48,6 @@ function validateFields(): boolean {
 
 // 点击登录/注册：先做字段校验，通过后弹出滑块验证
 function handleSubmit() {
-  error.value = ''
   if (!validateFields()) return
   captchaToken.value = ''
   showCaptcha.value = true
@@ -64,7 +62,6 @@ async function onCaptchaVerified(token: string) {
 async function doSubmit() {
   if (!captchaToken.value) return
   loading.value = true
-  error.value = ''
   const res =
     mode.value === 'login'
       ? await authStore.doLogin(username.value, password.value, captchaToken.value)
@@ -84,7 +81,7 @@ async function doSubmit() {
       router.push('/')
     }
   } else {
-    error.value = res.error || (mode.value === 'login' ? '登录失败' : '注册失败')
+    toast.error(res.error || (mode.value === 'login' ? '登录失败' : '注册失败'))
     // 验证 token 已被服务端消费（一次性），失败后需重新验证
     captchaToken.value = ''
   }
@@ -224,8 +221,6 @@ async function doSubmit() {
           />
         </div>
       </template>
-
-      <div v-if="error" class="error-msg">{{ error }}</div>
 
       <button type="submit" class="button-submit" :disabled="loading">
         {{
