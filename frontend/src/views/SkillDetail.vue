@@ -16,6 +16,7 @@ import type { ChangeItem } from '@/api/projects'
 import { useTeamStore } from '@/stores/teamStore'
 import { useSkillStore } from '@/stores/skillStore'
 import { promptInput } from '@/composables/useInputDialog'
+import { confirmDialog } from '@/composables/useConfirmDialog'
 import { toast } from '@/composables/useToast'
 import AppTopNav from '@/components/AppTopNav.vue'
 import HelpTip from '@/components/HelpTip.vue'
@@ -85,12 +86,18 @@ function onResourceEdit(kind: 'scripts' | 'references' | 'assets', val: string) 
   }
 }
 
-async function save() {
+// 保存团队 Skill：先弹应用内确认框询问是否更新版本序列号（替代浏览器 window.confirm）。
+const showSaveConfirm = ref(false)
+
+function save() {
   if (!draft.value) return
-  // 是否成版本：保存团队 Skill 时询问是否更新版本序列号。
-  const createVersion = window.confirm(
-    '是否更新版本序列号？\n\n确定：本次保存创建一个新版本（序列号 +1，可在「版本」标签查看/回滚）。\n取消：仅保存内容，不创建版本。',
-  )
+  showSaveConfirm.value = true
+}
+
+// createVersion=true 创建新版本；false 仅保存内容。由确认弹窗的两个按钮分别触发。
+async function doSave(createVersion: boolean) {
+  if (!draft.value) return
+  showSaveConfirm.value = false
   let versionLabel = ''
   if (createVersion) {
     // 应用内输入框（替代 Electron 不支持的 window.prompt）；取消视为不填备注，仍继续保存。
@@ -216,13 +223,13 @@ function closeVersionView() {
 }
 
 async function restore(v: SkillVersionItem) {
-  if (
-    !window.confirm(
-      `确认回滚到版本 v${v.seq}？\n\n团队仓库内容将被还原为该版本，并生成一条新的回滚版本；其他成员可在项目页「更新本地」拉取。`,
-    )
-  ) {
-    return
-  }
+  const ok = await confirmDialog({
+    title: '回滚版本',
+    message: `确认回滚到版本 v${v.seq}？\n\n团队仓库内容将被还原为该版本，并生成一条新的回滚版本；其他成员可在项目页「更新本地」拉取。`,
+    confirmText: '回滚',
+    danger: true,
+  })
+  if (!ok) return
   restoringId.value = v.id
   try {
     const res = await restoreSkillVersion(skillId.value, v.id)
@@ -366,9 +373,31 @@ function timeAgo(ts: string | null | undefined): string {
 
     <div class="forge-main">
       <main class="editor-main">
-        <!-- Loading -->
-        <div v-if="loading" class="empty-state">
-          <span class="spinner lg"></span>
+        <!-- Loading 骨架屏：还原工具栏 + 左侧导航 + 右侧正文的真实布局 -->
+        <div v-if="loading" class="detail-skeleton">
+          <div class="toolbar">
+            <div class="toolbar-left">
+              <div class="sk-block sk-back"></div>
+              <div class="sk-block sk-title-lg"></div>
+              <div class="sk-block sk-chip"></div>
+            </div>
+            <div class="toolbar-right">
+              <div class="sk-block sk-btn"></div>
+              <div class="sk-block sk-btn"></div>
+            </div>
+          </div>
+          <div class="editor-body">
+            <aside class="tab-side">
+              <div v-for="i in 6" :key="i" class="sk-block sk-tab"></div>
+            </aside>
+            <div class="tab-content">
+              <div class="sk-block sk-section-title"></div>
+              <div class="sk-block sk-label"></div>
+              <div class="sk-block sk-input"></div>
+              <div class="sk-block sk-label"></div>
+              <div class="sk-block sk-textarea"></div>
+            </div>
+          </div>
         </div>
         <!-- Error / not found -->
         <div v-else-if="error" class="empty-state">
@@ -746,6 +775,20 @@ function timeAgo(ts: string | null | undefined): string {
       </template>
     </BaseModal>
 
+    <!-- 保存确认弹窗：是否更新版本序列号（应用内，替代 window.confirm） -->
+    <BaseModal v-model="showSaveConfirm" title="保存修改" :width="440">
+      <p class="confirm-text">是否同时更新版本序列号？</p>
+      <p class="confirm-hint">
+        更新版本：本次保存创建一个新版本（序列号 +1，可在「版本」标签查看 / 回滚）。<br />
+        仅保存：只保存内容，不创建版本。
+      </p>
+      <template #footer>
+        <button class="btn tool-btn" :disabled="saving" @click="showSaveConfirm = false">取消</button>
+        <button class="btn tool-btn" :disabled="saving" @click="doSave(false)">仅保存</button>
+        <button class="btn tool-btn save" :disabled="saving" @click="doSave(true)">更新版本并保存</button>
+      </template>
+    </BaseModal>
+
     <!-- 删除 Skill 确认弹窗 -->
     <BaseModal
       v-model="showDeleteSkill"
@@ -962,8 +1005,8 @@ function timeAgo(ts: string | null | undefined): string {
 .tool-btn:active:not(:disabled) { transform: translateY(0) scale(0.97); box-shadow: none; }
 .tool-btn.edit { background: #151717; border-color: #151717; color: #ffffff; }
 .tool-btn.edit:hover:not(:disabled) { background: #2d2f2f; border-color: #2d2f2f; color: #ffffff; }
-.tool-btn.save { background: #e0f2fe; color: #0369a1; border-color: #7dd3fc; }
-.tool-btn.save:hover:not(:disabled) { background: #bae6fd; border-color: #38bdf8; color: #075985; box-shadow: 0 6px 14px rgba(2, 132, 199, 0.18); }
+.tool-btn.save { background: #0284c7; color: #ffffff; border-color: #0284c7; }
+.tool-btn.save:hover:not(:disabled) { background: #0369a1; border-color: #0369a1; color: #ffffff; box-shadow: 0 6px 14px rgba(2, 132, 199, 0.18); }
 .tool-btn.delete { background: #dc2626; border-color: #dc2626; color: #ffffff; }
 .tool-btn.delete:hover:not(:disabled) { background: #b91c1c; border-color: #b91c1c; color: #ffffff; }
 
@@ -1174,6 +1217,40 @@ function timeAgo(ts: string | null | undefined): string {
 }
 .spinner.lg { width: 2rem; height: 2rem; border-width: 3px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== 加载骨架屏（还原详情页布局：工具栏 + 左导航 + 右正文） ===== */
+.detail-skeleton {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.detail-skeleton .editor-body { padding-top: 1.25rem; }
+
+.sk-block {
+  border-radius: 8px;
+  background: linear-gradient(90deg, #f3f4f6 25%, #e9ebee 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+.sk-back { width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0; }
+.sk-title-lg { width: 220px; height: 26px; }
+.sk-chip { width: 52px; height: 22px; border-radius: 999px; }
+.sk-btn { width: 76px; height: 36px; border-radius: 10px; }
+
+.detail-skeleton .tab-side { gap: 0.4rem; }
+.sk-tab { height: 38px; border-radius: 9px; }
+
+.sk-section-title { width: 160px; height: 24px; margin-bottom: 1.2rem; }
+.sk-label { width: 84px; height: 14px; margin-bottom: 0.5rem; }
+.sk-input { width: 100%; max-width: 1320px; height: 44px; margin-bottom: 1.1rem; }
+.sk-textarea { width: 100%; max-width: 1320px; height: 220px; }
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 
 /* ---- 版本记录 ---- */
 .ver-head {

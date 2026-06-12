@@ -6,7 +6,11 @@ import { useTeamStore } from '@/stores/teamStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { toast } from '@/composables/useToast'
 import BaseModal from '@/components/BaseModal.vue'
+import { isDesktop } from '@/runtime/desktopBridge'
 import logoUrl from '@/img/logo.png'
+
+// 桌面壳（Electron）下隐藏了原生标题栏，顶栏需充当窗口拖动区，并为右上角原生窗口按钮留白。
+const desktop = isDesktop()
 
 // 全局顶部导航：左 logo / 中分选栏 / 右头像（点击展开：用户信息 + 空间切换 + 退出）。
 // 浅色（白底）风格，三栏栅格布局，分选栏与左右内容同一中心线对齐。
@@ -184,7 +188,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <header class="top-nav">
+  <header :class="['top-nav', { 'is-desktop': desktop }]">
     <div class="nav-inner">
       <!-- 左：logo -->
       <div class="nav-brand" @click="goHome">
@@ -403,6 +407,21 @@ onBeforeUnmount(() => {
   z-index: 100;
   /* 导航栏与正文背景统一，扁平无分层 */
   background: var(--canvas);
+}
+
+/* 桌面壳（Electron 无边框窗口）：顶栏空白处作为窗口拖动区；
+   交互元素（logo / 分选栏 / 搜索 / 头像）恢复为可点击（no-drag）；
+   右簇向左留白，避开右上角原生最小化/最大化/关闭按钮（约 138px）。 */
+.top-nav.is-desktop {
+  -webkit-app-region: drag;
+}
+.top-nav.is-desktop .nav-brand,
+.top-nav.is-desktop .nav-links,
+.top-nav.is-desktop .nav-right {
+  -webkit-app-region: no-drag;
+}
+.top-nav.is-desktop .nav-right {
+  padding-right: 140px;
 }
 
 .nav-inner {

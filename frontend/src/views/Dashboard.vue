@@ -7,6 +7,7 @@ import { useWorkspaceStore } from '@/stores/workspaceStore'
 import AppTopNav from '@/components/AppTopNav.vue'
 import AddSkillModal from '@/components/AddSkillModal.vue'
 import type { NativeSkillItem } from '@/api/skillStore'
+import { getSkeletonCount, setSkeletonCount } from '@/utils/skeletonCount'
 import cursorIcon from '@/img/icon/cursor.svg'
 import codexIcon from '@/img/icon/codex.svg'
 import windsurfIcon from '@/img/icon/windsurf.svg'
@@ -42,6 +43,15 @@ const displaySkills = computed(() => {
   return store.skills.filter((s) => s.team_id === workspace.activeTeamId)
 })
 
+// 骨架屏：按当前空间缓存上次后端返回的 Skill 个数，进入页面时先渲染等量占位卡片。
+const DEFAULT_SKILL_SKELETON = 6
+const skeletonKey = computed(() =>
+  isTeamSpace.value
+    ? `skills:team:${workspace.activeTeamId ?? 'none'}`
+    : 'skills:personal',
+)
+const skeletonCount = ref(DEFAULT_SKILL_SKELETON)
+
 const platforms = [
   { key: 'cursor', label: 'Cursor', icon: cursorIcon },
   { key: 'codex', label: 'Codex', icon: codexIcon },
@@ -56,8 +66,11 @@ function deployedOn(skill: NativeSkillItem): Record<string, boolean> {
   return store.installedStatus(skill) as unknown as Record<string, boolean>
 }
 
-function refresh() {
-  store.fetchList(workspace.scope)
+async function refresh() {
+  // 先按上次缓存的个数显示骨架屏，再拉取真实列表；加载完成后回写最新个数。
+  skeletonCount.value = getSkeletonCount(skeletonKey.value, DEFAULT_SKILL_SKELETON)
+  await store.fetchList(workspace.scope)
+  setSkeletonCount(skeletonKey.value, displaySkills.value.length)
 }
 
 function openSkill(skill: NativeSkillItem) {
@@ -140,9 +153,9 @@ onMounted(() => {
         <button class="btn-retry" @click="refresh">重试</button>
       </div>
 
-      <!-- 加载骨架 -->
+      <!-- 加载骨架（数量取上次后端返回的真实个数） -->
       <div v-if="store.loading && !displaySkills.length" class="skill-grid">
-        <div v-for="i in 6" :key="i" class="skill-card skeleton">
+        <div v-for="i in skeletonCount" :key="i" class="skill-card skeleton">
           <div class="sk-line sk-title"></div>
           <div class="sk-line sk-text"></div>
           <div class="sk-line sk-text short"></div>

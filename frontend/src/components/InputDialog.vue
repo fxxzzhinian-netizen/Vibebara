@@ -86,7 +86,8 @@ watch(
 }
 
 .id-input:focus {
-  border-color: #6366f1;
+  border-color: #151717;
+  border-width: 2px;
   background: #ffffff;
 }
 

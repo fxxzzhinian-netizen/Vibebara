@@ -14,6 +14,7 @@ import HelpTip from '@/components/HelpTip.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import BaseSelect from '@/components/BaseSelect.vue'
 import { toast } from '@/composables/useToast'
+import { confirmDialog } from '@/composables/useConfirmDialog'
 
 const router = useRouter()
 const store = useSkillStore()
@@ -131,7 +132,13 @@ async function handleSave() {
 async function handleDelete() {
   if (!store.currentId) return
   if (isTeamSkill.value) return
-  if (!confirm(`确认删除 "${store.currentId}"？此操作不可恢复。`)) return
+  const ok = await confirmDialog({
+    title: '删除 Skill',
+    message: `确认删除 "${store.currentId}"？此操作不可恢复。`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
   await store.removeSkill(store.currentId)
 }
 
@@ -345,9 +352,32 @@ onMounted(() => {
         <button class="btn-back-repo" @click="router.push('/')">← 返回 SKILL 仓库</button>
       </div>
 
-      <!-- Loading -->
-      <div v-else-if="store.currentLoading" class="empty-state">
-        <span class="spinner lg"></span>
+      <!-- Loading 骨架屏：还原工具栏 + 左侧导航 + 右侧正文的真实布局 -->
+      <div v-else-if="store.currentLoading" class="detail-skeleton">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <div class="sk-block sk-back"></div>
+            <div class="sk-block sk-title-lg"></div>
+          </div>
+          <div class="toolbar-right">
+            <div class="sk-block sk-btn"></div>
+            <div class="sk-block sk-btn"></div>
+            <div class="sk-block sk-btn"></div>
+            <div class="sk-block sk-btn"></div>
+          </div>
+        </div>
+        <div class="editor-body">
+          <aside class="tab-side">
+            <div v-for="i in 5" :key="i" class="sk-block sk-tab"></div>
+          </aside>
+          <div class="tab-content">
+            <div class="sk-block sk-section-title"></div>
+            <div class="sk-block sk-label"></div>
+            <div class="sk-block sk-input"></div>
+            <div class="sk-block sk-label"></div>
+            <div class="sk-block sk-textarea"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Editor -->
@@ -1649,6 +1679,39 @@ onMounted(() => {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ===== 加载骨架屏（还原编辑器布局：工具栏 + 左导航 + 右正文） ===== */
+.detail-skeleton {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.detail-skeleton .editor-body { padding-top: 1.25rem; }
+
+.sk-block {
+  border-radius: 8px;
+  background: linear-gradient(90deg, #f3f4f6 25%, #e9ebee 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+.sk-back { width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0; }
+.sk-title-lg { width: 220px; height: 26px; }
+.sk-btn { width: 84px; height: 36px; border-radius: 10px; }
+
+.detail-skeleton .tab-side { gap: 0.4rem; }
+.sk-tab { height: 38px; border-radius: 9px; }
+
+.sk-section-title { width: 160px; height: 24px; margin-bottom: 1.2rem; }
+.sk-label { width: 84px; height: 14px; margin-bottom: 0.5rem; }
+.sk-input { width: 100%; max-width: 1320px; height: 44px; margin-bottom: 1.1rem; }
+.sk-textarea { width: 100%; max-width: 1320px; height: 220px; }
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .incomplete-hint {

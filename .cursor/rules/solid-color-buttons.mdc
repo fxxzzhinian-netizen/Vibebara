@@ -1,0 +1,37 @@
+---
+description: Buttons with a colored fill must be solid (border color matches background)
+globs: frontend/src/**/*.vue
+alwaysApply: false
+---
+
+# 纯色按钮规范（Solid-color Buttons）
+
+带颜色填充的按钮必须是「纯色」：`border-color` 与 `background` 必须同色（或干脆 `border: none`），
+不允许填充色与边框色不一致而出现「双色描边」的按钮。`color`（文字）需与填充保持足够对比（通常 `#ffffff`）。
+
+适用对象：有实心彩色底的按钮（主操作 / 保存 / 删除 / 部署等）。
+不适用：白底 / 透明底的幽灵（ghost / outline）次级按钮 —— 这类按钮的边框即设计本身，保持原样。
+
+```css
+/* ❌ BAD：填充与边框不同色，出现描边环 */
+.tool-btn.save {
+  background: #e0f2fe;
+  color: #0369a1;
+  border-color: #7dd3fc; /* 与底色不一致 */
+}
+
+/* ✅ GOOD：纯色，边框与底色同色，hover 整体加深 */
+.tool-btn.save {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
+}
+.tool-btn.save:hover:not(:disabled) {
+  background: #0369a1;
+  border-color: #0369a1;
+  color: #ffffff;
+}
+```
+
+常用纯色：主色 `#151717`、保存蓝 `#0284c7`、部署绿 `#16a34a`、危险红 `#dc2626`、团队紫 `#4f46e5`。
+hover 时 `background` 与 `border-color` 一起加深，禁止只改其中一个造成描边。

@@ -7,6 +7,7 @@ import { getPlatformInstalledStatus } from '@/api/orchestration'
 import { useNotificationStore, formatNotification } from '@/stores/notificationStore'
 import { useSkillSync } from '@/composables/useSkillSync'
 import { promptInput } from '@/composables/useInputDialog'
+import { confirmDialog } from '@/composables/useConfirmDialog'
 import { toast } from '@/composables/useToast'
 import AppTopNav from '@/components/AppTopNav.vue'
 import FolderPicker from '@/components/FolderPicker.vue'
@@ -201,9 +202,13 @@ async function removeSkill(skillId: string) {
     toast.warning('该 Skill 正在本机跟踪中，请先「停止跟踪」再移除')
     return
   }
-  if (!window.confirm('确认从项目移除该 Skill？移除后项目成员将无法再部署它。')) {
-    return
-  }
+  const ok = await confirmDialog({
+    title: '移除 Skill',
+    message: '确认从项目移除该 Skill？移除后项目成员将无法再部署它。',
+    confirmText: '移除',
+    danger: true,
+  })
+  if (!ok) return
   const res = await projectStore.removeSkill(projectId.value, skillId)
   if (!res.success) {
     toast.error(res.error || '移除失败')
@@ -282,15 +287,20 @@ async function resumeTracking(deploymentId: string) {
 }
 
 async function pushDeploy(deploymentId: string) {
-  if (
-    !window.confirm('推送将把本地改动同步到团队仓库，其他成员可拉取更新，是否继续？')
-  ) {
-    return
-  }
-  // 是否成版本：选"确定"则本次推送创建一条版本快照（可在 Skill 详情页查看/回滚）。
-  const createVersion = window.confirm(
-    '是否更新版本序列号？\n\n确定：本次推送创建一个新版本（序列号 +1，可在 Skill 详情页查看/回滚）。\n取消：仅同步内容，不创建版本。',
-  )
+  const proceed = await confirmDialog({
+    title: '推送到团队仓库',
+    message: '推送将把本地改动同步到团队仓库，其他成员可拉取更新，是否继续？',
+    confirmText: '继续',
+  })
+  if (!proceed) return
+  // 是否成版本：选「更新版本」则本次推送创建一条版本快照（可在 Skill 详情页查看/回滚）。
+  const createVersion = await confirmDialog({
+    title: '是否更新版本序列号？',
+    message:
+      '更新版本：本次推送创建一个新版本（序列号 +1，可在 Skill 详情页查看/回滚）。\n仅同步：只同步内容，不创建版本。',
+    confirmText: '更新版本',
+    cancelText: '仅同步',
+  })
   let versionLabel = ''
   if (createVersion) {
     // 应用内输入框（替代 Electron 不支持的 window.prompt）；取消视为不填备注，仍继续推送。
@@ -331,13 +341,23 @@ async function pullUpdate(deploymentId: string, status?: string) {
   const message = localConflict
     ? '本地有未推送改动，更新将覆盖本地改动，是否继续？'
     : '将拉取团队最新内容覆盖到本地部署目录，是否继续？'
-  if (!window.confirm(message)) {
-    return
-  }
+  const ok = await confirmDialog({
+    title: '更新本地',
+    message,
+    confirmText: '继续',
+    danger: localConflict,
+  })
+  if (!ok) return
   pullingId.value = deploymentId
   let res = await projectStore.pullUpdate(deploymentId, localConflict)
   if (!res.success && res.conflict && !localConflict) {
-    if (window.confirm('本地有未推送改动，确认覆盖本地后更新？')) {
+    const overwrite = await confirmDialog({
+      title: '覆盖本地改动',
+      message: '本地有未推送改动，确认覆盖本地后更新？',
+      confirmText: '覆盖更新',
+      danger: true,
+    })
+    if (overwrite) {
       res = await projectStore.pullUpdate(deploymentId, true)
     } else {
       pullingId.value = ''
@@ -382,11 +402,12 @@ async function maybePullToGlobal(deploymentId: string) {
     return
   }
   if (!isGlobal) return
-  if (
-    !window.confirm('该 Skill 也已全局部署，是否将本次更新同步到全局（用新内容覆盖旧的全局副本）？')
-  ) {
-    return
-  }
+  const ok = await confirmDialog({
+    title: '同步到全局',
+    message: '该 Skill 也已全局部署，是否将本次更新同步到全局（用新内容覆盖旧的全局副本）？',
+    confirmText: '同步到全局',
+  })
+  if (!ok) return
   const gres = await projectStore.deploySkillGlobal(projectId.value, dep.team_skill_id, tool)
   if (gres.success) {
     toast.success('已更新本地并同步到全局')

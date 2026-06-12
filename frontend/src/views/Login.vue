@@ -276,13 +276,11 @@ async function doSubmit() {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background-color: #ffffff;
+  background-color: transparent;
   padding: 30px;
   width: 450px;
   max-width: 100%;
-  border-radius: 20px;
   box-sizing: border-box;
-  box-shadow: 0 24px 60px rgba(21, 23, 23, 0.18);
   transform: translateY(-40px);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
     Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
@@ -385,7 +383,8 @@ async function doSubmit() {
   isolation: isolate;
   margin: 20px 0 10px 0;
   background-color: #151717;
-  border: 1.5px solid #151717;
+  /* 边框始终 #151717：深底态与填充同色（不可见），hover 白底态才显出黑边，故加粗只在白底时生效 */
+  border: 2.5px solid #151717;
   color: #ffffff;
   font-size: 15px;
   font-weight: 500;

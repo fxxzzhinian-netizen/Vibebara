@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { readResourceFile, writeResourceFile } from '@/api/skillStore'
 import ResourceTreeNode from './ResourceTreeNode.vue'
 import BaseModal from '@/components/BaseModal.vue'
+import { confirmDialog } from '@/composables/useConfirmDialog'
 import { fileIconUrl, type ResTreeNode } from './resourceTree'
 
 interface ResEntry {
@@ -161,8 +162,16 @@ async function save() {
   }
 }
 
-function close() {
-  if (dirty.value && !confirm('有未保存的修改，确定关闭吗？')) return
+async function close() {
+  if (dirty.value) {
+    const ok = await confirmDialog({
+      title: '关闭编辑',
+      message: '有未保存的修改，确定关闭吗？',
+      confirmText: '关闭',
+      danger: true,
+    })
+    if (!ok) return
+  }
   editorOpen.value = false
 }
 

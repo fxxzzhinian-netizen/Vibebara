@@ -9,6 +9,7 @@ import { useTeamSync } from '@/composables/useTeamSync'
 import { listNativeSkills, type NativeSkillItem } from '@/api/skillStore'
 import { useSkillStore } from '@/stores/skillStore'
 import { toast } from '@/composables/useToast'
+import { getSkeletonCount, setSkeletonCount } from '@/utils/skeletonCount'
 import AppTopNav from '@/components/AppTopNav.vue'
 import AddSkillModal from '@/components/AddSkillModal.vue'
 import BaseModal from '@/components/BaseModal.vue'
@@ -83,6 +84,12 @@ const teamSkills = ref<NativeSkillItem[]>([])
 // 区分“真的没有 Skill”与“加载失败（慢/弱网/全局 VPN 抖动超时）”：
 // 失败时不要把列表清空成“暂无”，而是提示可重试，避免掩盖真实错误。
 const teamSkillsError = ref(false)
+// 团队 Skill / 项目加载态 + 骨架屏数量（取上次后端返回的真实个数）。
+const teamSkillsLoading = ref(false)
+const DEFAULT_SKILL_SKELETON = 6
+const DEFAULT_PROJECT_SKELETON = 3
+const teamSkillSkeletonCount = ref(DEFAULT_SKILL_SKELETON)
+const projectSkeletonCount = ref(DEFAULT_PROJECT_SKELETON)
 
 // —— 新增 Skill 到团队仓库（弹窗内的方式/解析/导入逻辑见 AddSkillModal 组件）——
 const showAddSkill = ref(false)
@@ -115,7 +122,7 @@ const { connected: teamSyncConnected } = useTeamSync(
       await teamStore.handleTeamDeleted(teamId)
       backToManage()
     } else if (evt.type.startsWith('project.')) {
-      await projectStore.fetchProjects(teamId)
+      await loadProjects(teamId)
     } else if (evt.type.startsWith('team_skill.')) {
       await loadTeamSkills(teamId)
     } else if (evt.type === 'team.member.joined') {
@@ -130,6 +137,9 @@ let loadingTeamId: string | null = null
 async function loadTeam(teamId: string) {
   if (loadingTeamId === teamId) return
   loadingTeamId = teamId
+  // 进入团队前先按上次缓存的真实个数渲染骨架屏（项目 / 团队 Skill 各自独立）。
+  teamSkillSkeletonCount.value = getSkeletonCount(`skills:team:${teamId}`, DEFAULT_SKILL_SKELETON)
+  projectSkeletonCount.value = getSkeletonCount(`projects:${teamId}`, DEFAULT_PROJECT_SKELETON)
   // 切换瞬间清空上一个团队的项目/Skill，避免网络返回前右侧串味
   projectStore.projects = []
   teamSkills.value = []
@@ -138,7 +148,7 @@ async function loadTeam(teamId: string) {
     // 团队详情/成员、项目列表、团队 Skill 三类数据相互独立 —— 并行拉取。
     await Promise.all([
       teamStore.selectTeam(teamId),
-      projectStore.fetchProjects(teamId),
+      loadProjects(teamId),
       loadTeamSkills(teamId),
     ])
   } finally {
@@ -146,7 +156,16 @@ async function loadTeam(teamId: string) {
   }
 }
 
+// 拉取项目列表并把后端返回的真实个数缓存，供下次骨架屏使用。
+async function loadProjects(teamId: string) {
+  await projectStore.fetchProjects(teamId)
+  if (teamStore.currentTeamId === teamId || projectStore.projects.length) {
+    setSkeletonCount(`projects:${teamId}`, projectStore.projects.length)
+  }
+}
+
 async function loadTeamSkills(teamId: string) {
+  teamSkillsLoading.value = true
   try {
     const res = await listNativeSkills('team')
     // 乱序保护：返回时若已切到别的团队，丢弃本次结果
@@ -154,6 +173,8 @@ async function loadTeamSkills(teamId: string) {
     if (res.success) {
       teamSkills.value = res.skills.filter((s) => s.team_id === teamId)
       teamSkillsError.value = false
+      // 回写本团队真实 Skill 个数，下次进入按此渲染等量骨架屏。
+      setSkeletonCount(`skills:team:${teamId}`, teamSkills.value.length)
     } else {
       // 后端返回失败：标记错误，但不要把已有/乐观插入的卡片清空成“暂无”
       teamSkillsError.value = true
@@ -162,6 +183,8 @@ async function loadTeamSkills(teamId: string) {
     // 网络失败（后端慢、弱网，或全局 VPN 把国内云流量绕境外导致超时/抖动）：
     // 保留现有列表并标记加载失败，避免把“加载失败”误显示为“该团队暂无 Skill”。
     if (teamStore.currentTeamId === teamId) teamSkillsError.value = true
+  } finally {
+    if (teamStore.currentTeamId === teamId) teamSkillsLoading.value = false
   }
 }
 
@@ -357,7 +380,16 @@ watch(
               <span class="plus">+</span> 新增 Skill
             </button>
           </div>
-          <div v-if="teamSkills.length" class="skill-grid">
+          <!-- 加载骨架（数量取上次后端返回的真实个数） -->
+          <div v-if="teamSkillsLoading && !teamSkills.length" class="skill-grid">
+            <div v-for="i in teamSkillSkeletonCount" :key="i" class="skill-card skeleton">
+              <div class="sk-line sk-title"></div>
+              <div class="sk-line sk-text"></div>
+              <div class="sk-line sk-text short"></div>
+              <div class="sk-line sk-foot"></div>
+            </div>
+          </div>
+          <div v-else-if="teamSkills.length" class="skill-grid">
             <div
               v-for="s in teamSkills"
               :key="s.id"
@@ -419,7 +451,15 @@ watch(
             </button>
           </div>
 
-          <div class="project-grid">
+          <!-- 加载骨架（数量取上次后端返回的真实个数） -->
+          <div v-if="projectStore.loading && !projectStore.projects.length" class="project-grid">
+            <div v-for="i in projectSkeletonCount" :key="i" class="project-card skeleton">
+              <div class="sk-line sk-title"></div>
+              <div class="sk-line sk-text"></div>
+              <div class="sk-line sk-meta"></div>
+            </div>
+          </div>
+          <div v-else-if="projectStore.projects.length" class="project-grid">
             <div
               v-for="project in projectStore.projects"
               :key="project.id"
@@ -443,7 +483,7 @@ watch(
             </div>
           </div>
 
-          <div v-if="!projectStore.hasProjects" class="empty-hint">
+          <div v-else class="empty-hint">
             该团队下暂无项目
           </div>
         </section>
@@ -745,11 +785,11 @@ watch(
 
 /* 团队管理 */
 .btn-add-danger {
-  background: #ffffff;
-  color: #dc2626;
-  border: 1px solid #fecaca;
+  background: #dc2626;
+  color: #ffffff;
+  border: 1px solid #dc2626;
 }
-.btn-add-danger:hover { background: #fef2f2; border-color: #fca5a5; }
+.btn-add-danger:hover { background: #b91c1c; border-color: #b91c1c; }
 
 .manage-error {
   margin-bottom: 16px;
@@ -985,6 +1025,68 @@ watch(
   justify-content: space-between;
   font-size: 0.76rem;
   color: #9ca3af;
+}
+
+/* —— 骨架屏（团队 Skill / 团队项目共用，与个人仓库一致） —— */
+.skill-card.skeleton,
+.project-card.skeleton {
+  cursor: default;
+  pointer-events: none;
+}
+
+.sk-line {
+  border-radius: 6px;
+  background: linear-gradient(90deg, #f3f4f6 25%, #e9ebee 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+.skill-card.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.sk-title {
+  height: 18px;
+  width: 55%;
+}
+
+.sk-text {
+  height: 12px;
+  width: 90%;
+}
+
+.sk-text.short {
+  width: 65%;
+}
+
+.sk-foot {
+  height: 14px;
+  width: 40%;
+  margin-top: 0.5rem;
+}
+
+.project-card.skeleton .sk-title {
+  margin-bottom: 12px;
+}
+
+.project-card.skeleton .sk-text {
+  margin-bottom: 16px;
+}
+
+.sk-meta {
+  height: 12px;
+  width: 50%;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* —— Skill 卡片：与个人仓库（Dashboard）完全一致 —— */
