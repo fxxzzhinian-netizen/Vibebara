@@ -189,6 +189,9 @@ onBeforeUnmount(() => {
 
 <template>
   <header :class="['top-nav', { 'is-desktop': desktop }]">
+    <!-- 桌面壳：单独一条窗口标题栏，承载右上角原生窗口按钮 + 作为拖动区，避免挤压下方导航 -->
+    <div v-if="desktop" class="win-bar" aria-hidden="true"></div>
+
     <div class="nav-inner">
       <!-- 左：logo -->
       <div class="nav-brand" @click="goHome">
@@ -409,19 +412,13 @@ onBeforeUnmount(() => {
   background: var(--canvas);
 }
 
-/* 桌面壳（Electron 无边框窗口）：顶栏空白处作为窗口拖动区；
-   交互元素（logo / 分选栏 / 搜索 / 头像）恢复为可点击（no-drag）；
-   右簇向左留白，避开右上角原生最小化/最大化/关闭按钮（约 138px）。 */
-.top-nav.is-desktop {
+/* 桌面壳（Electron 无边框窗口）：在导航栏上方单独叠一条窗口标题栏，
+   仅承载右上角原生最小化/最大化/关闭按钮，并整条作为窗口拖动区。
+   下方 .nav-inner 因此恢复整行宽度，不再被窗口按钮挤压右侧。
+   高度需与主进程 titleBarOverlay.height 一致（见 desktop/src/main/index.ts）。 */
+.win-bar {
+  height: 40px;
   -webkit-app-region: drag;
-}
-.top-nav.is-desktop .nav-brand,
-.top-nav.is-desktop .nav-links,
-.top-nav.is-desktop .nav-right {
-  -webkit-app-region: no-drag;
-}
-.top-nav.is-desktop .nav-right {
-  padding-right: 140px;
 }
 
 .nav-inner {

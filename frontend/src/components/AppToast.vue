@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { toasts, dismissToast, type ToastType } from '@/composables/useToast'
+import { isDesktop } from '@/runtime/desktopBridge'
+
+// 桌面壳顶部有 40px 窗口栏（含原生窗口按钮），toast 需下移避让，避免与按钮重叠。
+const desktop = isDesktop()
 
 // 各类型对应的图标路径（viewBox 0 0 24 24，纯填充）。
 const ICON_PATHS: Record<ToastType, string> = {
@@ -14,7 +18,7 @@ const ICON_PATHS: Record<ToastType, string> = {
 
 <template>
   <Teleport to="body">
-    <div class="toast-stack">
+    <div :class="['toast-stack', { 'is-desktop': desktop }]">
       <TransitionGroup name="toast">
         <div v-for="t in toasts" :key="t.id" :class="['info', `info--${t.type}`]" role="alert">
           <div class="info__icon">
@@ -40,72 +44,86 @@ const ICON_PATHS: Record<ToastType, string> = {
 .toast-stack {
   position: fixed;
   top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 20px;
   z-index: 10000;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
   gap: 10px;
   pointer-events: none;
 }
 
+/* 桌面壳：避开顶部 40px 窗口栏与右上角原生窗口按钮 */
+.toast-stack.is-desktop {
+  top: 52px;
+}
+
 .info {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
-    Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   width: 320px;
   max-width: calc(100vw - 32px);
-  padding: 12px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: start;
-  background: #509af8;
-  border-radius: 8px;
-  box-shadow: 0 6px 18px -6px rgba(17, 17, 17, 0.45);
+  gap: 10px;
+  /* 与整体浅色主题一致：白底 + 细描边 + 左侧彩色强调条 + 柔和阴影 */
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-left: 3px solid #6366f1;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(21, 23, 23, 0.1);
   pointer-events: auto;
 }
 
+/* 类型仅以左侧强调条 + 图标颜色区分，正文统一深色，保持克制 */
 .info--success {
-  background: #16a34a;
+  border-left-color: #16a34a;
 }
 .info--error {
-  background: #dc2626;
+  border-left-color: #dc2626;
 }
 .info--warning {
-  background: #d97706;
+  border-left-color: #d97706;
 }
 .info--info {
-  background: #509af8;
+  border-left-color: #6366f1;
 }
 
 .info__icon {
-  width: 20px;
-  height: 20px;
-  transform: translateY(-1px);
-  margin-right: 8px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
 }
 
-.info__icon path {
-  fill: #fff;
+.info--success .info__icon path {
+  fill: #16a34a;
+}
+.info--error .info__icon path {
+  fill: #dc2626;
+}
+.info--warning .info__icon path {
+  fill: #d97706;
+}
+.info--info .info__icon path {
+  fill: #6366f1;
 }
 
 .info__title {
+  flex: 1;
   font-weight: 500;
-  font-size: 14px;
-  color: #fff;
-  line-height: 1.4;
+  font-size: 13.5px;
+  color: #151717;
+  line-height: 1.45;
   word-break: break-word;
 }
 
 .info__close {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   cursor: pointer;
-  margin-left: auto;
   flex-shrink: 0;
-  opacity: 0.85;
+  opacity: 0.7;
   transition: opacity 0.15s ease;
 }
 
@@ -114,7 +132,7 @@ const ICON_PATHS: Record<ToastType, string> = {
 }
 
 .info__close path {
-  fill: #fff;
+  fill: #9ca3af;
 }
 
 /* 进出动画 */
@@ -124,14 +142,15 @@ const ICON_PATHS: Record<ToastType, string> = {
 .toast-leave-active {
   transition: all 0.24s ease-in;
   position: absolute;
+  right: 0;
 }
 .toast-enter-from {
   opacity: 0;
-  transform: translateY(-16px) scale(0.96);
+  transform: translateX(24px) scale(0.97);
 }
 .toast-leave-to {
   opacity: 0;
-  transform: translateY(-12px) scale(0.97);
+  transform: translateX(24px) scale(0.97);
 }
 .toast-move {
   transition: transform 0.24s ease;

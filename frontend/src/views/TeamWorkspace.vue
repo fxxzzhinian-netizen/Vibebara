@@ -20,6 +20,7 @@ import claudeIcon from '@/img/icon/claudecode.svg'
 import kiroIcon from '@/img/icon/kiro.svg'
 import traeIcon from '@/img/icon/trae.svg'
 import qoderIcon from '@/img/icon/qoder.svg'
+import teamEmptyImg from '@/img/status/team_empty.png'
 
 // 团队工作台：与全局 AppTopNav 共用外壳。
 // 当前激活的团队来自 workspaceStore.activeTeamId；标签页（团队 SKILL / 团队项目）
@@ -429,7 +430,11 @@ watch(
               点击重试
             </button>
           </div>
-          <div v-else class="empty-hint">该团队暂无 Skill</div>
+          <div v-else class="team-empty">
+            <img :src="teamEmptyImg" alt="" draggable="false" />
+            <h3>该团队还没有 Skill</h3>
+            <p>新建或导入一个 Skill，团队成员即可共享使用</p>
+          </div>
         </section>
 
         <!-- 团队项目（顶部 UI 参考团队 SKILL：标题 + 同步徽章 + 右侧新建项目） -->
@@ -483,8 +488,10 @@ watch(
             </div>
           </div>
 
-          <div v-else class="empty-hint">
-            该团队下暂无项目
+          <div v-else class="team-empty">
+            <img :src="teamEmptyImg" alt="" draggable="false" />
+            <h3>该团队还没有项目</h3>
+            <p>新建一个项目，把团队 Skill 组织起来协作</p>
           </div>
         </section>
 
@@ -1094,13 +1101,17 @@ watch(
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1.1rem;
-  align-items: start;
+  /* 同行卡片等高（stretch），配合卡片内 .card-foot 贴底，保证每张卡片尺寸一致 */
+  align-items: stretch;
 }
 
 .skill-card {
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
+  /* 固定卡片尺寸：给定高度基线，描述区预留两行，底部信息贴底，
+     描述长短（一行/两行）不再改变卡片高度 */
+  min-height: 180px;
   padding: 1.25rem 1.3rem;
   border: 1px solid #ebedf0;
   border-radius: 16px;
@@ -1151,6 +1162,8 @@ watch(
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  /* 始终预留两行高度（1.55 行高 × 2 行），描述一行时也占满，避免挤压卡片 */
+  min-height: 3.1em;
 }
 
 .card-tags {
@@ -1172,6 +1185,8 @@ watch(
 }
 
 .card-foot {
+  /* 贴到卡片底部：无论描述/标签多少，底部信息行始终对齐在卡片底端 */
+  margin-top: auto;
   padding-top: 0.65rem;
   border-top: 1px solid #f3f4f6;
   display: flex;
@@ -1268,6 +1283,36 @@ watch(
 
 .empty-hint.load-error {
   color: #b45309;
+}
+
+/* 空状态插画（团队 Skill / 团队项目为空时展示） */
+.team-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2.5rem 1rem 3rem;
+}
+
+.team-empty img {
+  width: 220px;
+  height: auto;
+  margin-bottom: 0.75rem;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.team-empty h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #151717;
+}
+
+.team-empty p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #9ca3af;
 }
 
 /* 通用组件 */

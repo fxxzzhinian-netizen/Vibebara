@@ -15,6 +15,8 @@ import claudeIcon from '@/img/icon/claudecode.svg'
 import kiroIcon from '@/img/icon/kiro.svg'
 import traeIcon from '@/img/icon/trae.svg'
 import qoderIcon from '@/img/icon/qoder.svg'
+import emptyImg from '@/img/status/empty.png'
+import teamEmptyImg from '@/img/status/team_empty.png'
 
 // 主页 = SKILL 仓库：按当前空间（个人/团队）展示 Skill 卡片网格。
 
@@ -36,6 +38,9 @@ const currentTeamName = computed(
 const spaceTitle = computed(() =>
   isTeamSpace.value ? currentTeamName.value || '团队空间' : '个人空间',
 )
+
+// 空状态插画：个人空间用 empty.png，团队空间用 team_empty.png
+const emptyImage = computed(() => (isTeamSpace.value ? teamEmptyImg : emptyImg))
 
 // 团队空间下按选中团队过滤（fetchList('team') 返回用户全部团队的 Skill）
 const displaySkills = computed(() => {
@@ -198,12 +203,8 @@ onMounted(() => {
 
       <!-- 空状态 -->
       <div v-else-if="!store.loading" class="empty-state">
-        <div class="empty-icon">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-            <rect x="8" y="12" width="32" height="26" rx="4" stroke="#d1d5db" stroke-width="2.5" />
-            <path d="M8 20h32" stroke="#d1d5db" stroke-width="2.5" />
-            <path d="M20 29h8" stroke="#9ca3af" stroke-width="2.5" stroke-linecap="round" />
-          </svg>
+        <div class="empty-illu">
+          <img :src="emptyImage" alt="" draggable="false" />
         </div>
         <template v-if="isTeamSpace && !teamStore.teams.length">
           <h2>还没有加入任何团队</h2>
@@ -430,14 +431,17 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 1.1rem;
-  /* 卡片按内容高度排列，避免被拉伸到等高后底部留白 */
-  align-items: start;
+  /* 同行卡片等高（stretch），配合卡片内 .card-foot 贴底，保证每张卡片尺寸一致 */
+  align-items: stretch;
 }
 
 .skill-card {
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
+  /* 固定卡片尺寸：给定高度基线，描述区预留两行，底部信息贴底，
+     描述长短（一行/两行）不再改变卡片高度 */
+  min-height: 180px;
   padding: 1.25rem 1.3rem;
   border: 1px solid #ebedf0;
   border-radius: 16px;
@@ -488,6 +492,8 @@ onMounted(() => {
   line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  /* 始终预留两行高度（1.55 行高 × 2 行），描述一行时也占满，避免挤压卡片 */
+  min-height: 3.1em;
 }
 
 .card-tags {
@@ -509,6 +515,8 @@ onMounted(() => {
 }
 
 .card-foot {
+  /* 贴到卡片底部：无论描述/标签多少，底部信息行始终对齐在卡片底端 */
+  margin-top: auto;
   padding-top: 0.65rem;
   border-top: 1px solid #f3f4f6;
   display: flex;
@@ -596,8 +604,15 @@ onMounted(() => {
   padding: 5rem 1rem;
 }
 
-.empty-icon {
-  margin-bottom: 1.25rem;
+.empty-illu {
+  margin-bottom: 0.75rem;
+}
+
+.empty-illu img {
+  width: 200px;
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .empty-state h2 {

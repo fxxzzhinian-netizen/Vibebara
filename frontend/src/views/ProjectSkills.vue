@@ -484,7 +484,7 @@ function goBack() {
             <h4 class="skill-name" :title="'查看 ' + (skill.display_name || skill.skill_id) + ' 详情'" @click="router.push('/skills/' + skill.skill_id)">
               {{ skill.display_name || skill.skill_id }}
             </h4>
-            <p>{{ skill.description || '暂无描述' }}</p>
+            <p :title="skill.description || ''">{{ skill.description || '暂无描述' }}</p>
             <div class="deployment-line" :class="skill.deployment?.status || 'none'">
               {{ statusLabel(skill.deployment?.status) }}
               <template v-if="skill.deployment">
@@ -865,7 +865,14 @@ function goBack() {
 .skill-main p {
   margin: 0;
   font-size: 0.84rem;
+  line-height: 1.5;
   color: #6b7280;
+  /* 描述最多两行，超出截断省略，避免长描述把卡片撑高 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .deployment-line {

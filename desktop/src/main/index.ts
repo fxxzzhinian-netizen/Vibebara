@@ -154,7 +154,8 @@ function createWindow(): void {
       // 取前端画布 bg.png 顶部的浅紫色，让右上角窗口按钮底色融入背景，避免突兀白块。
       color: "#ece8f7",
       symbolColor: "#151717",
-      height: 48,
+      // 高度需与前端 .win-bar 一致（见 frontend/src/components/AppTopNav.vue）。
+      height: 40,
     },
     webPreferences: {
       preload: path.join(__dirname, "..", "preload", "index.js"),
