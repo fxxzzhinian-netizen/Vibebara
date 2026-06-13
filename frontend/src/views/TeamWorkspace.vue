@@ -10,9 +10,11 @@ import { listNativeSkills, type NativeSkillItem } from '@/api/skillStore'
 import { useSkillStore } from '@/stores/skillStore'
 import { toast } from '@/composables/useToast'
 import { getSkeletonCount, setSkeletonCount } from '@/utils/skeletonCount'
+import { useDirectionalTransition } from '@/composables/useDirectionalTransition'
 import AppTopNav from '@/components/AppTopNav.vue'
 import AddSkillModal from '@/components/AddSkillModal.vue'
 import BaseModal from '@/components/BaseModal.vue'
+import SyncStatusBadge from '@/components/SyncStatusBadge.vue'
 import cursorIcon from '@/img/icon/cursor.svg'
 import codexIcon from '@/img/icon/codex.svg'
 import windsurfIcon from '@/img/icon/windsurf.svg'
@@ -68,6 +70,17 @@ const activeTab = computed<'skill' | 'projects' | 'manage'>(() => {
   if (route.name === 'team-projects') return 'projects'
   if (route.name === 'team-manage') return 'manage'
   return 'skill'
+})
+
+// 顶栏标签切换时，正文内容按导航方向横向滑入滑出（右滑入 / 左滑出，反向则相反）。
+const {
+  name: panelTransition,
+  animating: panelAnimating,
+  end: panelTransitionEnd,
+} = useDirectionalTransition({
+  value: () => activeTab.value,
+  order: ['skill', 'projects', 'manage'],
+  names: { forward: 'panel-forward', backward: 'panel-backward' },
 })
 
 const showCreateProject = ref(false)
@@ -363,19 +376,19 @@ watch(
 
     <main class="team-main">
       <template v-if="teamStore.currentTeam">
+        <div class="panel-wrap" :class="{ animating: panelAnimating }">
+        <transition
+          :name="panelTransition"
+          @after-enter="panelTransitionEnd"
+          @after-leave="panelTransitionEnd"
+          @enter-cancelled="panelTransitionEnd"
+        >
         <!-- 团队 SKILL（顶部 UI 参考个人 SKILL 仓库：标题 + 同步徽章 + 右侧新增） -->
-        <section v-show="activeTab === 'skill'" class="tab-panel">
+        <section v-if="activeTab === 'skill'" key="skill" class="tab-panel">
           <div class="repo-toolbar">
             <div class="repo-titles">
               <h1 class="repo-title">{{ teamStore.currentTeam.name }}</h1>
-              <span
-                class="sync-badge"
-                :class="{ on: teamSyncConnected }"
-                :title="teamSyncConnected ? '团队动态实时同步中' : '实时同步已断开，正在重连…'"
-              >
-                <span class="sync-dot"></span>
-                {{ teamSyncConnected ? '实时同步中' : '同步断开' }}
-              </span>
+              <SyncStatusBadge :connected="teamSyncConnected" />
             </div>
             <button class="btn-add" @click="showAddSkill = true">
               <span class="plus">+</span> 新增 Skill
@@ -438,18 +451,11 @@ watch(
         </section>
 
         <!-- 团队项目（顶部 UI 参考团队 SKILL：标题 + 同步徽章 + 右侧新建项目） -->
-        <section v-show="activeTab === 'projects'" class="tab-panel">
+        <section v-else-if="activeTab === 'projects'" key="projects" class="tab-panel">
           <div class="repo-toolbar">
             <div class="repo-titles">
               <h1 class="repo-title">{{ teamStore.currentTeam.name }}</h1>
-              <span
-                class="sync-badge"
-                :class="{ on: teamSyncConnected }"
-                :title="teamSyncConnected ? '团队动态实时同步中' : '实时同步已断开，正在重连…'"
-              >
-                <span class="sync-dot"></span>
-                {{ teamSyncConnected ? '实时同步中' : '同步断开' }}
-              </span>
+              <SyncStatusBadge :connected="teamSyncConnected" />
             </div>
             <button class="btn-add" @click="showCreateProject = true">
               <span class="plus">+</span> 新建项目
@@ -496,7 +502,7 @@ watch(
         </section>
 
         <!-- 团队管理（顶部与团队项目一致；信息 / 成员独立白底卡片） -->
-        <section v-show="activeTab === 'manage'" class="tab-panel">
+        <section v-else key="manage" class="tab-panel">
           <div class="repo-toolbar">
             <div class="repo-titles">
               <h1 v-if="!editingProfile" class="repo-title">{{ teamStore.currentTeam.name }}</h1>
@@ -586,6 +592,8 @@ watch(
             </ul>
           </div>
         </section>
+        </transition>
+        </div>
       </template>
 
       <!-- 团队数据加载中的占位 -->
@@ -670,6 +678,10 @@ watch(
   color: #151717;
   font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, sans-serif;
+  /* 标签切换的滑动过场会让面板瞬间横向平移出视口，撑出页面横向滚动条（紫色滑块看着像底部进度条）。
+     用 overflow-x: clip 永久裁剪横向溢出，避免依赖动画期标志位（快速切换时有时序竞态会漏出滚动条）。
+     clip 不创建滚动容器、保留 overflow-y: visible，不影响顶栏 sticky 与卡片悬停阴影。 */
+  overflow-x: clip;
 }
 
 .team-main {
@@ -845,6 +857,9 @@ watch(
   border-top: none;
   padding-top: 0;
 }
+.info-row:last-of-type {
+  padding-bottom: 0;
+}
 .info-label {
   flex-shrink: 0;
   width: 132px;
@@ -865,38 +880,6 @@ watch(
   color: #4f46e5;
   font-size: 0.82rem;
   font-family: 'JetBrains Mono', monospace;
-}
-
-.sync-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-size: 0.74rem;
-  font-weight: 600;
-  background: #f6f7f8;
-  color: #6b7280;
-  border: 1px solid #e5e7eb;
-  user-select: none;
-}
-
-.sync-badge.on {
-  background: #f0fdf4;
-  color: #15803d;
-  border-color: #bbf7d0;
-}
-
-.sync-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #9ca3af;
-}
-
-.sync-badge.on .sync-dot {
-  background: #16a34a;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
 }
 
 .setting-toggle {
@@ -932,19 +915,52 @@ watch(
   margin-bottom: 0;
 }
 
-.tab-panel {
-  animation: tab-fade 0.18s ease;
+/* 标签正文滑动容器：横向滑动跳出正文 1280 限宽，扩展到 90vw 的可视区，
+   让面板真正左右平移直至滑出屏幕（而非局限在内容 div 内）。
+   用 full-bleed 负边距把容器拉宽到 90vw 居中，不会触发横向滚动条。 */
+.panel-wrap {
+  display: grid;
+  width: 90vw;
+  margin-left: calc(50% - 45vw);
+}
+/* 内部正文仍保持原有 1216px 限宽并居中，布局位置与改动前一致，只有动画行程变宽。 */
+.panel-wrap > * {
+  grid-area: 1 / 1;
+  align-self: start;
+  justify-self: center;
+  width: 100%;
+  max-width: 1216px;
+}
+/* 仅在切换动画期间裁剪到 90vw，避免位移引发短暂滚动条；静止时不裁剪以保留卡片悬停投影。 */
+.panel-wrap.animating {
+  overflow: hidden;
 }
 
-@keyframes tab-fade {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.panel-forward-enter-active,
+.panel-forward-leave-active,
+.panel-backward-enter-active,
+.panel-backward-leave-active {
+  transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.42s ease;
+  will-change: transform, opacity;
+}
+/* 行程 = 半个可视区(45vw) + 自身一半(50%)，保证面板完整滑出 90vw 裁剪区再进入。 */
+/* 前进（如 团队SKILL → 团队项目）：新内容自右滑入，旧内容向左滑出 */
+.panel-forward-enter-from {
+  opacity: 0;
+  transform: translateX(calc(45vw + 50%));
+}
+.panel-forward-leave-to {
+  opacity: 0;
+  transform: translateX(calc(-45vw - 50%));
+}
+/* 后退（反向）：新内容自左滑入，旧内容向右滑出 */
+.panel-backward-enter-from {
+  opacity: 0;
+  transform: translateX(calc(-45vw - 50%));
+}
+.panel-backward-leave-to {
+  opacity: 0;
+  transform: translateX(calc(45vw + 50%));
 }
 
 .success-msg {
@@ -1240,6 +1256,9 @@ watch(
   border-top: none;
   padding-top: 0;
 }
+.member-list li:last-child {
+  padding-bottom: 0;
+}
 
 .member-avatar {
   display: inline-flex;
@@ -1291,13 +1310,13 @@ watch(
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 2.5rem 1rem 3rem;
+  padding: 4.5rem 1rem 3rem;
 }
 
 .team-empty img {
-  width: 220px;
+  width: 300px;
   height: auto;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.1rem;
   user-select: none;
   -webkit-user-drag: none;
 }

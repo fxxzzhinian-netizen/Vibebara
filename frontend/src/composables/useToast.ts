@@ -16,6 +16,9 @@ export type ToastType = 'success' | 'error' | 'warning' | 'info'
 export interface ToastItem {
   id: number
   type: ToastType
+  /** 加粗主标题（彩色），默认按类型取值。 */
+  title: string
+  /** 正文描述。 */
   message: string
 }
 
@@ -25,16 +28,29 @@ let seq = 0
 const DEFAULT_DURATION = 3200
 const MAX_VISIBLE = 4
 
-/** 推入一条提示，返回其 id；duration<=0 表示不自动消失。 */
+/** 各类型默认主标题。 */
+const DEFAULT_TITLES: Record<ToastType, string> = {
+  success: '操作成功',
+  error: '操作失败',
+  warning: '请注意',
+  info: '提示',
+}
+
+/**
+ * 推入一条提示，返回其 id；duration<=0 表示不自动消失。
+ * 第四个参数 title 可覆盖默认主标题。
+ */
 export function showToast(
   message: string,
   type: ToastType = 'info',
   duration = DEFAULT_DURATION,
+  title?: string,
 ): number {
   const text = (message ?? '').toString().trim()
   if (!text) return -1
   const id = ++seq
-  toasts.value.push({ id, type, message: text })
+  const heading = (title ?? '').toString().trim() || DEFAULT_TITLES[type]
+  toasts.value.push({ id, type, title: heading, message: text })
   // 超出可见上限时丢弃最早的一条，避免堆叠过多。
   if (toasts.value.length > MAX_VISIBLE) {
     toasts.value = toasts.value.slice(toasts.value.length - MAX_VISIBLE)
@@ -52,8 +68,12 @@ export function dismissToast(id: number): void {
 
 /** 便捷入口。 */
 export const toast = {
-  success: (message: string, duration?: number) => showToast(message, 'success', duration),
-  error: (message: string, duration?: number) => showToast(message, 'error', duration),
-  warning: (message: string, duration?: number) => showToast(message, 'warning', duration),
-  info: (message: string, duration?: number) => showToast(message, 'info', duration),
+  success: (message: string, duration?: number, title?: string) =>
+    showToast(message, 'success', duration, title),
+  error: (message: string, duration?: number, title?: string) =>
+    showToast(message, 'error', duration, title),
+  warning: (message: string, duration?: number, title?: string) =>
+    showToast(message, 'warning', duration, title),
+  info: (message: string, duration?: number, title?: string) =>
+    showToast(message, 'info', duration, title),
 }

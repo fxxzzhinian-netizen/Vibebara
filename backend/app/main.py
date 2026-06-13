@@ -7,9 +7,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.adapters.registry import AdapterRegistry
-from app.api.sessions import api_router as sessions_router
-from app.api.adapters import api_router as adapters_router
 from app.api.launcher import api_router as launcher_router
 from app.api.skill_forge import api_router as skill_forge_router
 from app.api.skill_store import api_router as skill_store_router
@@ -73,10 +70,6 @@ async def lifespan(app: FastAPI):
     _print_startup_diagnostics()
     print(f"  [启动] 运行模式 DEPLOYMENT_MODE = {mode}")
 
-    print("  [启动] 初始化适配器...")
-    await AdapterRegistry.initialize_all(settings.ENABLED_ADAPTERS)
-    print(f"  [启动] 已加载适配器: {list(AdapterRegistry.get_all_adapters().keys())}")
-
     _print_routes(app)
 
     # MySQL + 表创建（云/本地两种模式均需 DB）
@@ -114,7 +107,6 @@ async def lifespan(app: FastAPI):
     # Shutdown
     print("\n  [关闭] 正在清理资源...")
     await FileWatcherService.stop()
-    await AdapterRegistry.shutdown_all()
     await close_db()
     print("  [关闭] 完成")
 
@@ -145,7 +137,6 @@ def create_app() -> FastAPI:
     is_cloud = settings.DEPLOYMENT_MODE == "cloud"
 
     # 始终挂载的 REST 路由（local/cloud 共用）
-    app.include_router(sessions_router, prefix="/api/v1")
     app.include_router(skill_forge_router, prefix="/api/v1")
     app.include_router(skill_store_router, prefix="/api/v1")
     app.include_router(auth_router, prefix="/api/v1")
@@ -155,15 +146,12 @@ def create_app() -> FastAPI:
     # 设备身份端点（M5-b 地基）：local/cloud 均挂载（云端数据端点，无本地盘依赖）。
     app.include_router(devices_router, prefix="/api/v1")
 
-    # 本地能力路由：cloud 模式下线 launcher 与 adapters 的 HTTP 路由（M2 评审决议②）。
-    # 注意：仅下线 HTTP 路由；lifespan 内的 AdapterRegistry.initialize_all 仍保留，
-    # 会话级 WS（/ws/{session_id}）的消息处理仍依赖适配器实例（且有 fallback）。
+    # 本地能力路由：cloud 模式下线 launcher 的 HTTP 路由（M2 评审决议②）；
+    # 桌面壳（唯一发布形态）在本机经 IPC 直接启动工具，不依赖本路由。
     if not is_cloud:
-        app.include_router(adapters_router, prefix="/api/v1")
         app.include_router(launcher_router, prefix="/api/v1")
 
-    # WebSocket 路由（会话级 /ws/{session_id} + 项目级 /ws/project/{project_id}
-    # + 团队级 /ws/team/{team_id}）
+    # WebSocket 路由（项目级 /ws/project/{project_id} + 团队级 /ws/team/{team_id}）
     app.include_router(ws_router)
 
     @app.get("/")
@@ -176,15 +164,9 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        adapters = AdapterRegistry.get_all_adapters()
-        adapter_status = {}
-        for aid, adapter in adapters.items():
-            adapter_status[aid] = await adapter.health_check()
-
         return {
             "status": "healthy",
-            "adapters": adapter_status,
-            "active_adapters": len(adapters),
+            "mode": settings.DEPLOYMENT_MODE,
         }
 
     return app
@@ -194,7 +176,21 @@ app = create_app()
 
 
 async def _seed_default_users():
-    """创建预设用户（幂等，已存在则跳过）"""
+    """创建预设用户（幂等，已存在则跳过）。
+
+    受 SEED_USERS_ENABLED 开关控制：生产可关闭以避免「已知用户名+已知弱密码」长期存在；
+    cloud 模式下仍启用时打印显著安全告警。
+    """
+    if not settings.SEED_USERS_ENABLED:
+        print("  [启动] SEED_USERS_ENABLED=false，跳过预设用户创建")
+        return
+
+    if settings.DEPLOYMENT_MODE == "cloud":
+        print(
+            "  [启动][security] 警告：cloud 模式启用了预设账号（DAIL/DAIL2，密码已文档化）。"
+            "生产建议设 SEED_USERS_ENABLED=false 并改用邀请码注册的强密码账号。"
+        )
+
     from app.services import auth_service
 
     default_users = [

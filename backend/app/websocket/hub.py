@@ -1,137 +1,8 @@
-from fastapi import WebSocket, WebSocketDisconnect
-from typing import Any, Dict, List, Set
-import json
+from fastapi import WebSocket
+from typing import Any, Dict, List
 import logging
 
-from app.core.events import EventType, UnifiedEvent
-from app.services.message_router import router as message_router
-from app.adapters.registry import AdapterRegistry
-
 logger = logging.getLogger(__name__)
-
-
-class ConnectionManager:
-    """
-    Manages WebSocket connections for real-time communication.
-    Each connection is associated with a user, adapter, and session.
-    """
-
-    def __init__(self):
-        self._connections: Dict[str, Dict[str, WebSocket]] = {}  # session_id -> {user_key: ws}
-        self._user_sessions: Dict[str, Set[str]] = {}  # user_key -> set of session_ids
-
-    def _user_key(self, user_id: str, adapter_id: str) -> str:
-        return f"{adapter_id}:{user_id}"
-
-    async def connect(
-        self, websocket: WebSocket, session_id: str, user_id: str, adapter_id: str
-    ):
-        await websocket.accept()
-        key = self._user_key(user_id, adapter_id)
-
-        if session_id not in self._connections:
-            self._connections[session_id] = {}
-        self._connections[session_id][key] = websocket
-
-        if key not in self._user_sessions:
-            self._user_sessions[key] = set()
-        self._user_sessions[key].add(session_id)
-
-        message_router.join_session(session_id, adapter_id, user_id)
-
-        await self._broadcast_to_session(
-            session_id,
-            {
-                "type": "system",
-                "event": "user_joined",
-                "user": user_id,
-                "adapter": adapter_id,
-            },
-            exclude_key=key,
-        )
-
-    async def disconnect(self, session_id: str, user_id: str, adapter_id: str):
-        key = self._user_key(user_id, adapter_id)
-
-        if session_id in self._connections:
-            self._connections[session_id].pop(key, None)
-            if not self._connections[session_id]:
-                del self._connections[session_id]
-
-        if key in self._user_sessions:
-            self._user_sessions[key].discard(session_id)
-
-        message_router.leave_session(session_id, adapter_id, user_id)
-
-        await self._broadcast_to_session(
-            session_id,
-            {
-                "type": "system",
-                "event": "user_left",
-                "user": user_id,
-                "adapter": adapter_id,
-            },
-        )
-
-    async def handle_message(
-        self, session_id: str, user_id: str, adapter_id: str, raw_data: str
-    ):
-        try:
-            data = json.loads(raw_data)
-        except json.JSONDecodeError:
-            return
-
-        adapter = AdapterRegistry.get_adapter(adapter_id)
-        if adapter:
-            data["user_id"] = user_id
-            data["session_id"] = session_id
-            event = await adapter.translate_inbound(data)
-        else:
-            event = UnifiedEvent(
-                type=EventType(data.get("type", "code.edit")),
-                source_adapter=adapter_id,
-                source_user=user_id,
-                session_id=session_id,
-                payload=data.get("payload", {}),
-            )
-
-        # Route to other adapters via the message router
-        await message_router.route_event(event)
-
-        # Also broadcast via WebSocket to connected clients
-        key = self._user_key(user_id, adapter_id)
-        await self._broadcast_to_session(
-            session_id,
-            {
-                "type": "event",
-                "event_type": event.type.value,
-                "from_user": event.source_user,
-                "from_adapter": event.source_adapter,
-                "payload": event.payload,
-                "timestamp": event.timestamp.isoformat(),
-            },
-            exclude_key=key,
-        )
-
-    async def _broadcast_to_session(
-        self, session_id: str, message: dict, exclude_key: str = None
-    ):
-        connections = self._connections.get(session_id, {})
-        dead_keys = []
-
-        for key, ws in connections.items():
-            if key == exclude_key:
-                continue
-            try:
-                await ws.send_json(message)
-            except Exception:
-                dead_keys.append(key)
-
-        for key in dead_keys:
-            connections.pop(key, None)
-
-    def get_session_connections(self, session_id: str) -> List[str]:
-        return list(self._connections.get(session_id, {}).keys())
 
 
 # ======================================================================
@@ -274,6 +145,5 @@ class TeamConnectionManager:
         return list(self._connections.get(team_id, {}).keys())
 
 
-ws_manager = ConnectionManager()
 project_ws_manager = ProjectConnectionManager()
 team_ws_manager = TeamConnectionManager()

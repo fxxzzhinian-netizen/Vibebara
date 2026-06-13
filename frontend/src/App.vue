@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
-import ToastNotification from '@/components/ToastNotification.vue'
 import InputDialog from '@/components/InputDialog.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import ChoiceDialog from '@/components/ChoiceDialog.vue'
 import AppToast from '@/components/AppToast.vue'
 </script>
 
 <template>
   <div id="app-layout">
     <RouterView />
-    <ToastNotification />
     <InputDialog />
     <ConfirmDialog />
+    <ChoiceDialog />
     <AppToast />
   </div>
 </template>
@@ -51,9 +51,9 @@ body {
 
 /* ===== 全局滚动条样式 ===== */
 :root {
-  --scrollbar-size: 14px;
-  --scrollbar-thumb: rgba(99, 102, 241, 0.35);
-  --scrollbar-thumb-hover: rgba(99, 102, 241, 0.6);
+  --scrollbar-size: 12px;
+  --scrollbar-thumb: rgba(99, 102, 241, 0.4);
+  --scrollbar-thumb-hover: rgba(99, 102, 241, 0.62);
   --scrollbar-track: transparent;
 }
 
@@ -71,25 +71,20 @@ body {
 
 *::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
+  border-radius: 999px;
 }
 
+/* 滑块直接用纯色背景 + border-radius 实现圆头：不依赖 background-clip:padding-box，
+   避免个别 Chromium/Electron 版本下透明边框+裁剪把两端渲染成方头。 */
 *::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
+  background-color: var(--scrollbar-thumb);
   border-radius: 999px;
-  /* 透明边框 + background-clip 让滑块更细并与轨道留白 */
-  border: 2px solid transparent;
-  background-clip: padding-box;
   transition: background-color 0.2s ease;
 }
 
-*::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-  background-clip: padding-box;
-}
-
+*::-webkit-scrollbar-thumb:hover,
 *::-webkit-scrollbar-thumb:active {
-  background: var(--scrollbar-thumb-hover);
-  background-clip: padding-box;
+  background-color: var(--scrollbar-thumb-hover);
 }
 
 /* 去掉两端的上/下箭头按钮 */

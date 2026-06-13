@@ -1,20 +1,24 @@
 """
 LLM 连通性测试脚本
-直接调用 GPTs API Gateway 验证配置是否正确（独立运行，不依赖数据库）
+直接调用 GPTs API Gateway 验证配置是否正确（独立运行，不依赖数据库）。
+
+运行（backend 目录）：python scripts/llm_connectivity_check.py
+读取 backend/.env 中的 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL。
 """
 import asyncio
 import json
-import sys
 import os
+import sys
 
-sys.path.insert(0, os.path.dirname(__file__))
-os.chdir(os.path.dirname(__file__))
+# 脚本位于 backend/scripts/ 下，向上一级即 backend 根目录（.env 所在）。
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _BACKEND_DIR)
 
 
 def _load_env():
-    """从 .env 文件加载配置"""
+    """从 backend/.env 文件加载配置"""
     cfg = {}
-    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    env_path = os.path.join(_BACKEND_DIR, ".env")
     if os.path.exists(env_path):
         with open(env_path, "r", encoding="utf-8") as f:
             for line in f:
@@ -27,7 +31,7 @@ def _load_env():
     return cfg
 
 
-async def test_basic_connection(base_url, api_key, model):
+async def basic_connection(base_url, api_key, model):
     """测试基本连通性：发送简单消息"""
     from openai import AsyncOpenAI
 
@@ -54,7 +58,7 @@ async def test_basic_connection(base_url, api_key, model):
     return content, usage
 
 
-async def test_field_completion(base_url, api_key, model):
+async def field_completion(base_url, api_key, model):
     """测试字段补齐功能：模拟 Skill 字段推断"""
     from openai import AsyncOpenAI
 
@@ -110,7 +114,7 @@ async def main():
     # === Test 1: Basic connectivity ===
     print("  [Test 1] Basic connectivity...")
     try:
-        content, usage = await test_basic_connection(base_url, api_key, model)
+        content, usage = await basic_connection(base_url, api_key, model)
         print(f"  [OK] Connected!")
         print(f"  Response: {content}")
         if usage:
@@ -128,7 +132,7 @@ async def main():
     # === Test 2: Field completion ===
     print("  [Test 2] Skill field completion...")
     try:
-        suggestions = await test_field_completion(base_url, api_key, model)
+        suggestions = await field_completion(base_url, api_key, model)
         if suggestions:
             print(f"  [OK] Completed! ({len(suggestions)} fields)")
             for k, v in suggestions.items():

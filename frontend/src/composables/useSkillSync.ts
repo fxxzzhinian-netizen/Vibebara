@@ -1,7 +1,9 @@
 import { ref, onUnmounted, watch } from 'vue'
 import { useProjectSyncStore } from '@/stores/projectSyncStore'
 import { useSkillStore } from '@/stores/skillStore'
-import { useNotificationStore } from '@/stores/notificationStore'
+import { useNotificationStore, formatNotification } from '@/stores/notificationStore'
+import { useAuthStore } from '@/stores/authStore'
+import { toast } from '@/composables/useToast'
 import { cloudWsUrl } from '@/runtime/config'
 import { getToken } from '@/runtime/tokenStorage'
 import type { ChangeItem } from '@/api/projects'
@@ -40,6 +42,7 @@ export function useSkillSync(
   const projectSyncStore = useProjectSyncStore()
   const skillStore = useSkillStore()
   const notificationStore = useNotificationStore()
+  const authStore = useAuthStore()
 
   function closeSocket() {
     if (ws) {
@@ -105,7 +108,7 @@ export function useSkillSync(
     projectSyncStore.handleSkillEvent(evt)
 
     if (evt.user_display_name && evt.type.startsWith('skill.')) {
-      notificationStore.addMessage({
+      const msg = {
         id: `${evt.skill_id}-${evt.timestamp}-${Math.random().toString(36).slice(2, 8)}`,
         user_display_name: evt.user_display_name,
         skill_display_name: evt.skill_display_name || evt.skill_id,
@@ -113,7 +116,18 @@ export function useSkillSync(
         timestamp: evt.timestamp,
         change_items: evt.change_items,
         diff_summary: evt.diff_summary,
-      })
+      }
+      // 始终记入「项目动态」历史。
+      notificationStore.addMessage(msg)
+      // 提示统一走全局提示窗（AppToast），且每个事件只弹一次：
+      //   - 自己触发的事件不再弹（成功已由本地操作的全局提示给出一次），避免与服务端广播叠加；
+      //   - 他人的改动（如别人推送）弹一次全局提示窗。
+      const selfId =
+        authStore.user?.id || localStorage.getItem('vibebara_user_id') || ''
+      const isSelf = !!evt.user_id && evt.user_id === selfId
+      if (!isSelf) {
+        toast.info(formatNotification(msg), undefined, '团队动态')
+      }
     }
 
     if (

@@ -10,6 +10,16 @@ directories:
   output: release
   buildResources: build
 
+# 只保留中英文 Electron 语言包，删除其余 ~50 个 locales/*.pak（约省 38MB 解包体积）。
+# en-US 是 Electron 的兜底语言，删除会导致界面字体异常，必须保留。
+# electron-builder 24.2.0+ 起该全局选项已支持 Windows/Linux。
+electronLanguages:
+  - en-US
+  - zh-CN
+
+# 安装包采用最大压缩（NSIS/LZMA）。仅影响安装包体积与打包耗时，不影响安装后体积。
+compression: maximum
+
 # 把本地代理与前端构建产物打进安装包（packaged 时主进程从 process.resourcesPath 解析）。
 extraResources:
   - from: ../local-agent/dist

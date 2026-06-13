@@ -1,49 +1,12 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
-from app.core.config import settings
 from app.services import project_service, team_service
 from app.services.auth_service import verify_token
 from app.services.skill_sync_service import SkillSyncService
 from app.services.team_sync_service import TeamSyncService
-from app.websocket.hub import ws_manager, project_ws_manager, team_ws_manager
+from app.websocket.hub import project_ws_manager, team_ws_manager
 
 ws_router = APIRouter()
-
-
-@ws_router.websocket("/ws/{session_id}")
-async def websocket_endpoint(
-    websocket: WebSocket,
-    session_id: str,
-    user_id: str = Query(...),
-    adapter_id: str = Query(default="web"),
-    token: str = Query(default=""),
-):
-    """
-    会话级 WebSocket 通道（适配器实时协作）。
-
-    鉴权策略（方案 B · M4 / M2 决议①）：
-      - **cloud 形态默认强制**：`DEPLOYMENT_MODE == "cloud"` 时一律强制校验 token；
-      - local 形态默认沿用现状不强制（兼容历史 sessions 协作），可经
-        `WS_SESSION_AUTH_REQUIRED=true` 显式开启；
-      - 强制时：token 缺失/无效 → close 4001，且 token 解析出的 user_id 必须与
-        连接 user_id 一致（防伪冒）。前端 useWebSocket 已在 WS URL 上补传 token。
-    """
-    auth_required = (
-        settings.WS_SESSION_AUTH_REQUIRED or settings.DEPLOYMENT_MODE == "cloud"
-    )
-    if auth_required:
-        token_user_id = verify_token(token) if token else None
-        if not token_user_id or token_user_id != user_id:
-            await websocket.close(code=4001, reason="invalid token")
-            return
-
-    await ws_manager.connect(websocket, session_id, user_id, adapter_id)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await ws_manager.handle_message(session_id, user_id, adapter_id, data)
-    except WebSocketDisconnect:
-        await ws_manager.disconnect(session_id, user_id, adapter_id)
 
 
 @ws_router.websocket("/ws/project/{project_id}")

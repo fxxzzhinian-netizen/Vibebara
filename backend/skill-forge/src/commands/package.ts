@@ -165,12 +165,20 @@ export async function scanAndPackage(
   rootDir: string,
 ): Promise<PackageResult[]> {
   const results: PackageResult[] = [];
-  const subDirs = await listSubDirs(rootDir);
 
-  for (const dir of subDirs) {
-    const skillMd = path.join(dir, "SKILL.md");
-    if (!(await exists(skillMd))) continue;
+  // Candidates: rootDir itself when it directly holds SKILL.md (user picked the
+  // skill folder, e.g. a bare "pure md" skill with no wrapper dir), plus any
+  // immediate sub-directory holding SKILL.md (container dir). Skill resource dirs
+  // (scripts/references/assets) never contain SKILL.md, so no duplication occurs.
+  const candidates: string[] = [];
+  if (await exists(path.join(rootDir, "SKILL.md"))) {
+    candidates.push(rootDir);
+  }
+  for (const dir of await listSubDirs(rootDir)) {
+    if (await exists(path.join(dir, "SKILL.md"))) candidates.push(dir);
+  }
 
+  for (const dir of candidates) {
     try {
       const pkg = await packageSkill(dir);
       results.push(pkg);

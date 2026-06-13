@@ -1,7 +1,7 @@
 import apiClient from './client'
 import { isOrchestrationEnabled } from '@/runtime/config'
 import { DEV_SKIP_AUTH } from '@/runtime/devAuth'
-import { devMockProjectList } from '@/runtime/devMock'
+import { devMockProjectList, devMockProjectDetail } from '@/runtime/devMock'
 import {
   deployProjectSkillOrchestrated,
   deployProjectSkillGlobalOrchestrated,
@@ -212,6 +212,9 @@ export async function listProjects(
 export async function getProject(
   projectId: string,
 ): Promise<ProjectDetailResponse> {
+  // 开发者模式（跳过登录）下后端会因假 token 返回 401，这里回放假数据：
+  // 让团队项目内有 Skill，且覆盖部署各状态以便预览所有操作按钮样式。
+  if (DEV_SKIP_AUTH) return devMockProjectDetail(projectId)
   const { data } = await apiClient.get<ProjectDetailResponse>(
     `/projects/${projectId}`,
   )
@@ -359,6 +362,17 @@ export async function getDeploymentLocalStatus(
   deploymentId: string,
   deployment?: UserSkillDeploymentInfo | null,
 ): Promise<DeploymentLocalStatusResponse> {
+  // 开发者模式：直接按假部署对象回放本地状态，避免假 token 触发 401 与 8s 轮询报错刷屏。
+  if (DEV_SKIP_AUTH) {
+    return {
+      success: true,
+      exists: !!deployment && deployment.status !== 'missing',
+      has_local_changes: deployment?.local_dirty ?? false,
+      installed_hash: deployment?.installed_hash ?? '',
+      current_hash: deployment?.repo_hash ?? '',
+      status: deployment?.status ?? 'synced',
+    }
+  }
   if (isOrchestrationEnabled() && deployment) {
     return getLocalStatusOrchestrated(deploymentId, deployment)
   }
@@ -402,6 +416,8 @@ export async function getSyncChanges(
   projectId: string,
   sinceVersion: number = 0,
 ): Promise<SyncChangesResponse> {
+  // 开发者模式：无后端，返回空动态（成功），避免轮询 401 报错刷屏。
+  if (DEV_SKIP_AUTH) return { success: true, changes: [] }
   const { data } = await apiClient.get<SyncChangesResponse>(
     `/projects/${projectId}/sync/changes`,
     { params: { since_version: sinceVersion } },

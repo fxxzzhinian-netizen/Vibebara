@@ -35,39 +35,31 @@ const MAX_MESSAGES = 50
 
 export const useNotificationStore = defineStore('notification', () => {
   const messages = ref<NotificationMessage[]>([])
-  const toastQueue = ref<NotificationMessage[]>([])
 
+  /**
+   * 记录一条「项目动态」历史（只入历史列表）。
+   * 实时浮窗已统一改走全局提示窗（AppToast）：他人改动由 useSkillSync 调一次
+   * toast 提示，自己的操作由本地成功提示给出，不再使用独立的浮窗队列。
+   */
   function addMessage(msg: NotificationMessage) {
     messages.value.unshift(msg)
     if (messages.value.length > MAX_MESSAGES) {
       messages.value = messages.value.slice(0, MAX_MESSAGES)
     }
-
-    toastQueue.value.push(msg)
-    setTimeout(() => {
-      toastQueue.value = toastQueue.value.filter((m) => m.id !== msg.id)
-    }, 4000)
   }
 
   function loadHistory(items: NotificationMessage[]) {
     messages.value = items.slice(0, MAX_MESSAGES)
   }
 
-  function dismissToast(id: string) {
-    toastQueue.value = toastQueue.value.filter((m) => m.id !== id)
-  }
-
   function clear() {
     messages.value = []
-    toastQueue.value = []
   }
 
   return {
     messages,
-    toastQueue,
     addMessage,
     loadHistory,
-    dismissToast,
     clear,
   }
 })

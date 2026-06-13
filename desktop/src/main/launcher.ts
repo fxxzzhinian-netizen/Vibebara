@@ -53,6 +53,24 @@ const TERMINAL_TOOLS: ReadonlySet<LauncherToolId> = new Set([
   "claude-code",
 ]);
 
+/**
+ * 「以目标文件夹为工作区打开」的 IDE 工具：仅这些工具才把 project_path 作为命令行参数传入。
+ * Codex / Claude 桌面端是对话类应用，不接受工作区路径参数，传入反而会破坏启动（见下）。
+ */
+const WORKSPACE_TOOLS: ReadonlySet<LauncherToolId> = new Set([
+  "cursor",
+  "windsurf",
+  "kiro",
+  "trae",
+  "qoder",
+]);
+
+/** resolveCommand 结果：cmd 为启动命令数组；viaAppx 表示经 explorer + AppsFolder 协议激活（无法附带任何路径参数）。 */
+interface ResolvedCommand {
+  cmd: string[];
+  viaAppx: boolean;
+}
+
 /** 在 PATH 中查找首个可用可执行文件，返回绝对路径或 null（对齐 shutil.which）。 */
 function which(...candidates: string[]): string | null {
   for (const name of candidates) {
@@ -102,29 +120,39 @@ function findAppxApp(pattern: string): string | null {
   return null;
 }
 
-/** 解析工具启动命令（数组形式）；未找到抛错。 */
-function resolveCommand(tool: LauncherToolId): string[] {
+/** 直接可执行文件命令（非 AppX）。 */
+function exeCmd(exe: string): ResolvedCommand {
+  return { cmd: [exe], viaAppx: false };
+}
+
+/** 经 explorer + shell:AppsFolder 协议激活的 AppX 命令（不可附带路径参数）。 */
+function appxCmd(uri: string): ResolvedCommand {
+  return { cmd: ["explorer.exe", uri], viaAppx: true };
+}
+
+/** 解析工具启动命令；未找到抛错。viaAppx=true 表示经 AppsFolder 激活，调用方不得追加任何参数。 */
+function resolveCommand(tool: LauncherToolId): ResolvedCommand {
   if (tool === "cursor") {
     const exe = IS_WINDOWS ? which("cursor.cmd", "cursor") : which("cursor");
-    if (exe) return [exe];
+    if (exe) return exeCmd(exe);
     throw new Error("cursor 命令未找到，请确认 Cursor 已安装且在 PATH 中");
   }
 
   if (tool === "codex-cli") {
     const exe = IS_WINDOWS ? which("codex.cmd", "codex") : which("codex");
-    if (exe) return [exe];
+    if (exe) return exeCmd(exe);
     throw new Error("codex 命令未找到，请确认 Codex CLI 已安装 (npm i -g @openai/codex)");
   }
 
   if (tool === "codex-app") {
     if (IS_WINDOWS) {
       const exe = which("codex-app.cmd", "codex-app", "Codex.exe");
-      if (exe) return [exe];
+      if (exe) return exeCmd(exe);
       const appx = findAppxApp("Codex");
-      if (appx) return ["explorer.exe", appx];
+      if (appx) return appxCmd(appx);
     } else {
       const exe = which("codex-app", "Codex");
-      if (exe) return [exe];
+      if (exe) return exeCmd(exe);
     }
     throw new Error("Codex App 未找到，请确认 Codex 桌面应用已安装");
   }
@@ -132,19 +160,19 @@ function resolveCommand(tool: LauncherToolId): string[] {
   if (tool === "windsurf") {
     if (IS_WINDOWS) {
       const exe = which("windsurf.cmd", "windsurf", "Windsurf.exe");
-      if (exe) return [exe];
+      if (exe) return exeCmd(exe);
       const appx = findAppxApp("Windsurf");
-      if (appx) return ["explorer.exe", appx];
+      if (appx) return appxCmd(appx);
     } else {
       const exe = which("windsurf", "Windsurf");
-      if (exe) return [exe];
+      if (exe) return exeCmd(exe);
     }
     throw new Error("windsurf 命令未找到，请确认 Windsurf 已安装且在 PATH 中");
   }
 
   if (tool === "claude-code") {
     const exe = IS_WINDOWS ? which("claude.cmd", "claude") : which("claude");
-    if (exe) return [exe];
+    if (exe) return exeCmd(exe);
     throw new Error(
       "claude 命令未找到，请确认 Claude Code 已安装 (npm i -g @anthropic-ai/claude-code)",
     );
@@ -153,12 +181,12 @@ function resolveCommand(tool: LauncherToolId): string[] {
   if (tool === "claude-app") {
     if (IS_WINDOWS) {
       const exe = which("claude-app.cmd", "claude-app", "Claude.exe");
-      if (exe) return [exe];
+      if (exe) return exeCmd(exe);
       const appx = findAppxApp("Claude");
-      if (appx) return ["explorer.exe", appx];
+      if (appx) return appxCmd(appx);
     } else {
       const exe = which("claude-app", "Claude");
-      if (exe) return [exe];
+      if (exe) return exeCmd(exe);
     }
     throw new Error("Claude App 未找到，请确认 Claude 桌面应用已安装");
   }
@@ -166,12 +194,12 @@ function resolveCommand(tool: LauncherToolId): string[] {
   if (tool === "kiro") {
     if (IS_WINDOWS) {
       const exe = which("kiro.cmd", "kiro", "Kiro.exe");
-      if (exe) return [exe];
+      if (exe) return exeCmd(exe);
       const appx = findAppxApp("Kiro");
-      if (appx) return ["explorer.exe", appx];
+      if (appx) return appxCmd(appx);
     } else {
       const exe = which("kiro", "Kiro");
-      if (exe) return [exe];
+      if (exe) return exeCmd(exe);
     }
     throw new Error("kiro 命令未找到，请确认 Kiro 已安装且在 PATH 中");
   }
@@ -179,13 +207,13 @@ function resolveCommand(tool: LauncherToolId): string[] {
   if (tool === "trae") {
     if (IS_WINDOWS) {
       const exe = which("trae.cmd", "trae", "Trae.exe");
-      if (exe) return [exe];
+      if (exe) return exeCmd(exe);
       // Trae 在开始菜单注册名形态多样（如 "Trae" / "Trae CN" / "TRAE SOLO CN"），用通配匹配
       const appx = findAppxApp("*Trae*");
-      if (appx) return ["explorer.exe", appx];
+      if (appx) return appxCmd(appx);
     } else {
       const exe = which("trae", "Trae");
-      if (exe) return [exe];
+      if (exe) return exeCmd(exe);
     }
     throw new Error("trae 命令未找到，请确认 Trae 已安装且在 PATH 中");
   }
@@ -193,12 +221,12 @@ function resolveCommand(tool: LauncherToolId): string[] {
   if (tool === "qoder") {
     if (IS_WINDOWS) {
       const exe = which("qoder.cmd", "qoder", "qodercli.cmd", "qodercli", "Qoder.exe");
-      if (exe) return [exe];
+      if (exe) return exeCmd(exe);
       const appx = findAppxApp("Qoder");
-      if (appx) return ["explorer.exe", appx];
+      if (appx) return appxCmd(appx);
     } else {
       const exe = which("qoder", "qodercli", "Qoder");
-      if (exe) return [exe];
+      if (exe) return exeCmd(exe);
     }
     throw new Error("qoder 命令未找到，请确认 Qoder 已安装且在 PATH 中");
   }
@@ -206,9 +234,27 @@ function resolveCommand(tool: LauncherToolId): string[] {
   throw new Error(`不支持的工具: ${tool}`);
 }
 
+/** 含空格的参数加引号（Windows shell 命令行拼接用）。 */
+function winQuote(s: string): string {
+  return /\s/.test(s) ? `"${s}"` : s;
+}
+
 /** 后台静默启动（GUI 应用）。 */
 function launchBackground(cmd: string[]): void {
   const [bin, ...args] = cmd;
+  // Windows 上 .cmd / .bat（如 cursor.cmd、windsurf.cmd）必须经 shell 执行：
+  // Node 安全补丁（CVE-2024-27980）后直接 spawn 这类脚本会抛 EINVAL，导致「部署成功但打开失败」。
+  if (IS_WINDOWS && /\.(cmd|bat)$/i.test(bin)) {
+    const line = [bin, ...args].map(winQuote).join(" ");
+    const child = spawn(line, {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+      shell: true,
+    });
+    child.unref();
+    return;
+  }
   const child = spawn(bin, args, {
     detached: true,
     stdio: "ignore",
@@ -217,30 +263,48 @@ function launchBackground(cmd: string[]): void {
   child.unref();
 }
 
-/** 新终端窗口启动（CLI 交互式工具）。 */
-function launchTerminal(cmd: string[]): void {
+/**
+ * 新终端窗口启动（CLI 交互式工具）。
+ * 传入 cwd 时，新终端的工作目录会锁定到该目录（部署后「打开终端并定位到部署目录」）。
+ */
+function launchTerminal(cmd: string[], cwd?: string): void {
+  const workdir = cwd && cwd.trim() ? cwd : undefined;
   if (IS_WINDOWS) {
-    // start 一个新控制台运行命令（cmd /k 保留窗口）。
-    const child = spawn("cmd.exe", ["/c", "start", "cmd", "/k", ...cmd], {
+    // start 一个新控制台运行命令（cmd /k 保留窗口）；/d 指定新窗口的工作目录。
+    const startArgs = workdir
+      ? ["/c", "start", "", "/d", workdir, "cmd", "/k", ...cmd]
+      : ["/c", "start", "cmd", "/k", ...cmd];
+    const child = spawn("cmd.exe", startArgs, {
+      cwd: workdir,
       detached: true,
       stdio: "ignore",
       windowsHide: false,
     });
     child.unref();
   } else if (IS_MAC) {
-    const script = cmd.join(" ");
+    const script = workdir
+      ? `cd ${JSON.stringify(workdir)}; ${cmd.join(" ")}`
+      : cmd.join(" ");
     spawn("osascript", [
       "-e",
-      `tell app "Terminal" to do script "${script}"`,
+      `tell app "Terminal" to do script "${script.replace(/"/g, '\\"')}"`,
     ]).unref();
   } else {
     for (const term of ["x-terminal-emulator", "gnome-terminal", "xterm"]) {
       if (which(term)) {
-        spawn(term, ["-e", ...cmd], { detached: true, stdio: "ignore" }).unref();
+        spawn(term, ["-e", ...cmd], {
+          cwd: workdir,
+          detached: true,
+          stdio: "ignore",
+        }).unref();
         return;
       }
     }
-    spawn(cmd[0], cmd.slice(1), { detached: true, stdio: "ignore" }).unref();
+    spawn(cmd[0], cmd.slice(1), {
+      cwd: workdir,
+      detached: true,
+      stdio: "ignore",
+    }).unref();
   }
 }
 
@@ -300,20 +364,33 @@ export function launchTool(
     );
   }
 
-  const cmd = resolveCommand(tool);
-  if (req.project_path) {
-    cmd.push(req.project_path);
-  }
-
+  const { cmd, viaAppx } = resolveCommand(tool);
   const label = TOOL_LABELS[tool];
   const isTerminal = TERMINAL_TOOLS.has(tool);
+  const path = (req.project_path ?? "").trim();
+
+  // 路径处理策略（按工具形态）：
+  //   · 终端类（codex-cli / claude-code）：路径仅作为新终端的工作目录（cwd），不作为命令行参数；
+  //   · IDE 工作区类（cursor / windsurf / ...）：把路径作为参数传入，以该目录为工作区打开；
+  //     但经 AppsFolder 激活时（viaAppx）不能附带任何参数，否则 explorer 会去打开该文件夹而非激活应用。
+  //   · 桌面对话类（codex-app / claude-app）：不接受工作区路径，仅启动应用本身。
+  // —— 这正是「Codex/Claude 桌面端点击后无报错也不启动」的根因：之前对所有工具都把路径
+  //     追加到 explorer 命令，导致 AppX 应用无法被激活。
+  const appendPath = !isTerminal && WORKSPACE_TOOLS.has(tool) && !viaAppx && !!path;
+  if (appendPath) {
+    cmd.push(path);
+  }
+
   if (isTerminal) {
-    launchTerminal(cmd);
+    // 终端类工具：把新终端的工作目录锁定到部署目录（project_path）。
+    launchTerminal(cmd, path || undefined);
   } else {
     launchBackground(cmd);
   }
 
-  const suffix = req.project_path ? `，项目路径: ${req.project_path}` : "";
+  // 仅在路径被实际使用时（终端 cwd / IDE 工作区参数）提示项目路径，避免对桌面对话类应用产生误导。
+  const usedPath = isTerminal ? !!path : appendPath;
+  const suffix = usedPath ? `，项目路径: ${path}` : "";
   return {
     status: "launched",
     tool,

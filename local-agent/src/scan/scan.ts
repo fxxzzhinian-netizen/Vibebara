@@ -149,11 +149,23 @@ export function packageSkill(skillDir: string): UnifiedSkillPackage {
   };
 }
 
-/** 扫描 rootDir 下含 SKILL.md 的一级子目录，逐个识别并归一化输出。 */
+/**
+ * 扫描 rootDir 含 SKILL.md 的「自身或一级子目录」，逐个识别并归一化输出。
+ *
+ * · rootDir 自身含 SKILL.md（用户直接选中了 skill 文件夹，「纯 md」技能无外层目录）→ 收 rootDir；
+ * · rootDir 的一级子目录含 SKILL.md（容器目录，如 ~/.cursor/skills）→ 收各子目录。
+ * 两者并存（极少见）时一并收录——skill 资源目录 scripts/references/assets 不含 SKILL.md，不会重复。
+ */
 export function scanAndPackage(rootDir: string): UnifiedSkillPackage[] {
   const results: UnifiedSkillPackage[] = [];
+  const candidates: string[] = [];
+  if (existsSync(path.join(rootDir, "SKILL.md"))) {
+    candidates.push(rootDir);
+  }
   for (const dir of listSubDirs(rootDir)) {
-    if (!existsSync(path.join(dir, "SKILL.md"))) continue;
+    if (existsSync(path.join(dir, "SKILL.md"))) candidates.push(dir);
+  }
+  for (const dir of candidates) {
     try {
       results.push(packageSkill(dir));
     } catch (err) {

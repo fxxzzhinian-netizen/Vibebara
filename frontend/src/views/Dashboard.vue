@@ -8,6 +8,7 @@ import AppTopNav from '@/components/AppTopNav.vue'
 import AddSkillModal from '@/components/AddSkillModal.vue'
 import type { NativeSkillItem } from '@/api/skillStore'
 import { getSkeletonCount, setSkeletonCount } from '@/utils/skeletonCount'
+import { toast } from '@/composables/useToast'
 import cursorIcon from '@/img/icon/cursor.svg'
 import codexIcon from '@/img/icon/codex.svg'
 import windsurfIcon from '@/img/icon/windsurf.svg'
@@ -26,8 +27,6 @@ const teamStore = useTeamStore()
 const workspace = useWorkspaceStore()
 
 const addOpen = ref(false)
-const flashMsg = ref('')
-let flashTimer: ReturnType<typeof setTimeout> | null = null
 
 const isTeamSpace = computed(() => workspace.spaceType === 'team')
 
@@ -88,15 +87,9 @@ function openSkill(skill: NativeSkillItem) {
   }
 }
 
-function flash(message: string) {
-  flashMsg.value = message
-  if (flashTimer) clearTimeout(flashTimer)
-  flashTimer = setTimeout(() => (flashMsg.value = ''), 3000)
-}
-
 function onAddDone(payload: { message: string; skills?: NativeSkillItem[] }) {
   refresh()
-  if (payload.message) flash(payload.message)
+  if (payload.message) toast.success(payload.message)
 }
 
 function skillDesc(s: NativeSkillItem): string {
@@ -146,11 +139,6 @@ onMounted(() => {
           </button>
         </div>
       </div>
-
-      <!-- 内联提示 -->
-      <transition name="flash">
-        <div v-if="flashMsg" class="flash-bar">{{ flashMsg }}</div>
-      </transition>
 
       <!-- 错误态 -->
       <div v-if="store.error && !store.loading" class="error-bar">
@@ -375,27 +363,7 @@ onMounted(() => {
   cursor: default;
 }
 
-/* —— 提示 / 错误 —— */
-.flash-bar {
-  margin-bottom: 1rem;
-  padding: 0.65rem 1rem;
-  border-radius: 10px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #15803d;
-  font-size: 0.86rem;
-}
-
-.flash-enter-active,
-.flash-leave-active {
-  transition: opacity 0.25s ease;
-}
-
-.flash-enter-from,
-.flash-leave-to {
-  opacity: 0;
-}
-
+/* —— 错误态 —— */
 .error-bar {
   margin-bottom: 1rem;
   padding: 0.65rem 1rem;

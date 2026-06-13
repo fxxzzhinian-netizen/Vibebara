@@ -2,8 +2,10 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
+import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { listTools, type ToolInfo, type ToolId } from '@/api/launcher'
 import { toast } from '@/composables/useToast'
+import AppLoader from '@/components/AppLoader.vue'
 import logoUrl from '@/img/logo.png'
 import loginBg from '@/img/login_bg.png'
 import soloIllus from '@/img/card/solo.png'
@@ -35,6 +37,7 @@ interface PlatformTool {
 
 const router = useRouter()
 const auth = useAuthStore()
+const workspace = useWorkspaceStore()
 
 const phase = ref<Phase>('scene')
 const devMode = ref<DevMode | null>(null)
@@ -187,6 +190,9 @@ function chooseScene(mode: DevMode) {
 
 async function runDetection() {
   detecting.value = true
+  // 保证加载动画（卡皮巴拉进度条）至少展示一段时间：检测/失败可能瞬间返回
+  // （如本机无后端时 listTools 立刻报错），否则动画一闪而过看不到。
+  const minVisible = new Promise((r) => setTimeout(r, 3000))
   try {
     const tools: ToolInfo[] = await listTools()
     const set = new Set<PlatformKey>()
@@ -200,6 +206,7 @@ async function runDetection() {
     // 检测失败不阻断流程，用户仍可手动选择
     detected.value = new Set()
   } finally {
+    await minVisible
     detecting.value = false
   }
 }
@@ -208,6 +215,8 @@ async function runDetection() {
 const STEPS: Phase[] = ['scene', 'tools']
 
 function goStep(s: Phase) {
+  // 检测进行中：锁定步骤切换，避免中途离开
+  if (detecting.value) return
   if (s === 'scene') {
     phase.value = 'scene'
   } else if (s === 'tools' && devMode.value) {
@@ -221,6 +230,9 @@ async function finish() {
   const res = await auth.completeOnboarding(devMode.value, selectedTool.value)
   submitting.value = false
   if (res.success) {
+    // 新用户首屏统一进入个人仓库：归位个人空间，清掉可能残留的团队空间状态，
+    // 避免被带去（可能不存在/非本人）的团队页。需要团队时由空间切换器进入。
+    workspace.switchToPersonal()
     router.replace('/')
   } else {
     toast.error(res.error || '保存失败，请重试')
@@ -261,11 +273,17 @@ async function finish() {
       <div v-if="phase === 'tools'" class="stage tools-stage">
         <div class="stage-head">
           <h1>选择你最常用的 Vibe Coding 工具</h1>
-          <p v-if="detecting">正在检索本机已安装的工具…</p>
+          <!-- 检测中：副标题用滚动文字；完成后恢复说明文案 -->
+          <AppLoader v-if="detecting" text-only prefix="正在检测本机工具" />
           <p v-else>已为你识别本机工具，选择一个作为默认</p>
         </div>
 
-        <div class="tools-carousel">
+        <!-- 轮播常驻；检测中加半透明遮罩并屏蔽交互，完成后放开选择 -->
+        <div class="tools-body" :class="{ 'is-loading': detecting }">
+          <transition name="mask-fade">
+            <div v-if="detecting" class="tools-mask" aria-hidden="true"></div>
+          </transition>
+          <div class="tools-carousel">
           <button
             type="button"
             class="carousel-arrow"
@@ -322,6 +340,7 @@ async function finish() {
         >
           {{ submitting ? '正在进入…' : '进入工作台' }}
         </button>
+        </div>
       </div>
     </transition>
 
@@ -334,6 +353,7 @@ async function finish() {
           type="button"
           class="step-dot"
           :class="{ active: phase === s }"
+          :disabled="detecting"
           :aria-label="`第 ${i + 1} 步`"
           @click="goStep(s)"
         ></button>
@@ -451,6 +471,27 @@ async function finish() {
 .scene-title {
   font-size: 20px;
   font-weight: 600;
+}
+
+/* 工具区容器：检测中屏蔽交互/选中，并承载半透明遮罩 */
+.tools-body {
+  position: relative;
+  width: 100%;
+}
+
+.tools-body.is-loading {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 半透明遮罩：盖在轮播/按钮之上（高于箭头 200 / 卡片 100）。
+   向内收缩，只罩住中间的工具+按钮区域，避免溢出遮住两侧/上下的背景底色。 */
+.tools-mask {
+  position: absolute;
+  inset: 8px 14% 0;
+  z-index: 300;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 16px;
 }
 
 /* 工具轮播（coverflow）：选中项居中最大、两侧递减；箭头绝对定位贴边缘图标 */
@@ -602,8 +643,8 @@ async function finish() {
 }
 
 .finish-btn {
-  margin-top: 60px;
-  align-self: center;
+  display: block;
+  margin: 60px auto 0;
   min-width: 200px;
   height: 50px;
   padding: 0 28px;
@@ -653,6 +694,14 @@ async function finish() {
   background: #9ca3af;
 }
 
+.step-dot:disabled {
+  cursor: not-allowed;
+}
+
+.step-dot:disabled:hover {
+  background: #d1d5db;
+}
+
 .step-dot.active {
   width: 24px;
   background: #151717;
@@ -660,6 +709,14 @@ async function finish() {
 
 .step-dot.active:hover {
   background: #151717;
+}
+
+/* 遮罩淡出：检测完成后缓慢消失，逐渐显露下方工具 */
+.mask-fade-leave-active {
+  transition: opacity 0.7s ease;
+}
+.mask-fade-leave-to {
+  opacity: 0;
 }
 
 /* 过渡动画 */

@@ -1,6 +1,8 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { getToken } from '@/runtime/tokenStorage'
 import { useAuthStore } from '@/stores/authStore'
+import { useWorkspaceStore } from '@/stores/workspaceStore'
+import { useTeamStore } from '@/stores/teamStore'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -20,12 +22,6 @@ const router = createRouter({
       path: '/',
       name: 'dashboard',
       component: () => import('@/views/Dashboard.vue'),
-    },
-    {
-      // 原主页的项目启动器功能整体保留于此（暂不进导航，待后续重构安排）
-      path: '/launcher',
-      name: 'project-launcher',
-      component: () => import('@/views/ProjectLauncher.vue'),
     },
     {
       // 团队工作台：与全局 AppTopNav 共用外壳，标签页由路由驱动。
@@ -54,29 +50,9 @@ const router = createRouter({
       component: () => import('@/views/SkillDetail.vue'),
     },
     {
-      path: '/sessions',
-      name: 'sessions',
-      component: () => import('@/views/Sessions.vue'),
-    },
-    {
-      path: '/sessions/:id',
-      name: 'session-detail',
-      component: () => import('@/views/SessionDetail.vue'),
-    },
-    {
-      path: '/adapters',
-      name: 'adapters',
-      component: () => import('@/views/Adapters.vue'),
-    },
-    {
       path: '/skill-forge',
       name: 'skill-forge',
       component: () => import('@/views/SkillForge.vue'),
-    },
-    {
-      path: '/platform-structure/:id?',
-      name: 'platform-structure',
-      component: () => import('@/views/PlatformStructure.vue'),
     },
   ],
 })
@@ -108,6 +84,28 @@ router.beforeEach(async (to, _from, next) => {
     // 未完成引导 → 强制进入引导（user 取不到时不阻断，安全放行）
     if (auth.user && !onboarded) {
       return next('/onboarding')
+    }
+
+    // 首屏落点统一在此决策（唯一入口），避免落点逻辑散落多处反复打架：
+    //  - 个人空间 → 留在 '/'（个人仓库）。
+    //  - 团队空间 → 仅当所选团队“经校验确实存在”时才进团队工作台；
+    //    否则（新用户/团队失效/残留状态）回退个人空间并留在 '/'，绝不展示不存在的团队页。
+    if (to.path === '/') {
+      const workspace = useWorkspaceStore()
+      workspace.init()
+      if (workspace.spaceType === 'team') {
+        const teamStore = useTeamStore()
+        if (!teamStore.teams.length) {
+          await teamStore.fetchTeams()
+        }
+        const valid =
+          !!workspace.activeTeamId &&
+          teamStore.teams.some((t) => t.id === workspace.activeTeamId)
+        if (valid) {
+          return next('/team/skills')
+        }
+        workspace.switchToPersonal()
+      }
     }
   }
 

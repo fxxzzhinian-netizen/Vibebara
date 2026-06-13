@@ -4,17 +4,20 @@ import { useRouter } from 'vue-router'
 import { useSkillStore } from '@/stores/skillStore'
 import { useTeamStore } from '@/stores/teamStore'
 import { copySkillToTeam, type NativeSkillItem } from '@/api/skillStore'
-import { browseDirectory } from '@/api/skillForge'
-import { launchTool } from '@/api/launcher'
+import { promptOpenAfterDeploy } from '@/utils/openAfterDeploy'
 import AppTopNav from '@/components/AppTopNav.vue'
+import FolderPicker from '@/components/FolderPicker.vue'
 import AddSkillModal from '@/components/AddSkillModal.vue'
 import PlatformStructurePanel from '@/components/PlatformStructurePanel.vue'
 import ResourceFilesPanel from '@/components/ResourceFilesPanel.vue'
 import HelpTip from '@/components/HelpTip.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import BaseSelect from '@/components/BaseSelect.vue'
+import MarkdownEditor from '@/components/MarkdownEditor.vue'
 import { toast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirmDialog'
+import { useSlideIndicator } from '@/composables/useSlideIndicator'
+import { useDirectionalTransition } from '@/composables/useDirectionalTransition'
 
 const router = useRouter()
 const store = useSkillStore()
@@ -27,41 +30,8 @@ const deployTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | '
 const deployToGlobal = ref(false)
 const deploying = ref(false)
 
-const showDirPicker = ref(false)
-const dirPickerDirs = ref<{ name: string; abs_path: string; is_drive?: boolean }[]>([])
-const dirPickerCurrent = ref('')
-const dirPickerParent = ref<string | null>(null)
-const dirPickerLoading = ref(false)
+// 部署目标目录：统一用全局路径选择组件 FolderPicker（与团队项目部署弹窗一致）。
 const projectDeployPath = ref('')
-
-async function openDirPicker() {
-  showDirPicker.value = true
-  await browseTo(projectDeployPath.value || '')
-}
-
-async function browseTo(path: string) {
-  dirPickerLoading.value = true
-  try {
-    const res = await browseDirectory(path)
-    if (res.success) {
-      dirPickerDirs.value = res.dirs
-      dirPickerCurrent.value = res.current
-      dirPickerParent.value = res.parent ?? null
-    }
-  } catch { /* ignore */ } finally {
-    dirPickerLoading.value = false
-  }
-}
-
-function copyPath(text: string) {
-  navigator.clipboard.writeText(text)
-}
-
-function confirmDirPick() {
-  if (!dirPickerCurrent.value) return
-  projectDeployPath.value = dirPickerCurrent.value
-  showDirPicker.value = false
-}
 
 const previewTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'>('cursor')
 
@@ -86,6 +56,26 @@ const previewLoading = ref(false)
 const showDeployModal = ref(false)
 
 const activeTab = ref<'basic' | 'instructions' | 'resources' | 'metadata' | 'platform'>('basic')
+
+// 左侧标签栏黑色滑块：随选中标签纵向平滑滑动到对应位置。
+const tabSideRef = ref<HTMLElement | null>(null)
+const { style: tabSliderStyle, ready: tabSliderReady } = useSlideIndicator({
+  container: tabSideRef,
+  activeSelector: '.tab-side-item.active',
+  axis: 'y',
+  trigger: () => activeTab.value,
+})
+
+// 正文随左侧标签纵向滑入滑出：下移标签 → 新内容自下方滑入、旧内容向上滑出，反向则相反。
+const {
+  name: paneTransition,
+  animating: paneAnimating,
+  end: paneTransitionEnd,
+} = useDirectionalTransition({
+  value: () => activeTab.value,
+  order: ['basic', 'instructions', 'resources', 'metadata', 'platform'],
+  names: { forward: 'pane-down', backward: 'pane-up' },
+})
 
 // LLM 补齐对话框
 const showCompleteModal = ref(false)
@@ -210,39 +200,20 @@ async function doDeploy() {
       return
     }
     // 附加动作：勾选「全局」→ 再落一份到 ~/.{tool}/skills（destPath 省略 → scope=platform）。
-    let globalNote = ''
     if (deployToGlobal.value) {
       const gres = await store.deploy(store.currentId, deployTarget.value, undefined)
       if (!gres.success) {
         toast.error(`已部署到项目，但全局部署失败：${gres.error || ''}`)
         return
       }
-      globalNote = ' + 全局'
     }
-    const toolLabel = TOOL_LABELS[deployTarget.value]
-    // 启动器支持 cursor/codex/claude 自动打开；windsurf/kiro/trae/qoder 部署成功但不自动打开。
-    if (deployTarget.value === 'windsurf') {
-      toast.success(`已部署到项目 .windsurf/skills${globalNote}（请在 Windsurf 中手动打开项目）`)
-    } else if (deployTarget.value === 'kiro') {
-      toast.success(`已部署到项目 .kiro/skills${globalNote}（请在 Kiro 中手动打开项目）`)
-    } else if (deployTarget.value === 'trae') {
-      toast.success(`已部署到项目 .trae/skills${globalNote}（请在 Trae 中手动打开项目）`)
-    } else if (deployTarget.value === 'qoder') {
-      toast.success(`已部署到项目 .qoder/skills${globalNote}（请在 Qoder 中手动打开项目）`)
-    } else {
-      const tool =
-        deployTarget.value === 'cursor'
-          ? 'cursor'
-          : deployTarget.value === 'claude'
-            ? 'claude-code'
-            : 'codex-app'
-      try {
-        await launchTool({ tool, project_path: projectDeployPath.value })
-        toast.success(`已部署${globalNote}并打开 ${toolLabel}`)
-      } catch {
-        toast.warning('已部署，但打开平台失败，请手动打开')
-      }
-    }
+    toast.success(deployToGlobal.value ? '已部署到项目并同步到全局' : '已部署到项目')
+    // 部署成功后统一询问「是否打开 {工具}？」（个人 / 团队一致）：
+    // 确认则在部署目录打开工具（CLI 开新终端并锁定到部署目录，IDE 以该目录为工作区打开）。
+    const openedTool = deployTarget.value
+    const openedPath = projectDeployPath.value
+    showDeployModal.value = false
+    await promptOpenAfterDeploy(openedTool, openedPath)
   } catch (e: any) {
     toast.error(e.message || '部署失败')
   } finally {
@@ -427,7 +398,8 @@ onMounted(() => {
 
         <!-- Body: 左侧圆角卡片导航 + 右侧无底色正文 -->
         <div class="editor-body">
-          <aside class="tab-side">
+          <aside ref="tabSideRef" class="tab-side">
+            <span class="tab-slider" :class="{ ready: tabSliderReady }" :style="tabSliderStyle"></span>
             <button class="tab-side-item" :class="{ active: activeTab === 'basic' }" @click="activeTab = 'basic'">基本信息</button>
             <button class="tab-side-item" :class="{ active: activeTab === 'instructions' }" @click="activeTab = 'instructions'">SKILL 指令</button>
             <button class="tab-side-item" :class="{ active: activeTab === 'resources' }" @click="activeTab = 'resources'">资源</button>
@@ -437,8 +409,17 @@ onMounted(() => {
 
           <!-- Tab content（正文无底色，直接落在画布上） -->
           <div class="tab-content">
+          <transition-group
+            tag="div"
+            class="tab-pane-group"
+            :class="{ animating: paneAnimating }"
+            :name="paneTransition"
+            @after-enter="paneTransitionEnd"
+            @after-leave="paneTransitionEnd"
+            @enter-cancelled="paneTransitionEnd"
+          >
           <!-- Basic (intersection: common across all platforms) -->
-          <section v-if="activeTab === 'basic'" class="form-section full-width">
+          <section v-if="activeTab === 'basic'" key="basic" class="form-section full-width">
             <div class="content-card">
               <h3 class="card-title">通用信息</h3>
               <div class="form-row">
@@ -478,21 +459,17 @@ onMounted(() => {
           </section>
 
           <!-- SKILL Instructions（含策略与依赖） -->
-          <section v-if="activeTab === 'instructions'" class="form-section full-width instructions-stack">
+          <section v-if="activeTab === 'instructions'" key="instructions" class="form-section full-width instructions-stack">
             <div class="content-card">
               <h3 class="card-title">
                 技能正文
                 <HelpTip text="VibeSkill.md，纯 Markdown 格式。编写 Skill 的核心指令与工作流。" :size="17" />
               </h3>
               <div class="form-row full">
-                <textarea
-                  :value="store.vibehContent"
-                  @input="store.updateVibeh(($event.target as HTMLTextAreaElement).value)"
-                  class="form-input textarea instructions-editor"
-                  rows="20"
-                  spellcheck="false"
-                  placeholder="# Skill Name&#10;&#10;## Overview&#10;...&#10;&#10;## Workflow&#10;1. Step one&#10;2. Step two"
-                ></textarea>
+                <MarkdownEditor
+                  :model-value="store.vibehContent"
+                  @update:model-value="store.updateVibeh($event)"
+                />
               </div>
             </div>
 
@@ -527,7 +504,7 @@ onMounted(() => {
           </section>
 
           <!-- Resources -->
-          <section v-if="activeTab === 'resources'" class="form-section full-width">
+          <section v-if="activeTab === 'resources'" key="resources" class="form-section full-width">
             <h3 class="card-title">
               资源声明
               <HelpTip text="以文件夹形式展开 scripts / references / assets；点击文件可打开编辑器查看并修改云端真实内容。" :size="17" />
@@ -539,7 +516,7 @@ onMounted(() => {
           </section>
 
           <!-- Metadata (intersection: common fields only) -->
-          <section v-if="activeTab === 'metadata'" class="form-section">
+          <section v-if="activeTab === 'metadata'" key="metadata" class="form-section">
             <div class="content-card">
               <h3 class="card-title">
                 通用元数据
@@ -579,9 +556,10 @@ onMounted(() => {
           </section>
 
           <!-- Platform Structure（内嵌，不再单独弹出页面） -->
-          <section v-if="activeTab === 'platform'" class="form-section full-width">
+          <section v-if="activeTab === 'platform'" key="platform" class="form-section full-width">
             <PlatformStructurePanel />
           </section>
+          </transition-group>
           </div>
         </div>
       </template>
@@ -645,11 +623,8 @@ onMounted(() => {
       </div>
 
       <div class="form-row">
-        <label>项目目录</label>
-        <div class="inline-row">
-          <button class="btn" @click="openDirPicker">{{ projectDeployPath ? '更改目录' : '选择目录...' }}</button>
-          <span class="path-text" :title="projectDeployPath">{{ projectDeployPath || '未选择目录' }}</span>
-        </div>
+        <label>本机项目路径</label>
+        <FolderPicker v-model="projectDeployPath" placeholder="点击选择项目文件夹" />
       </div>
 
       <div class="form-row">
@@ -707,43 +682,6 @@ onMounted(() => {
       </template>
     </BaseModal>
 
-    <!-- ===== Directory Picker Modal ===== -->
-    <BaseModal v-model="showDirPicker" title="选择项目目录" :width="720">
-      <p class="hint">Skill 将部署到所选目录下的 <code>{{ store.currentId }}/</code> 子目录中。</p>
-
-      <div v-if="dirPickerCurrent" class="dir-current-path">
-        <span>{{ dirPickerCurrent }}</span>
-        <button class="btn-copy" @click="copyPath(dirPickerCurrent)" title="复制路径">📋</button>
-      </div>
-
-      <div class="dir-list-container">
-        <div v-if="dirPickerLoading" class="preview-loading"><span class="spinner"></span></div>
-        <div v-else class="dir-list">
-          <div
-            v-if="dirPickerParent !== null"
-            class="dir-item parent"
-            @click="browseTo(dirPickerParent!)"
-          >
-            &#8592; 上级目录
-          </div>
-          <div v-if="dirPickerDirs.length === 0 && !dirPickerParent" class="dir-empty">无子目录</div>
-          <div
-            v-for="d in dirPickerDirs"
-            :key="d.abs_path"
-            class="dir-item"
-            @click="browseTo(d.abs_path)"
-          >
-            {{ d.is_drive ? d.name : d.name }}
-          </div>
-        </div>
-      </div>
-
-      <template #footer>
-        <button class="btn primary" :disabled="!dirPickerCurrent" @click="confirmDirPick">
-          选择此目录
-        </button>
-      </template>
-    </BaseModal>
   </div>
 </template>
 
@@ -1249,76 +1187,6 @@ onMounted(() => {
   border-left: none;
 }
 
-/* Directory picker modal */
-.dir-current-path {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.45rem 0.75rem;
-  background: #f6f7f8;
-  border: 1px solid #ebedf0;
-  border-radius: 8px;
-  font-size: 0.82rem;
-  font-family: 'JetBrains Mono', monospace;
-  color: #151717;
-  margin-bottom: 0.75rem;
-  word-break: break-all;
-}
-
-.dir-current-path span { flex: 1; min-width: 0; }
-
-.btn-copy {
-  flex-shrink: 0;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 0.2rem 0.4rem;
-  cursor: pointer;
-  font-size: 0.72rem;
-  line-height: 1;
-  transition: border-color 0.15s ease;
-}
-.btn-copy:hover { border-color: #d1d5db; }
-
-.dir-list-container {
-  max-height: 320px;
-  overflow-y: auto;
-  border: 1px solid #ebedf0;
-  border-radius: 10px;
-  background: #ffffff;
-}
-
-.dir-list {
-  padding: 0.25rem 0;
-}
-
-.dir-item {
-  padding: 0.5rem 0.85rem;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: background 0.12s ease;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.dir-item:hover {
-  background: #f6f7f8;
-}
-
-.dir-item.parent {
-  color: #4f46e5;
-  font-weight: 500;
-  border-bottom: 1px solid #f3f4f6;
-}
-
-.dir-empty {
-  padding: 1.5rem;
-  text-align: center;
-  color: #9ca3af;
-  font-size: 0.82rem;
-}
-
 .deploy-msg {
   padding: 0.5rem 1.5rem;
   font-size: 0.82rem;
@@ -1340,6 +1208,7 @@ onMounted(() => {
 
 /* 左侧导航：一张圆角卡片，内部为可点击的标签项 */
 .tab-side {
+  position: relative;
   width: 176px;
   min-width: 176px;
   align-self: stretch;
@@ -1352,7 +1221,29 @@ onMounted(() => {
   padding: 0.5rem;
 }
 
+/* 选中态黑色滑块：随选中标签纵向平滑滑动到对应位置（高度随项目变化）。 */
+.tab-slider {
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  top: 0;
+  height: 0;
+  border-radius: 9px;
+  background: #151717;
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+  will-change: transform, height;
+}
+
+.tab-slider.ready {
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    height 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
+
 .tab-side-item {
+  position: relative;
+  z-index: 1;
   text-align: left;
   padding: 0.6rem 0.8rem;
   background: transparent;
@@ -1368,8 +1259,8 @@ onMounted(() => {
 
 .tab-side-item:hover:not(.active) { background: #f6f7f8; color: #151717; }
 
+/* 选中项：文字转白加粗；黑色底由 .tab-slider 提供（可滑动） */
 .tab-side-item.active {
-  background: #151717;
   color: #ffffff;
   font-weight: 600;
 }
@@ -1380,6 +1271,45 @@ onMounted(() => {
   min-width: 0;
   overflow-y: auto;
   padding: 0.25rem 0.25rem 1.5rem;
+}
+
+/* 正文滑动容器：切换标签时新旧面板同处一格叠放，沿纵向滑入滑出。 */
+.tab-pane-group {
+  display: grid;
+}
+.tab-pane-group > * {
+  grid-area: 1 / 1;
+  align-self: start;
+}
+/* 仅在切换动画期间裁剪，避免纵向位移溢出滚动区。 */
+.tab-pane-group.animating {
+  overflow: hidden;
+}
+
+.pane-down-enter-active,
+.pane-down-leave-active,
+.pane-up-enter-active,
+.pane-up-leave-active {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.24s ease;
+  will-change: transform, opacity;
+}
+/* 选择更靠下的标签：新内容自下方滑入，旧内容向上滑出 */
+.pane-down-enter-from {
+  opacity: 0;
+  transform: translateY(26px);
+}
+.pane-down-leave-to {
+  opacity: 0;
+  transform: translateY(-26px);
+}
+/* 选择更靠上的标签：新内容自上方滑入，旧内容向下滑出 */
+.pane-up-enter-from {
+  opacity: 0;
+  transform: translateY(-26px);
+}
+.pane-up-leave-to {
+  opacity: 0;
+  transform: translateY(26px);
 }
 
 .form-section {
@@ -1588,16 +1518,6 @@ onMounted(() => {
 .inline-row .form-input { flex: 1; min-width: 0; }
 .inline-row .bs-trigger { flex: 1; min-width: 0; }
 .inline-row .btn { white-space: nowrap; flex-shrink: 0; }
-
-.path-text {
-  flex: 1;
-  min-width: 0;
-  font-size: 0.8rem;
-  color: #6b7280;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .check-inline {
   display: inline-flex !important;

@@ -1,7 +1,7 @@
 import apiClient from './client'
 import { isOrchestrationEnabled } from '@/runtime/config'
 import * as localAgent from './localAgent'
-import { migrateSkillOrchestrated, scanPlatformGlobalSkillsOrchestrated } from './orchestration'
+import { scanPlatformGlobalSkillsOrchestrated } from './orchestration'
 
 // --- 目录浏览 ---
 
@@ -152,26 +152,6 @@ export async function rescanSkills(scanDir?: string): Promise<ScanStatusResponse
   const { data } = await apiClient.post<ScanStatusResponse>(
     '/skill-forge/rescan',
     { scan_dir: scanDir ?? null },
-  )
-  return data
-}
-
-export async function migrateSkill(
-  sourcePath: string,
-  targetPlatform: string,
-  skillId?: string,
-): Promise<MigrateResponse> {
-  // 灰度分流（决定②）：编排开启 → 云端 build-artifact（目标平台产物）→ 本地代理
-  // write-skill 落盘（M0 §3.1 变体，复用 store 级 build-artifact + write-skill，
-  // 不新增云端端点）；否则走旧的一次性云端 /skill-forge/migrate（node 读本机文件夹适配）。
-  if (isOrchestrationEnabled()) {
-    // 编排路径以 skill id 取云端产物；未显式传入时回退用 source 文件夹名（与 scan id 同口径）。
-    const id = skillId || sourcePath.split(/[\\/]/).filter(Boolean).pop() || ''
-    return migrateSkillOrchestrated(id, targetPlatform)
-  }
-  const { data } = await apiClient.post<MigrateResponse>(
-    '/skill-forge/migrate',
-    { source_path: sourcePath, target_platform: targetPlatform },
   )
   return data
 }

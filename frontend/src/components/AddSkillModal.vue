@@ -14,6 +14,7 @@ import {
 import { rescanSkills, scanIdeGlobalSkills, type UnifiedSkillPackage, type IdeSkillGroup } from '@/api/skillForge'
 import FolderPicker from '@/components/FolderPicker.vue'
 import BaseModal from '@/components/BaseModal.vue'
+import { toast } from '@/composables/useToast'
 
 // 共享「新建/新增 Skill」模态：个人仓库（SkillForge）与团队仓库（Teams）共用。
 // scope='personal'：手动新建 / 从链接导入 / 从本地文件夹 / 从 IDE 工具导入（预留）。
@@ -67,9 +68,9 @@ const TOOL_LABELS: Record<IdeSkillGroup['tool'], string> = {
 const manualName = ref('')
 const manualDesc = ref('')
 
-// —— 从个人仓库导入（仅 team）——
+// —— 从个人仓库导入（仅 team，支持多选）——
 const personalSkills = ref<NativeSkillItem[]>([])
-const selectedPersonalId = ref('')
+const selectedPersonalIds = ref<string[]>([])
 
 // —— 从本地文件夹（两步：解析 → 勾选导入）——
 const localPath = ref('')
@@ -101,8 +102,9 @@ function existsInPersonal(p: UnifiedSkillPackage): boolean {
   return personalIdSet.value.has(p.id)
 }
 
-const addSkillError = ref('')
 const addSkillLoading = ref(false)
+// IDE 检索失败标记：用于区分「未发现可导入」与「检索出错」两种空结果。
+const ideScanError = ref(false)
 
 function close() {
   emit('update:modelValue', false)
@@ -135,13 +137,13 @@ function resetIdeScan() {
 function resetAll() {
   manualName.value = ''
   manualDesc.value = ''
-  selectedPersonalId.value = ''
+  selectedPersonalIds.value = []
   localPath.value = ''
   linkUrl.value = ''
   resetLocalScan()
   resetUrlScan()
   resetIdeScan()
-  addSkillError.value = ''
+  ideScanError.value = false
   addSkillLoading.value = false
 }
 
@@ -159,7 +161,6 @@ watch(
 function switchMethod(m: AddMethod, disabled?: boolean) {
   if (disabled) return
   addMethod.value = m
-  addSkillError.value = ''
   // 切到「从 IDE 工具导入」自动检索各 IDE 全局目录（对应「首先检索」）。
   if (m === 'ide' && !ideScanned.value && !ideScanLoading.value) {
     scanIde()
@@ -191,14 +192,13 @@ function finishDone(message: string, skills?: NativeSkillItem[]) {
 
 // —— 手动新建 ——
 async function confirmManual() {
-  addSkillError.value = ''
   const name = manualName.value.trim()
   if (!name) {
-    addSkillError.value = '名称不能为空'
+    toast.warning('名称不能为空')
     return
   }
   if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
-    addSkillError.value = '仅支持小写字母、数字、连字符'
+    toast.warning('仅支持小写字母、数字、连字符')
     return
   }
   addSkillLoading.value = true
@@ -210,29 +210,44 @@ async function confirmManual() {
     if (res.success) {
       finishDone('已创建 Skill', res.skill ? [res.skill] : [])
     } else {
-      addSkillError.value = res.error || '创建失败'
+      toast.error(res.error || '创建失败')
     }
   } catch (e: any) {
-    addSkillError.value = e?.response?.data?.detail || e.message || '创建失败'
+    toast.error(e?.response?.data?.detail || e.message || '创建失败')
   } finally {
     addSkillLoading.value = false
   }
 }
 
-// —— 从个人仓库导入（team）——
+// —— 从个人仓库导入（team，多选：逐个复制，部分失败保持模态打开并提示）——
 async function confirmAddFromPersonal() {
-  if (!props.teamId || !selectedPersonalId.value) return
-  addSkillError.value = ''
+  if (!props.teamId || !selectedPersonalIds.value.length) return
   addSkillLoading.value = true
+  let okCount = 0
+  const failed: string[] = []
+  const imported: NativeSkillItem[] = []
   try {
-    const res = await copySkillToTeam(props.teamId, selectedPersonalId.value)
-    if (res.success) {
-      finishDone('已从个人仓库导入到团队仓库', res.skill ? [res.skill] : [])
+    for (const id of selectedPersonalIds.value) {
+      const s = personalSkills.value.find((p) => p.id === id)
+      const res = await copySkillToTeam(props.teamId as string, id)
+      if (res.success) {
+        okCount += 1
+        if (res.skill) imported.push(res.skill)
+      } else {
+        failed.push(`${s?.display_name || s?.id || id}：${res.error || '失败'}`)
+      }
+    }
+    if (failed.length) {
+      emit('done', { message: '', skills: imported })
+      toast.warning(
+        `成功 ${okCount} 个，失败 ${failed.length} 个 — ${failed.join('；')}`,
+        5000,
+      )
     } else {
-      addSkillError.value = res.error || '导入失败'
+      finishDone(`已从个人仓库导入 ${okCount} 个 Skill 到团队仓库`, imported)
     }
   } catch (e: any) {
-    addSkillError.value = e?.response?.data?.detail || e.message || '导入失败'
+    toast.error(e?.response?.data?.detail || e.message || '导入失败')
   } finally {
     addSkillLoading.value = false
   }
@@ -243,7 +258,6 @@ async function scanLocalFolder() {
   const path = localPath.value.trim()
   if (!path) return
   if (props.scope === 'team' && !props.teamId) return
-  addSkillError.value = ''
   scanLoading.value = true
   scannedPackages.value = []
   selectedScanPaths.value = []
@@ -267,10 +281,10 @@ async function scanLocalFolder() {
       scanned.value = true
       selectedScanPaths.value = pkgs.map((p) => p.source_path)
     } else {
-      addSkillError.value = err || '解析失败'
+      toast.error(err || '解析失败')
     }
   } catch (e: any) {
-    addSkillError.value = e?.response?.data?.detail || e.message || '解析失败'
+    toast.error(e?.response?.data?.detail || e.message || '解析失败')
   } finally {
     scanLoading.value = false
   }
@@ -286,7 +300,6 @@ function toggleScanSelect(path: string) {
 async function confirmAddFromLocal() {
   if (!selectedScanPaths.value.length) return
   if (props.scope === 'team' && !props.teamId) return
-  addSkillError.value = ''
   addSkillLoading.value = true
   let okCount = 0
   const failed: string[] = []
@@ -306,15 +319,18 @@ async function confirmAddFromLocal() {
       }
     }
     if (failed.length) {
-      // 部分失败：保持模态打开并内联报错；已成功的项交给父组件乐观插入。
+      // 部分失败：保持模态打开并以警告弹窗反馈；已成功的项交给父组件乐观插入。
       emit('done', { message: '', skills: imported })
-      addSkillError.value = `成功 ${okCount} 个，失败 ${failed.length} 个 — ${failed.join('；')}`
+      toast.warning(
+        `成功 ${okCount} 个，失败 ${failed.length} 个 — ${failed.join('；')}`,
+        5000,
+      )
     } else {
       const suffix = props.scope === 'team' ? '到团队仓库' : ''
       finishDone(`已从本地导入 ${okCount} 个 Skill${suffix}`, imported)
     }
   } catch (e: any) {
-    addSkillError.value = e?.response?.data?.detail || e.message || '导入失败'
+    toast.error(e?.response?.data?.detail || e.message || '导入失败')
   } finally {
     addSkillLoading.value = false
   }
@@ -324,7 +340,6 @@ async function confirmAddFromLocal() {
 async function scanLinkUrl() {
   const url = linkUrl.value.trim()
   if (!url) return
-  addSkillError.value = ''
   urlScanLoading.value = true
   urlScannedPackages.value = []
   selectedUrlPaths.value = []
@@ -337,14 +352,15 @@ async function scanLinkUrl() {
       urlScanned.value = true
       selectedUrlPaths.value = res.packages.map((p) => p.source_path)
       if (!res.packages.length) {
-        addSkillError.value = '该链接下未发现可导入的 Skill（需包含 SKILL.md）'
+        toast.warning('该链接下未发现可导入的 Skill（需包含 SKILL.md）')
       }
     } else {
-      addSkillError.value = res.error || '解析链接失败'
+      toast.error(res.error || '解析链接失败')
     }
   } catch (e: any) {
-    addSkillError.value =
-      e?.response?.data?.detail || e?.response?.data?.error || e.message || '解析链接失败'
+    toast.error(
+      e?.response?.data?.detail || e?.response?.data?.error || e.message || '解析链接失败',
+    )
   } finally {
     urlScanLoading.value = false
   }
@@ -360,7 +376,6 @@ function toggleUrlSelect(path: string) {
 async function confirmAddFromUrl() {
   if (!urlToken.value || !selectedUrlPaths.value.length) return
   if (props.scope === 'team' && !props.teamId) return
-  addSkillError.value = ''
   addSkillLoading.value = true
   try {
     const res = await importUrlSkills(
@@ -378,14 +393,15 @@ async function confirmAddFromUrl() {
     if (failed.length) {
       emit('done', { message: '', skills: imported })
       const detail = failed.map((r) => `${r.source_path}：${r.error || '失败'}`).join('；')
-      addSkillError.value = `成功 ${res.imported} 个，失败 ${failed.length} 个 — ${detail}`
+      toast.warning(`成功 ${res.imported} 个，失败 ${failed.length} 个 — ${detail}`, 5000)
     } else {
       const suffix = props.scope === 'team' ? '到团队仓库' : ''
       finishDone(`已从链接导入 ${res.imported} 个 Skill${suffix}`, imported)
     }
   } catch (e: any) {
-    addSkillError.value =
-      e?.response?.data?.detail || e?.response?.data?.error || e.message || '导入失败'
+    toast.error(
+      e?.response?.data?.detail || e?.response?.data?.error || e.message || '导入失败',
+    )
   } finally {
     addSkillLoading.value = false
   }
@@ -393,7 +409,7 @@ async function confirmAddFromUrl() {
 
 // —— 从 IDE 工具导入：第一步检索各 IDE 全局目录 ——
 async function scanIde() {
-  addSkillError.value = ''
+  ideScanError.value = false
   ideScanLoading.value = true
   ideScanned.value = false
   ideGroups.value = []
@@ -415,11 +431,13 @@ async function scanIde() {
         g.packages.filter((p) => !existsInPersonal(p)).map((p) => p.source_path),
       )
     } else {
-      addSkillError.value = res.error || '检索失败'
+      ideScanError.value = true
+      toast.error(res.error || '检索失败')
     }
   } catch (e: any) {
     ideScanned.value = true
-    addSkillError.value = e?.response?.data?.detail || e.message || '检索失败'
+    ideScanError.value = true
+    toast.error(e?.response?.data?.detail || e.message || '检索失败')
   } finally {
     ideScanLoading.value = false
   }
@@ -434,7 +452,6 @@ function toggleIdeSelect(path: string) {
 // —— 从 IDE 工具导入：第二步顺序导入勾选项（origin=所属 IDE）——
 async function confirmAddFromIde() {
   if (!selectedIdePaths.value.length) return
-  addSkillError.value = ''
   addSkillLoading.value = true
   let okCount = 0
   const failed: string[] = []
@@ -455,12 +472,12 @@ async function confirmAddFromIde() {
     }
     if (failed.length) {
       emit('done', { message: '', skills: imported })
-      addSkillError.value = `成功 ${okCount} 个，失败 ${failed.length} 个 — ${failed.join('；')}`
+      toast.warning(`成功 ${okCount} 个，失败 ${failed.length} 个 — ${failed.join('；')}`, 5000)
     } else {
       finishDone(`已从 IDE 导入 ${okCount} 个 Skill`, imported)
     }
   } catch (e: any) {
-    addSkillError.value = e?.response?.data?.detail || e.message || '导入失败'
+    toast.error(e?.response?.data?.detail || e.message || '导入失败')
   } finally {
     addSkillLoading.value = false
   }
@@ -508,21 +525,20 @@ async function confirmAddFromIde() {
           <p class="hint">ID 仅支持小写字母、数字、连字符。</p>
         </div>
 
-        <!-- 从个人仓库导入（team） -->
+        <!-- 从个人仓库导入（team，多选） -->
         <div v-else-if="addMethod === 'personal'" class="method-body">
-          <p class="hint">选择你个人仓库中的一个 Skill，复制一份放入当前团队仓库。</p>
+          <p class="hint">选择你个人仓库中的 Skill（可多选），各复制一份放入当前团队仓库。</p>
           <div v-if="personalSkills.length" class="personal-list">
             <label
               v-for="s in personalSkills"
               :key="s.id"
               class="personal-item"
-              :class="{ selected: selectedPersonalId === s.id }"
+              :class="{ selected: selectedPersonalIds.includes(s.id) }"
             >
               <input
-                type="radio"
-                name="personal-skill"
+                type="checkbox"
                 :value="s.id"
-                v-model="selectedPersonalId"
+                v-model="selectedPersonalIds"
               />
               <span class="pi-main">
                 <span class="pi-name">{{ s.display_name || s.id }}</span>
@@ -701,13 +717,11 @@ async function confirmAddFromIde() {
                 </div>
               </div>
             </div>
-            <div v-else-if="!addSkillError" class="empty-hint" style="margin-top: 12px">
+            <div v-else-if="!ideScanError" class="empty-hint" style="margin-top: 12px">
               未在本机各 IDE 全局目录发现可导入的 Skill（需包含 SKILL.md）
             </div>
           </div>
         </div>
-
-        <div v-if="addSkillError" class="error-msg">{{ addSkillError }}</div>
 
         <template #footer>
           <button
@@ -722,10 +736,16 @@ async function confirmAddFromIde() {
           <button
             v-else-if="addMethod === 'personal'"
             class="btn-sm btn-primary"
-            :disabled="!selectedPersonalId || addSkillLoading"
+            :disabled="!selectedPersonalIds.length || addSkillLoading"
             @click="confirmAddFromPersonal"
           >
-            {{ addSkillLoading ? '导入中...' : '导入到团队' }}
+            {{
+              addSkillLoading
+                ? '导入中...'
+                : selectedPersonalIds.length > 1
+                  ? `导入到团队 (${selectedPersonalIds.length})`
+                  : '导入到团队'
+            }}
           </button>
 
           <template v-else-if="addMethod === 'local'">
@@ -1123,17 +1143,6 @@ async function confirmAddFromIde() {
   text-align: center;
   color: #9ca3af;
   font-size: 13px;
-}
-
-.error-msg {
-  margin-top: 12px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #dc2626;
-  font-size: 13px;
-  flex-shrink: 0;
 }
 
 .btn-sm {

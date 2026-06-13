@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 import subprocess
 import shutil
+import shlex
 import platform
 
 from app.api.auth import get_current_user_id
@@ -25,6 +26,9 @@ SUPPORTED_TOOLS = (
     "windsurf",
     "claude-code",
     "claude-app",
+    "kiro",
+    "trae",
+    "qoder",
 )
 IS_WINDOWS = platform.system() == "Windows"
 
@@ -35,10 +39,17 @@ TOOL_LABELS = {
     "windsurf": "Windsurf",
     "claude-code": "Claude Code",
     "claude-app": "Claude",
+    "kiro": "Kiro",
+    "trae": "Trae",
+    "qoder": "Qoder",
 }
 
 # 交互式 CLI 工具（新终端窗口启动）；其余按 GUI 应用后台启动。
 TERMINAL_TOOLS = ("codex-cli", "claude-code")
+
+# 「以目标文件夹为工作区打开」的 IDE 工具：仅这些工具才把 project_path 作为命令行参数传入。
+# Codex / Claude 桌面端是对话类应用，不接受工作区路径参数，传入反而会破坏启动。
+WORKSPACE_TOOLS = ("cursor", "windsurf", "kiro", "trae", "qoder")
 
 
 class LaunchRequest(BaseModel):
@@ -93,14 +104,18 @@ def _find_appx_app(package_pattern: str) -> Optional[str]:
     return None
 
 
-def _resolve_command(tool: str) -> list[str]:
-    """Resolve the CLI command for the given tool on the current platform."""
+def _resolve_command(tool: str) -> tuple[list[str], bool]:
+    """解析工具启动命令，返回 (命令数组, via_appx)。
+
+    via_appx=True 表示经 explorer + shell:AppsFolder 协议激活（MSIX/AppX 应用），
+    此时命令不可附带任何路径参数，否则 explorer 会去打开该文件夹而非激活应用。
+    """
 
     if tool == "cursor":
         candidates = ("cursor.cmd", "cursor") if IS_WINDOWS else ("cursor",)
         exe = _find_executable(*candidates)
         if exe:
-            return [exe]
+            return [exe], False
         raise FileNotFoundError(
             "cursor 命令未找到，请确认 Cursor 已安装且在 PATH 中"
         )
@@ -108,7 +123,7 @@ def _resolve_command(tool: str) -> list[str]:
     if tool == "codex-cli":
         exe = _find_executable("codex.cmd", "codex") if IS_WINDOWS else _find_executable("codex")
         if exe:
-            return [exe]
+            return [exe], False
         raise FileNotFoundError(
             "codex 命令未找到，请确认 Codex CLI 已安装 (npm i -g @openai/codex)"
         )
@@ -117,14 +132,14 @@ def _resolve_command(tool: str) -> list[str]:
         if IS_WINDOWS:
             exe = _find_executable("codex-app.cmd", "codex-app", "Codex.exe")
             if exe:
-                return [exe]
+                return [exe], False
             appx_uri = _find_appx_app("Codex")
             if appx_uri:
-                return ["explorer.exe", appx_uri]
+                return ["explorer.exe", appx_uri], True
         else:
             exe = _find_executable("codex-app", "Codex")
             if exe:
-                return [exe]
+                return [exe], False
         raise FileNotFoundError(
             "Codex App 未找到，请确认 Codex 桌面应用已安装"
         )
@@ -133,14 +148,14 @@ def _resolve_command(tool: str) -> list[str]:
         if IS_WINDOWS:
             exe = _find_executable("windsurf.cmd", "windsurf", "Windsurf.exe")
             if exe:
-                return [exe]
+                return [exe], False
             appx_uri = _find_appx_app("Windsurf")
             if appx_uri:
-                return ["explorer.exe", appx_uri]
+                return ["explorer.exe", appx_uri], True
         else:
             exe = _find_executable("windsurf", "Windsurf")
             if exe:
-                return [exe]
+                return [exe], False
         raise FileNotFoundError(
             "windsurf 命令未找到，请确认 Windsurf 已安装且在 PATH 中"
         )
@@ -148,7 +163,7 @@ def _resolve_command(tool: str) -> list[str]:
     if tool == "claude-code":
         exe = _find_executable("claude.cmd", "claude") if IS_WINDOWS else _find_executable("claude")
         if exe:
-            return [exe]
+            return [exe], False
         raise FileNotFoundError(
             "claude 命令未找到，请确认 Claude Code 已安装 (npm i -g @anthropic-ai/claude-code)"
         )
@@ -157,16 +172,65 @@ def _resolve_command(tool: str) -> list[str]:
         if IS_WINDOWS:
             exe = _find_executable("claude-app.cmd", "claude-app", "Claude.exe")
             if exe:
-                return [exe]
+                return [exe], False
             appx_uri = _find_appx_app("Claude")
             if appx_uri:
-                return ["explorer.exe", appx_uri]
+                return ["explorer.exe", appx_uri], True
         else:
             exe = _find_executable("claude-app", "Claude")
             if exe:
-                return [exe]
+                return [exe], False
         raise FileNotFoundError(
             "Claude App 未找到，请确认 Claude 桌面应用已安装"
+        )
+
+    if tool == "kiro":
+        if IS_WINDOWS:
+            exe = _find_executable("kiro.cmd", "kiro", "Kiro.exe")
+            if exe:
+                return [exe], False
+            appx_uri = _find_appx_app("Kiro")
+            if appx_uri:
+                return ["explorer.exe", appx_uri], True
+        else:
+            exe = _find_executable("kiro", "Kiro")
+            if exe:
+                return [exe], False
+        raise FileNotFoundError(
+            "kiro 命令未找到，请确认 Kiro 已安装且在 PATH 中"
+        )
+
+    if tool == "trae":
+        if IS_WINDOWS:
+            exe = _find_executable("trae.cmd", "trae", "Trae.exe")
+            if exe:
+                return [exe], False
+            # Trae 在开始菜单注册名形态多样（如 "Trae" / "Trae CN" / "TRAE SOLO CN"），用通配匹配
+            appx_uri = _find_appx_app("*Trae*")
+            if appx_uri:
+                return ["explorer.exe", appx_uri], True
+        else:
+            exe = _find_executable("trae", "Trae")
+            if exe:
+                return [exe], False
+        raise FileNotFoundError(
+            "trae 命令未找到，请确认 Trae 已安装且在 PATH 中"
+        )
+
+    if tool == "qoder":
+        if IS_WINDOWS:
+            exe = _find_executable("qoder.cmd", "qoder", "qodercli.cmd", "qodercli", "Qoder.exe")
+            if exe:
+                return [exe], False
+            appx_uri = _find_appx_app("Qoder")
+            if appx_uri:
+                return ["explorer.exe", appx_uri], True
+        else:
+            exe = _find_executable("qoder", "qodercli", "Qoder")
+            if exe:
+                return [exe], False
+        raise FileNotFoundError(
+            "qoder 命令未找到，请确认 Qoder 已安装且在 PATH 中"
         )
 
     raise ValueError(f"不支持的工具: {tool}")
@@ -183,25 +247,36 @@ def _launch_background(cmd: list[str]) -> None:
     subprocess.Popen(cmd, **kwargs)
 
 
-def _launch_terminal(cmd: list[str]) -> None:
-    """在新终端窗口中启动（用于 CLI 交互式工具）"""
+def _launch_terminal(cmd: list[str], cwd: Optional[str] = None) -> None:
+    """在新终端窗口中启动（用于 CLI 交互式工具）。
+
+    传入 cwd 时，新终端的工作目录会锁定到该目录（部署后「打开终端并定位到部署目录」）。
+    """
+    workdir = cwd if (cwd and cwd.strip()) else None
     if IS_WINDOWS:
+        # start /d 指定新窗口的工作目录；cmd /k 保留窗口。
+        if workdir:
+            start_args = ["start", "", "/d", workdir, "cmd", "/k"] + cmd
+        else:
+            start_args = ["start", "cmd", "/k"] + cmd
         subprocess.Popen(
-            ["start", "cmd", "/k"] + cmd,
+            start_args,
             shell=True,
             creationflags=subprocess.CREATE_NEW_CONSOLE,
         )
     elif platform.system() == "Darwin":
-        script = " ".join(cmd)
+        joined = " ".join(cmd)
+        script = f"cd {shlex.quote(workdir)}; {joined}" if workdir else joined
+        script = script.replace('"', '\\"')
         subprocess.Popen(
             ["osascript", "-e", f'tell app "Terminal" to do script "{script}"']
         )
     else:
         for term in ("x-terminal-emulator", "gnome-terminal", "xterm"):
             if shutil.which(term):
-                subprocess.Popen([term, "-e"] + cmd)
+                subprocess.Popen([term, "-e"] + cmd, cwd=workdir)
                 return
-        subprocess.Popen(cmd)
+        subprocess.Popen(cmd, cwd=workdir)
 
 
 @api_router.get("/tools")
@@ -225,6 +300,12 @@ async def list_tools(user_id: str = Depends(get_current_user_id)):
             mode, desc = "terminal", "在终端中启动 Claude Code 交互式对话"
         elif tool_id == "claude-app":
             mode, desc = "app", "启动 Claude 桌面应用"
+        elif tool_id == "kiro":
+            mode, desc = "app", "启动 Kiro IDE"
+        elif tool_id == "trae":
+            mode, desc = "app", "启动 Trae IDE"
+        elif tool_id == "qoder":
+            mode, desc = "app", "启动 Qoder IDE"
         else:
             mode, desc = "app", "启动 Cursor IDE"
 
@@ -250,18 +331,29 @@ async def launch_tool(
         )
 
     try:
-        cmd = _resolve_command(data.tool)
+        cmd, via_appx = _resolve_command(data.tool)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
-    if data.project_path:
-        cmd.append(data.project_path)
-
     label = TOOL_LABELS[data.tool]
     is_terminal = data.tool in TERMINAL_TOOLS
+    path = (data.project_path or "").strip()
+
+    # 路径处理策略（按工具形态）：
+    #   · 终端类（codex-cli / claude-code）：路径仅作为新终端的工作目录（cwd），不作为命令行参数；
+    #   · IDE 工作区类（cursor / windsurf）：把路径作为参数传入以该目录为工作区打开；
+    #     但经 AppsFolder 激活（via_appx）时不能附带任何参数，否则 explorer 会去打开该文件夹而非激活应用；
+    #   · 桌面对话类（codex-app / claude-app）：不接受工作区路径，仅启动应用本身。
+    # —— 这是「Codex/Claude 桌面端无报错也不启动」的根因：旧逻辑对所有工具都把路径追加到 explorer 命令。
+    append_path = (
+        not is_terminal and data.tool in WORKSPACE_TOOLS and not via_appx and bool(path)
+    )
+    if append_path:
+        cmd.append(path)
+
     try:
         if is_terminal:
-            _launch_terminal(cmd)
+            _launch_terminal(cmd, path or None)
         else:
             _launch_background(cmd)
     except OSError as exc:
@@ -270,7 +362,8 @@ async def launch_tool(
             detail=f"启动 {label} 失败: {exc}",
         )
 
-    suffix = f"，项目路径: {data.project_path}" if data.project_path else ""
+    used_path = bool(path) if is_terminal else append_path
+    suffix = f"，项目路径: {path}" if used_path else ""
     return {
         "status": "launched",
         "tool": data.tool,

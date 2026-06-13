@@ -8,11 +8,13 @@
  * 所有 HTTP 响应为 `LocalAgentResponse<T>`（成功 T | 统一失败 LocalAgentFailure）。
  */
 import { localAgentClient } from './client'
+import type { ToolType } from '@/constants/platforms'
 
 // ===================== 通用类型（契约 §1）=====================
 
 export type LocalAgentApiVersion = 'local-agent/v1'
-export type ToolType = 'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'
+// ToolType 的单一事实来源在 @/constants/platforms，这里仅再导出以保持既有 import 路径不变。
+export type { ToolType }
 export type DeployScope = 'project' | 'platform'
 export type ContentEncoding = 'utf8' | 'base64'
 export type ResourceTransfer = 'inline' | 'url'

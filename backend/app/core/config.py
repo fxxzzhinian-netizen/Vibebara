@@ -53,26 +53,14 @@ class Settings(BaseSettings):
     # 示例：^(app|vibebara|file)://.*$
     ALLOW_ORIGIN_REGEX: str = ""
 
-    ENABLED_ADAPTERS: List[str] = ["cursor", "copilot", "windsurf", "claude"]
-
     # ------------------------------------------------------------------
     # 安全 / 鉴权（方案 B M2）
     # ------------------------------------------------------------------
     # 独立的 token 签名密钥（停止复用 LLM_API_KEY）。
-    #   - 留空 → auth_service 回退到「稳定的开发默认密钥」（重启不失效，
-    #     不会因随机化导致已签发 token 全部失效）；
-    #   - cloud 模式下若仍为空将打印显著告警，生产务必通过环境注入高熵值。
+    #   - local 留空 → auth_service 回退到「稳定的开发默认密钥」（重启不失效）；
+    #   - cloud 模式下若仍为空将**直接拒绝启动**（fail-fast），生产务必经环境注入高熵值。
     # 注意：切换该值会使所有旧 token 失效（用户需重新登录）。
     JWT_SECRET: str = ""
-
-    # session WS（/ws/{session_id}）是否强制鉴权（local 形态的显式开关）。
-    #   - 默认 False = local 形态保持现有 sessions 协作功能（历史前端可能未传 token）不被破坏；
-    #   - 置 True 后该端点强制校验 token 且 user_id 必须与 token 一致。
-    # 方案 B · M4（M2 决议①）：**cloud 形态默认强制**会话 WS 鉴权——
-    #   routes.py 的有效判定为 `WS_SESSION_AUTH_REQUIRED or DEPLOYMENT_MODE=="cloud"`，
-    #   故 cloud 下本字段即便为 False 也强制校验（前端 useWebSocket 已补传 token）。
-    # 项目级 WS（/ws/project/{project_id}）为 M2 硬性强制鉴权，不受此开关影响。
-    WS_SESSION_AUTH_REQUIRED: bool = False
 
     # ------------------------------------------------------------------
     # 滑块人机验证（登录/注册）
@@ -89,6 +77,14 @@ class Settings(BaseSettings):
     # 邀请码管理端点（签发/列表/禁用）的管理员用户名白名单。
     # 环境变量注入用 JSON 形式：ADMIN_USERNAMES=["DAIL"]
     ADMIN_USERNAMES: List[str] = ["DAIL"]
+
+    # ------------------------------------------------------------------
+    # 预设种子用户（启动时幂等创建 DAIL/DAIL2）
+    # ------------------------------------------------------------------
+    # True = 启动时创建文档化的预设账号（默认，兼容现状/README）；
+    # 生产可设 false 关闭，避免「已知用户名+已知弱密码」长期存在。
+    # cloud 模式下仍启用时会打印显著安全告警。
+    SEED_USERS_ENABLED: bool = True
 
     # ------------------------------------------------------------------
     # 数据目录 / Skill 存储（去 user-home 语义耦合）
@@ -132,8 +128,11 @@ class Settings(BaseSettings):
 
     @property
     def db_echo(self) -> bool:
-        """SQL echo 最终值：DB_ECHO 显式设置则用之，否则跟随 DEBUG。"""
-        return self.DB_ECHO if self.DB_ECHO is not None else self.DEBUG
+        """SQL echo 最终值：DB_ECHO 显式设置则用之；否则本地跟随 DEBUG，
+        cloud 模式默认关闭（避免生产日志泄露语句/性能噪声）。需要时经 DB_ECHO 覆盖。"""
+        if self.DB_ECHO is not None:
+            return self.DB_ECHO
+        return self.DEBUG and self.DEPLOYMENT_MODE != "cloud"
 
 
 settings = Settings()

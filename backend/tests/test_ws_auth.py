@@ -1,11 +1,11 @@
 """WebSocket 强制鉴权验证（方案 B M2）。
 
-不起真实服务：用假 WebSocket + monkeypatch 路由依赖，直接驱动两个 WS 端点函数，
+不起真实服务：用假 WebSocket + monkeypatch 路由依赖，直接驱动 WS 端点函数，
 断言鉴权分支：
 - 项目级 /ws/project/{pid}（强制）：缺 token / 错 token / user_id 不一致 → close 4001；
   非团队成员 → close 4003；合法且为成员 → connect 放行。
-- 会话级 /ws/{sid}：默认开关关闭 → 不鉴权放行；开关打开后缺/错 token → close 4001，
-  合法且一致 → 放行。
+
+注：会话级 /ws/{sid} 编排通道已随 session/adapter 子系统退役，相关用例已移除。
 
 可直接运行：`python -m tests.test_ws_auth`（无需 pytest，亦兼容 pytest）。
 """
@@ -60,21 +60,6 @@ class _ProjMgr:
 
     async def on_skill_event(self, event):
         return None
-
-
-class _WsMgr:
-    def __init__(self):
-        self.connected = []
-        self.disconnected = []
-
-    async def connect(self, ws, session_id, user_id, adapter_id):
-        self.connected.append((session_id, user_id, adapter_id))
-
-    async def handle_message(self, *a, **k):
-        return None
-
-    async def disconnect(self, session_id, user_id, adapter_id):
-        self.disconnected.append((session_id, user_id, adapter_id))
 
 
 class _FakeSync:
@@ -156,55 +141,6 @@ def test_project_ws_missing_team_forbidden():
     assert proj.connected == []
 
 
-# ----------------------------- 会话级 WS -----------------------------
-
-def test_session_ws_default_no_auth_allows():
-    wsm = _WsMgr()
-    r.ws_manager = wsm
-    r.settings.WS_SESSION_AUTH_REQUIRED = False
-    r.verify_token = lambda tok: None  # 即便无效也应放行（开关关闭）
-    ws = FakeWS()
-    asyncio.run(
-        r.websocket_endpoint(ws, "s1", user_id="u1", adapter_id="web", token="")
-    )
-    assert ws.closed_code is None
-    assert wsm.connected == [("s1", "u1", "web")]
-
-
-def test_session_ws_enforced_rejects_missing_token():
-    wsm = _WsMgr()
-    r.ws_manager = wsm
-    saved = r.settings.WS_SESSION_AUTH_REQUIRED
-    try:
-        r.settings.WS_SESSION_AUTH_REQUIRED = True
-        r.verify_token = lambda tok: None
-        ws = FakeWS()
-        asyncio.run(
-            r.websocket_endpoint(ws, "s1", user_id="u1", adapter_id="web", token="")
-        )
-        assert ws.closed_code == 4001
-        assert wsm.connected == []
-    finally:
-        r.settings.WS_SESSION_AUTH_REQUIRED = saved
-
-
-def test_session_ws_enforced_allows_valid_consistent():
-    wsm = _WsMgr()
-    r.ws_manager = wsm
-    saved = r.settings.WS_SESSION_AUTH_REQUIRED
-    try:
-        r.settings.WS_SESSION_AUTH_REQUIRED = True
-        r.verify_token = lambda tok: "u1"
-        ws = FakeWS()
-        asyncio.run(
-            r.websocket_endpoint(ws, "s1", user_id="u1", adapter_id="web", token="ok")
-        )
-        assert ws.closed_code is None
-        assert wsm.connected == [("s1", "u1", "web")]
-    finally:
-        r.settings.WS_SESSION_AUTH_REQUIRED = saved
-
-
 def _run_all():
     tests = [
         test_project_ws_missing_token_rejected,
@@ -213,9 +149,6 @@ def _run_all():
         test_project_ws_non_member_forbidden,
         test_project_ws_valid_member_allowed,
         test_project_ws_missing_team_forbidden,
-        test_session_ws_default_no_auth_allows,
-        test_session_ws_enforced_rejects_missing_token,
-        test_session_ws_enforced_allows_valid_consistent,
     ]
     for t in tests:
         t()

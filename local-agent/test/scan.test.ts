@@ -103,6 +103,33 @@ describe("scanAndPackage", () => {
     expect(codex.installedAt).toHaveProperty("windsurf");
   });
 
+  it("rootDir 自身含 SKILL.md（用户直接选中 skill 文件夹）→ 收 rootDir 本身", () => {
+    const dir = mkSkill("bare-skill", {
+      "SKILL.md": "---\nname: bare-skill\ndescription: Bare one\n---\nbody\n",
+    });
+    const pkgs = scanAndPackage(dir);
+    expect(pkgs.map((p) => p.id)).toEqual(["bare-skill"]);
+    expect(pkgs[0]!.name).toBe("bare-skill");
+    expect(pkgs[0]!.description).toBe("Bare one");
+    expect(pkgs[0]!.sourcePath).toBe(dir);
+  });
+
+  it("rootDir 自身含 SKILL.md 且一级子目录也含 SKILL.md → 两者并收", () => {
+    const root = mkSkill("mixed-skill", {
+      "SKILL.md": "---\nname: mixed-skill\ndescription: Root one\n---\nbody\n",
+    });
+    // 子目录也是一个独立 skill
+    const childMd = path.join(root, "child-skill", "SKILL.md");
+    fs.mkdirSync(path.dirname(childMd), { recursive: true });
+    fs.writeFileSync(
+      childMd,
+      "---\nname: child-skill\ndescription: Child one\n---\nbody\n",
+    );
+
+    const pkgs = scanAndPackage(root);
+    expect(pkgs.map((p) => p.id).sort()).toEqual(["child-skill", "mixed-skill"]);
+  });
+
   it("空目录 / 不存在目录 → 空数组", () => {
     expect(scanAndPackage(tmp)).toEqual([]);
     expect(scanAndPackage(path.join(tmp, "nope"))).toEqual([]);

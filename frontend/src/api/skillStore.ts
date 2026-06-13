@@ -304,6 +304,15 @@ export async function deployNativeSkill(
   target: string,
   destPath?: string,
 ): Promise<DeployResponse> {
+  // 开发者环境：个人仓库为 mock 数据，云端 / 本地代理并无对应 Skill，直接返回成功，
+  // 便于预览部署后的流程（如「是否打开 XXX」弹窗）。
+  if (DEV_SKIP_AUTH) {
+    const base = (destPath || '').replace(/[\\/]+$/, '')
+    const path = base
+      ? `${base}\\.${target}\\skills\\${id}`
+      : `~/.${target}/skills/${id}`
+    return { success: true, deployed: [{ target, path }] }
+  }
   // 灰度分流：编排开启 → 云端产物 → 本地代理 write-skill 落盘（M0 §3.1 变体）；
   // 否则走旧的一次性云端 /skill-forge/store/{id}/deploy。
   if (isOrchestrationEnabled()) {
@@ -312,17 +321,6 @@ export async function deployNativeSkill(
   const { data } = await apiClient.post<DeployResponse>(
     `/skill-forge/store/${id}/deploy`,
     { target, dest_path: destPath ?? null },
-  )
-  return data
-}
-
-export async function buildNativeSkill(
-  id: string,
-  target: string = 'all',
-): Promise<Record<string, unknown>> {
-  const { data } = await apiClient.post<Record<string, unknown>>(
-    `/skill-forge/store/${id}/build`,
-    { target },
   )
   return data
 }

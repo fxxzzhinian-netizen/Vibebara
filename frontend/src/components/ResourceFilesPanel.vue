@@ -4,6 +4,7 @@ import { readResourceFile, writeResourceFile } from '@/api/skillStore'
 import ResourceTreeNode from './ResourceTreeNode.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import { confirmDialog } from '@/composables/useConfirmDialog'
+import { toast } from '@/composables/useToast'
 import { fileIconUrl, type ResTreeNode } from './resourceTree'
 
 interface ResEntry {
@@ -82,8 +83,8 @@ const editorOpen = ref(false)
 const loading = ref(false)
 const saving = ref(false)
 const dirty = ref(false)
+// errorMsg 仅用于「文件整体读取失败」时的正文占位状态；保存结果改用全局弹窗反馈。
 const errorMsg = ref('')
-const okMsg = ref('')
 const curPath = ref('')
 const curEncoding = ref<'utf8' | 'base64'>('utf8')
 const curContent = ref('')
@@ -109,7 +110,6 @@ async function openFile(path: string) {
   editorOpen.value = true
   loading.value = true
   errorMsg.value = ''
-  okMsg.value = ''
   dirty.value = false
   curPath.value = path
   curContent.value = ''
@@ -135,7 +135,6 @@ async function openFile(path: string) {
 function onInput(e: Event) {
   curContent.value = (e.target as HTMLTextAreaElement).value
   dirty.value = true
-  okMsg.value = ''
 }
 
 const canSave = computed(
@@ -145,18 +144,16 @@ const canSave = computed(
 async function save() {
   if (props.readonly || isBinary.value) return
   saving.value = true
-  errorMsg.value = ''
-  okMsg.value = ''
   try {
     const res = await writeResourceFile(props.skillId, curPath.value, curContent.value, curEncoding.value)
     if (!res.success) {
-      errorMsg.value = res.error || '保存失败'
+      toast.error(res.error || '保存失败')
       return
     }
     dirty.value = false
-    okMsg.value = '已保存'
+    toast.success('已保存')
   } catch (e: unknown) {
-    errorMsg.value = (e as { message?: string })?.message || '保存失败'
+    toast.error((e as { message?: string })?.message || '保存失败')
   } finally {
     saving.value = false
   }
@@ -233,9 +230,7 @@ function fmtSize(n: number): string {
       </div>
 
       <template v-if="!isBinary && !readonly" #footer>
-        <span v-if="errorMsg" class="rfp-foot-msg rfp-err">{{ errorMsg }}</span>
-        <span v-else-if="okMsg" class="rfp-foot-msg rfp-ok">{{ okMsg }}</span>
-        <span v-else-if="dirty" class="rfp-foot-msg rfp-dirty">未保存</span>
+        <span v-if="dirty" class="rfp-foot-msg rfp-dirty">未保存</span>
         <span class="rfp-foot-spacer"></span>
         <button
           type="button"
@@ -325,7 +320,6 @@ function fmtSize(n: number): string {
   font-size: 0.9rem;
 }
 .rfp-err { color: #dc2626; }
-.rfp-ok { color: #16a34a; }
 .rfp-dirty { color: #b45309; }
 
 .rfp-preview {

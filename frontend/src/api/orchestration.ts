@@ -14,6 +14,7 @@
  * 默认走旧端点（见各 api/*.ts 的分流）。所有依赖云端新端点处均以 TODO(cloud) 标注。
  */
 import { cloudClient } from './client'
+import { TOOL_TYPES } from '@/constants/platforms'
 import * as localAgent from './localAgent'
 import type {
   ResourcePayload,
@@ -619,7 +620,7 @@ export interface IdeSkillGroup {
 export async function scanPlatformGlobalSkillsOrchestrated(): Promise<IdeSkillGroup[]> {
   const h = await localAgent.health()
   const dirs = h.platformSkillDirs
-  const order: ToolType[] = ['cursor', 'codex', 'windsurf', 'claude', 'kiro', 'trae', 'qoder']
+  const order: ToolType[] = [...TOOL_TYPES]
   const groups: IdeSkillGroup[] = []
   for (const tool of order) {
     const dir = dirs[tool]

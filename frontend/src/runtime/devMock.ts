@@ -22,7 +22,13 @@ import type {
   TeamResponse,
   MemberListResponse,
 } from '@/api/teams'
-import type { ProjectInfo, ProjectListResponse } from '@/api/projects'
+import type {
+  ProjectInfo,
+  ProjectListResponse,
+  ProjectDetailResponse,
+  ProjectSkillInfo,
+  UserSkillDeploymentInfo,
+} from '@/api/projects'
 
 const NOW = '2026-06-10T08:00:00Z'
 
@@ -411,4 +417,154 @@ export function devMockMembers(teamId: string): MemberListResponse {
 
 export function devMockProjectList(teamId: string): ProjectListResponse {
   return { success: true, projects: DEV_PROJECTS[teamId] ?? [] }
+}
+
+/* ---------------------------------------------------------------------------
+ * 项目详情假数据：让「团队项目 → 项目内」在开发者模式下也有 Skill，
+ * 并覆盖部署的各种状态，使「部署 / 推送 / 更新本地 / 恢复跟踪 / 重新部署 /
+ * 停止跟踪 / 移除」等按钮全部能渲染出来用于调 UI。
+ * ------------------------------------------------------------------------ */
+
+function findProjectAnyTeam(projectId: string): ProjectInfo | null {
+  for (const list of Object.values(DEV_PROJECTS)) {
+    const p = list.find((x) => x.id === projectId)
+    if (p) return p
+  }
+  return null
+}
+
+function makeDeployment(
+  projectId: string,
+  skillId: string,
+  partial: Partial<UserSkillDeploymentInfo>,
+): UserSkillDeploymentInfo {
+  return {
+    id: `dep-${projectId}-${skillId}`,
+    user_id: 'dev-user',
+    project_id: projectId,
+    team_skill_id: skillId,
+    skill_name: skillId,
+    tool_type: 'cursor',
+    deploy_path: 'E:\\dev\\demo',
+    install_path: `E:\\dev\\demo\\.cursor\\skills\\${skillId}`,
+    repo_version: 1,
+    repo_hash: 'repohash0001',
+    installed_hash: 'repohash0001',
+    status: 'synced',
+    tracking_enabled: true,
+    local_dirty: false,
+    last_seen_at: NOW,
+    created_at: NOW,
+    updated_at: NOW,
+    ...partial,
+  }
+}
+
+function makeProjectSkill(
+  partial: Partial<ProjectSkillInfo> & { skill_id: string },
+): ProjectSkillInfo {
+  return {
+    display_name: partial.skill_id,
+    description: '',
+    version: 1,
+    content_hash: 'devmockhash01',
+    last_modified_by: '我（开发者）',
+    updated_at: NOW,
+    deployment: null,
+    ...partial,
+  }
+}
+
+function devMockProjectSkills(projectId: string): ProjectSkillInfo[] {
+  return [
+    // 1) 未部署 → 「部署」（点击弹出部署弹窗：工具选择 + 目录选择）
+    makeProjectSkill({
+      skill_id: 'build-website-ui',
+      display_name: 'Build Website UI',
+      description: '根据需求快速生成响应式网站前端 UI，覆盖落地页、仪表盘、组件样式与交互态。',
+      version: 3,
+      deployment: null,
+    }),
+    // 2) 已同步 + 跟踪中 → 「停止跟踪 / 移除」
+    makeProjectSkill({
+      skill_id: 'team-code-reviewer',
+      display_name: 'Code Reviewer',
+      description: '团队共享的代码评审技能，按团队规范输出结构化评审意见。',
+      version: 2,
+      deployment: makeDeployment(projectId, 'team-code-reviewer', {
+        status: 'synced',
+        tracking_enabled: true,
+        local_dirty: false,
+        tool_type: 'cursor',
+      }),
+    }),
+    // 3) 有改动待推送 → 「推送」+ 右下角「有改动待推送」角标
+    makeProjectSkill({
+      skill_id: 'team-design-tokens',
+      display_name: 'Design Tokens',
+      description: '统一团队设计令牌（颜色、间距、字体、圆角），生成多端可消费的 CSS / TS 变量。',
+      version: 5,
+      deployment: makeDeployment(projectId, 'team-design-tokens', {
+        status: 'changed',
+        tracking_enabled: true,
+        local_dirty: true,
+        installed_hash: 'localdirty99',
+        tool_type: 'codex',
+      }),
+    }),
+    // 4) 可更新（团队仓库有新版本） → 「更新本地」
+    makeProjectSkill({
+      skill_id: 'team-pr-summarizer',
+      display_name: 'PR Summarizer',
+      description: '读取 diff 自动生成 PR 摘要与测试清单。',
+      version: 4,
+      deployment: makeDeployment(projectId, 'team-pr-summarizer', {
+        status: 'outdated',
+        tracking_enabled: true,
+        local_dirty: false,
+        repo_version: 4,
+        repo_hash: 'newrepo0004',
+        installed_hash: 'oldrepo0002',
+        tool_type: 'windsurf',
+      }),
+    }),
+    // 5) 已停止跟踪 → 「恢复跟踪」
+    makeProjectSkill({
+      skill_id: 'team-release-notes',
+      display_name: 'Release Notes',
+      description: '从提交历史与合并的 PR 中归纳生成面向用户的发布说明，支持中英双语输出与分组。',
+      version: 1,
+      deployment: makeDeployment(projectId, 'team-release-notes', {
+        status: 'untracked',
+        tracking_enabled: false,
+        local_dirty: false,
+        tool_type: 'claude',
+      }),
+    }),
+    // 6) 路径缺失 → 「重新部署」
+    makeProjectSkill({
+      skill_id: 'team-icon-forge',
+      display_name: 'Icon Forge',
+      description: '按品牌风格批量生成线性 / 面性图标，并导出多尺寸 SVG 与雪碧图。',
+      version: 2,
+      deployment: makeDeployment(projectId, 'team-icon-forge', {
+        status: 'missing',
+        tracking_enabled: false,
+        local_dirty: false,
+        tool_type: 'cursor',
+      }),
+    }),
+  ]
+}
+
+export function devMockProjectDetail(projectId: string): ProjectDetailResponse {
+  const project =
+    findProjectAnyTeam(projectId) ??
+    makeProject({ id: projectId, team_id: 'dev-team', name: '示例项目' })
+  const skills = devMockProjectSkills(projectId)
+  return {
+    success: true,
+    project: { ...project, skill_count: skills.length },
+    skills,
+  }
 }

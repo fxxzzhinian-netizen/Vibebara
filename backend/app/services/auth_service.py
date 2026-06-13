@@ -28,22 +28,23 @@ _DEV_DEFAULT_JWT_SECRET = "vibebara-dev-insecure-jwt-secret-change-me"
 def _resolve_jwt_secret() -> str:
     """解析 token 签名密钥：独立 JWT_SECRET 优先，否则回退稳定开发默认值。
 
-    停止复用 ``LLM_API_KEY``（M2 §4.4）。未注入 JWT_SECRET 时按运行模式告警：
-    cloud 模式视为安全风险打 WARNING；local 模式仅提示。
+    停止复用 ``LLM_API_KEY``（M2 §4.4）。未注入 JWT_SECRET 时按运行模式处理：
+    - cloud 模式：**直接拒绝启动**（fail-fast），杜绝用公开默认密钥签发可被伪造的 token；
+    - local 模式：回退稳定开发默认值并提示（重启不失效，便于开发）。
     """
     secret = (settings.JWT_SECRET or "").strip()
     if secret:
         return secret
     if settings.DEPLOYMENT_MODE == "cloud":
-        logger.warning(
-            "[security] 未设置 JWT_SECRET，cloud 模式正在使用公开的开发默认密钥，"
-            "存在严重安全风险！请通过环境变量 JWT_SECRET 注入高熵随机值。"
+        raise RuntimeError(
+            "[security] cloud 模式必须设置 JWT_SECRET（高熵随机值），否则将使用公开默认密钥、"
+            "token 可被伪造。请经环境变量注入，例如："
+            "python -c \"import secrets;print(secrets.token_urlsafe(48))\""
         )
-    else:
-        logger.info(
-            "[security] 未设置 JWT_SECRET，使用稳定的开发默认密钥（仅限本地开发，"
-            "请勿用于生产/cloud）。"
-        )
+    logger.info(
+        "[security] 未设置 JWT_SECRET，使用稳定的开发默认密钥（仅限本地开发，"
+        "请勿用于生产/cloud）。"
+    )
     return _DEV_DEFAULT_JWT_SECRET
 
 

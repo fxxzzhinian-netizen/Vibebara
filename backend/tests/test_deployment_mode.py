@@ -5,10 +5,11 @@
 - cloud：FileWatcherService.start(watch_deployments=False)，不调度本地扫描。
 - local：FileWatcherService.start(watch_deployments=True 默认)，保留扫描调度入口。
 
-M2 评审决议②（cloud 下线 launcher / adapters HTTP 路由）路由差异断言：
-- cloud：create_app() 路由中不含 /api/v1/launcher、/api/v1/adapters 前缀；
-  仍含 /api/v1/auth、/api/v1/projects、/api/v1/sessions、/ws。
-- local：仍含 /api/v1/launcher、/api/v1/adapters（维持现状）。
+M2 评审决议②（cloud 下线 launcher HTTP 路由）路由差异断言：
+- cloud：create_app() 路由中不含 /api/v1/launcher 前缀；仍含 /api/v1/auth、
+  /api/v1/projects、/ws。
+- local：仍含 /api/v1/launcher（维持现状）。
+- session/adapter 编排子系统已退役：两种模式均不含 /api/v1/sessions、/api/v1/adapters。
 
 可直接运行：`python -m tests.test_deployment_mode`（无需 pytest）。
 """
@@ -44,15 +45,6 @@ def _patch(monkey: _Recorder):
     async def fake_stop():
         return None
 
-    async def fake_init_all(adapters):
-        return None
-
-    def fake_get_all():
-        return {}
-
-    async def fake_shutdown_all():
-        return None
-
     async def fake_close_db():
         return None
 
@@ -64,9 +56,6 @@ def _patch(monkey: _Recorder):
     m.NativeSkillStore.init = classmethod(lambda cls, store_dir: fake_store_init(store_dir))
     m.FileWatcherService.start = classmethod(lambda cls, store_dir, watch_deployments=True: fake_start(store_dir, watch_deployments))
     m.FileWatcherService.stop = classmethod(lambda cls: fake_stop())
-    m.AdapterRegistry.initialize_all = classmethod(lambda cls, adapters: fake_init_all(adapters))
-    m.AdapterRegistry.get_all_adapters = classmethod(lambda cls: fake_get_all())
-    m.AdapterRegistry.shutdown_all = classmethod(lambda cls: fake_shutdown_all())
     m.SkillRegistry.auto_scan = classmethod(lambda cls, path: fake_auto_scan(path))
     m.close_db = fake_close_db
 
@@ -93,7 +82,7 @@ def test_local_mode_keeps_full_watcher():
     assert rec.start_calls[0]["watch_deployments"] is True
 
 
-# --- M2 评审决议②：cloud 下线 launcher / adapters HTTP 路由 ---
+# --- M2 评审决议②：cloud 下线 launcher HTTP 路由 ---
 
 
 def _route_paths(mode: str):
@@ -111,27 +100,29 @@ def _has_prefix(paths, prefix: str) -> bool:
     return any(p.startswith(prefix) for p in paths)
 
 
-def test_cloud_mode_unmounts_launcher_and_adapters():
+def test_cloud_mode_unmounts_launcher():
     paths = _route_paths("cloud")
-    # 决议②：cloud 下线 launcher / adapters 的 HTTP 路由
+    # 决议②：cloud 下线 launcher 的 HTTP 路由（桌面壳本机经 IPC 启动）
     assert not _has_prefix(paths, "/api/v1/launcher"), paths
+    # 已退役的 session/adapter 编排子系统：两种模式均不应再存在
     assert not _has_prefix(paths, "/api/v1/adapters"), paths
+    assert not _has_prefix(paths, "/api/v1/sessions"), paths
     # 其余路由保持挂载
     assert _has_prefix(paths, "/api/v1/auth"), paths
     assert _has_prefix(paths, "/api/v1/projects"), paths
-    assert _has_prefix(paths, "/api/v1/sessions"), paths
     assert _has_prefix(paths, "/ws/"), paths
 
 
-def test_local_mode_mounts_launcher_and_adapters():
+def test_local_mode_mounts_launcher():
     paths = _route_paths("local")
-    # local 维持现状：launcher / adapters 照常挂载
+    # local 维持现状：launcher 照常挂载
     assert _has_prefix(paths, "/api/v1/launcher"), paths
-    assert _has_prefix(paths, "/api/v1/adapters"), paths
+    # 已退役的编排子系统在 local 模式同样不存在
+    assert not _has_prefix(paths, "/api/v1/adapters"), paths
+    assert not _has_prefix(paths, "/api/v1/sessions"), paths
     # 共用路由同样在位
     assert _has_prefix(paths, "/api/v1/auth"), paths
     assert _has_prefix(paths, "/api/v1/projects"), paths
-    assert _has_prefix(paths, "/api/v1/sessions"), paths
     assert _has_prefix(paths, "/ws/"), paths
 
 
@@ -140,10 +131,10 @@ def _run_all():
     print("  PASS  test_cloud_mode_disables_deployment_poll")
     test_local_mode_keeps_full_watcher()
     print("  PASS  test_local_mode_keeps_full_watcher")
-    test_cloud_mode_unmounts_launcher_and_adapters()
-    print("  PASS  test_cloud_mode_unmounts_launcher_and_adapters")
-    test_local_mode_mounts_launcher_and_adapters()
-    print("  PASS  test_local_mode_mounts_launcher_and_adapters")
+    test_cloud_mode_unmounts_launcher()
+    print("  PASS  test_cloud_mode_unmounts_launcher")
+    test_local_mode_mounts_launcher()
+    print("  PASS  test_local_mode_mounts_launcher")
     print("\nAll 4 deployment-mode tests passed.")
 
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useProjectSyncStore } from '@/stores/projectSyncStore'
 import { listNativeSkills, type NativeSkillItem } from '@/api/skillStore'
@@ -11,11 +11,13 @@ import { confirmDialog } from '@/composables/useConfirmDialog'
 import { toast } from '@/composables/useToast'
 import AppTopNav from '@/components/AppTopNav.vue'
 import FolderPicker from '@/components/FolderPicker.vue'
+import SyncStatusBadge from '@/components/SyncStatusBadge.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import BaseSelect from '@/components/BaseSelect.vue'
 import type { ChangeItem, UserSkillDeploymentInfo } from '@/api/projects'
 import { parseUnifiedDiff, inlineSegments } from '@/utils/diffView'
 import type { DiffRow, DiffRowType, InlinePair, SegOp } from '@/utils/diffView'
+import { promptOpenAfterDeploy } from '@/utils/openAfterDeploy'
 
 const route = useRoute()
 const router = useRouter()
@@ -61,11 +63,46 @@ const detailMsg = computed(() =>
   notificationStore.messages.find((m) => m.id === detailId.value) || null,
 )
 
+// —— Skill 列表滚动：超过 4 个时，列表区固定为「4 张卡片」高度并出现滚动条 ——
+const SKILL_VISIBLE_LIMIT = 4
+const skillListRef = ref<HTMLElement | null>(null)
+const skillListMaxHeight = ref('')
+
+/** 量取前 4 张卡片 + 间距的真实高度作为列表上限；不足 4 张则不限制。 */
+function updateSkillListMaxHeight() {
+  const el = skillListRef.value
+  if (!el) {
+    skillListMaxHeight.value = ''
+    return
+  }
+  const cards = el.querySelectorAll<HTMLElement>('.skill-card')
+  if (cards.length <= SKILL_VISIBLE_LIMIT) {
+    skillListMaxHeight.value = ''
+    return
+  }
+  const gap = parseFloat(getComputedStyle(el).rowGap || '12') || 12
+  let h = 0
+  for (let i = 0; i < SKILL_VISIBLE_LIMIT; i++) {
+    h += cards[i].offsetHeight
+  }
+  h += gap * (SKILL_VISIBLE_LIMIT - 1)
+  skillListMaxHeight.value = `${Math.ceil(h)}px`
+}
+
+async function scheduleSkillListMeasure() {
+  await nextTick()
+  updateSkillListMaxHeight()
+}
+
+watch(() => projectStore.projectSkills.length, scheduleSkillListMeasure)
+
 onMounted(async () => {
+  window.addEventListener('resize', updateSkillListMaxHeight)
   await projectStore.selectProject(projectId.value)
   await loadTeamRepoSkills()
   await loadMessageHistory()
   await refreshLocalStatuses()
+  scheduleSkillListMeasure()
 
   // 轮询兜底：即使 WebSocket 不可用，项目动态与本地状态也能准实时更新，无需手动刷新
   pollTimer = setInterval(async () => {
@@ -75,6 +112,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', updateSkillListMaxHeight)
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = undefined
@@ -261,7 +299,11 @@ async function submitDeploy() {
   }
   deployLoading.value = false
   toast.success(deployToGlobal.value ? '已部署到项目并同步到全局' : '已部署到项目')
+  // 关掉部署弹窗后再询问是否打开工具（确认框是全局浮层，避免与弹窗叠加）。
+  const openedTool = deployTool.value
+  const openedPath = deployPath.value.trim()
   showDeployModal.value = false
+  await promptOpenAfterDeploy(openedTool, openedPath)
 }
 
 async function stopTracking(deploymentId: string) {
@@ -455,9 +497,7 @@ function goBack() {
             </svg>
           </button>
           <h2 class="editor-title">{{ projectStore.currentProject?.name || '项目' }}</h2>
-          <span class="sync-badge" :class="{ online: connected }">
-            {{ connected ? '实时同步中' : '离线' }}
-          </span>
+          <SyncStatusBadge :connected="connected" />
         </div>
       </div>
 
@@ -474,28 +514,36 @@ function goBack() {
         </button>
       </div>
 
-      <div class="skill-list">
+      <div
+        ref="skillListRef"
+        class="skill-list"
+        :class="{ 'is-scrollable': !!skillListMaxHeight }"
+        :style="skillListMaxHeight ? { maxHeight: skillListMaxHeight } : undefined"
+      >
         <div
           v-for="skill in projectStore.projectSkills"
           :key="skill.skill_id"
           class="skill-card"
         >
           <div class="skill-main">
-            <h4 class="skill-name" :title="'查看 ' + (skill.display_name || skill.skill_id) + ' 详情'" @click="router.push('/skills/' + skill.skill_id)">
-              {{ skill.display_name || skill.skill_id }}
-            </h4>
+            <div class="skill-name-row">
+              <h4 class="skill-name" :title="'查看 ' + (skill.display_name || skill.skill_id) + ' 详情'" @click="router.push('/skills/' + skill.skill_id)">
+                {{ skill.display_name || skill.skill_id }}
+              </h4>
+              <span v-if="hasLocalChanges(skill.deployment)" class="dirty-badge">
+                有改动待推送
+              </span>
+            </div>
             <p :title="skill.description || ''">{{ skill.description || '暂无描述' }}</p>
-            <div class="deployment-line" :class="skill.deployment?.status || 'none'">
+            <div class="deployment-line" :class="skill.deployment?.status || 'none'" :title="skill.deployment?.install_path || ''">
               {{ statusLabel(skill.deployment?.status) }}
               <template v-if="skill.deployment">
                 · {{ skill.deployment.tool_type }}
                 · {{ skill.deployment.install_path }}
               </template>
-              <span v-if="hasLocalChanges(skill.deployment)" class="dirty-badge">
-                有改动待推送
-              </span>
             </div>
           </div>
+          <div class="skill-right">
           <div class="skill-meta">
             <span class="version">v{{ skill.version }}</span>
             <span class="hash" :title="skill.content_hash">
@@ -503,7 +551,7 @@ function goBack() {
             </span>
           </div>
           <div class="skill-actions">
-            <button class="btn-sm" @click="router.push('/skills/' + skill.skill_id)">详情</button>
+            <button class="btn-sm btn-soft" @click="router.push('/skills/' + skill.skill_id)">详情</button>
             <button
               v-if="!skill.deployment"
               class="btn-sm btn-primary"
@@ -543,12 +591,13 @@ function goBack() {
             </button>
             <button
               v-if="skill.deployment?.tracking_enabled"
-              class="btn-sm"
+              class="btn-sm btn-soft"
               @click="stopTracking(skill.deployment.id)"
             >
               停止跟踪
             </button>
             <button class="btn-sm btn-danger" @click="removeSkill(skill.skill_id)">移除</button>
+          </div>
           </div>
         </div>
       </div>
@@ -776,22 +825,6 @@ function goBack() {
   color: #151717;
 }
 
-.sync-badge {
-  font-size: 0.74rem;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: #f6f7f8;
-  color: #6b7280;
-  border: 1px solid #e5e7eb;
-}
-
-.sync-badge.online {
-  background: #f0fdf4;
-  color: #15803d;
-  border-color: #bbf7d0;
-}
-
 .content {
   max-width: 960px;
   margin: 0 auto;
@@ -825,6 +858,12 @@ function goBack() {
   gap: 12px;
 }
 
+/* 超过 4 个 Skill 时固定高度并滚动；留出右侧间距避免滚动条压住卡片 */
+.skill-list.is-scrollable {
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
 .skill-card {
   display: flex;
   align-items: center;
@@ -836,6 +875,14 @@ function goBack() {
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
+/* Skill 名称 + 「有改动待推送」角标同行（角标在名称右侧） */
+.skill-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
 .skill-card:hover {
   border-color: #d1d5db;
   box-shadow: 0 4px 16px rgba(21, 23, 23, 0.05);
@@ -843,10 +890,11 @@ function goBack() {
 
 .skill-main {
   flex: 1;
+  min-width: 0;
 }
 
 .skill-main h4 {
-  margin: 0 0 4px;
+  margin: 0;
   font-size: 0.95rem;
   font-weight: 600;
   color: #151717;
@@ -867,19 +915,20 @@ function goBack() {
   font-size: 0.84rem;
   line-height: 1.5;
   color: #6b7280;
-  /* 描述最多两行，超出截断省略，避免长描述把卡片撑高 */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
+  /* 描述禁止换行：单行展示，超出截断省略号 */
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .deployment-line {
   margin-top: 8px;
   font-size: 0.76rem;
   color: #9ca3af;
-  word-break: break-all;
+  /* 部署路径固定一行，过长截断省略号 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .deployment-line.synced {
@@ -895,10 +944,31 @@ function goBack() {
   color: #dc2626;
 }
 
+/* 右侧组：版本号 + 操作按钮，与左侧描述以竖线分界，内容整体靠左对齐。
+   固定宽度让各卡片的分界线位置保持一致；宽度需容纳最多 4 个按钮（详情+主操作+停止跟踪+移除），避免换行。 */
+.skill-right {
+  flex: none;
+  width: 384px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* 分割线：加粗的胶囊形竖条（圆角两端） */
+.skill-right::before {
+  content: '';
+  flex: none;
+  align-self: stretch;
+  width: 2px;
+  margin: 2px 0;
+  border-radius: 999px;
+  background: #cbd1d8;
+}
+
 .skill-meta {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 4px;
 }
 
@@ -915,21 +985,43 @@ function goBack() {
 }
 
 .skill-actions {
+  flex: 1;
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: nowrap;
+  /* 按钮之间固定间距，整组在右侧空余空间内居中 */
+  justify-content: center;
 }
 
-.btn-danger {
-  border-color: #fecaca;
-  color: #dc2626;
+.skill-actions .btn-sm {
+  white-space: nowrap;
 }
 
-.btn-danger:hover {
-  background: #fef2f2;
-  border-color: #fca5a5;
-  color: #dc2626;
+/* 移除：纯色危险按钮（与 SKILL 详情页「删除」一致：实底红、白字）。
+   用 .skill-actions 前缀提高优先级，确保覆盖后面定义的 .btn-sm 基础样式。 */
+.skill-actions .btn-danger {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+.skill-actions .btn-danger:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  color: #ffffff;
+}
+
+/* 详情 / 停止跟踪：纯色次级按钮（实底浅灰、无描边，区别于主操作的深色与危险操作的红色） */
+.skill-actions .btn-soft {
+  background: #eef0f2;
+  border-color: #eef0f2;
+  color: #374151;
+}
+
+.skill-actions .btn-soft:hover {
+  background: #e2e5e8;
+  border-color: #e2e5e8;
+  color: #151717;
 }
 
 .section-header-log {
@@ -941,6 +1033,16 @@ function goBack() {
   border: 1px solid #ebedf0;
   border-radius: 16px;
   padding: 16px 20px;
+  /* 保证空状态有高度，并让内容（含「暂无动态」）垂直居中 */
+  min-height: 88px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* 空状态文案在动态卡片内垂直居中：去掉通用 empty-hint 的顶部外边距 */
+.message-log > .empty-hint {
+  margin-top: 0;
 }
 
 .message-log ul {
@@ -963,23 +1065,23 @@ function goBack() {
   align-items: center;
 }
 
+/* 项目动态「详情」：无边框文字链接，悬停下划线反馈与 Skill 名称一致（靛蓝 + 下划线） */
 .detail-btn {
   margin-left: auto;
   flex-shrink: 0;
-  padding: 2px 10px;
+  padding: 2px 0;
   font-size: 0.76rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 7px;
-  background: #ffffff;
+  border: none;
+  background: transparent;
   color: #6b7280;
   font-family: inherit;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
+  transition: color 0.15s ease;
 }
 
 .detail-btn:hover {
-  border-color: #d1d5db;
-  color: #151717;
+  color: #4f46e5;
+  text-decoration: underline;
 }
 
 /* —— 改动详情弹窗 —— */
@@ -1127,14 +1229,17 @@ function goBack() {
   color: #b45309;
 }
 
+/* 有改动待推送：紧跟在 Skill 名称右侧 */
 .dirty-badge {
-  display: inline-block;
-  margin-left: 8px;
+  flex-shrink: 0;
   padding: 1px 8px;
   border-radius: 999px;
   background: #fef3c7;
   color: #b45309;
   font-size: 0.7rem;
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
 }
 
 .msg-time {
@@ -1190,6 +1295,15 @@ function goBack() {
   font-size: 0.76rem;
   color: #9ca3af;
   margin-top: 2px;
+}
+
+/* 左侧文字允许收缩，右侧按钮保持横排不被挤窄换行 */
+.add-skill-list li > div {
+  min-width: 0;
+}
+.add-skill-list li .btn-sm {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* Shared */

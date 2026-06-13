@@ -18,11 +18,15 @@ import { useSkillStore } from '@/stores/skillStore'
 import { promptInput } from '@/composables/useInputDialog'
 import { confirmDialog } from '@/composables/useConfirmDialog'
 import { toast } from '@/composables/useToast'
+import { useSlideIndicator } from '@/composables/useSlideIndicator'
+import { useDirectionalTransition } from '@/composables/useDirectionalTransition'
 import AppTopNav from '@/components/AppTopNav.vue'
 import HelpTip from '@/components/HelpTip.vue'
 import ResourceFilesPanel from '@/components/ResourceFilesPanel.vue'
 import PlatformStructurePanel from '@/components/PlatformStructurePanel.vue'
 import BaseModal from '@/components/BaseModal.vue'
+import MarkdownView from '@/components/MarkdownView.vue'
+import MarkdownEditor from '@/components/MarkdownEditor.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -36,6 +40,26 @@ const error = ref('')
 
 type TabKey = 'basic' | 'instructions' | 'resources' | 'metadata' | 'versions' | 'platform'
 const activeTab = ref<TabKey>('basic')
+
+// 左侧标签栏黑色滑块：随选中标签纵向平滑滑动到对应位置。
+const tabSideRef = ref<HTMLElement | null>(null)
+const { style: tabSliderStyle, ready: tabSliderReady } = useSlideIndicator({
+  container: tabSideRef,
+  activeSelector: '.tab-side-item.active',
+  axis: 'y',
+  trigger: () => activeTab.value,
+})
+
+// 正文随左侧标签纵向滑入滑出：下移标签 → 新内容自下方滑入、旧内容向上滑出，反向则相反。
+const {
+  name: paneTransition,
+  animating: paneAnimating,
+  end: paneTransitionEnd,
+} = useDirectionalTransition({
+  value: () => activeTab.value,
+  order: ['basic', 'instructions', 'resources', 'metadata', 'versions', 'platform'],
+  names: { forward: 'pane-down', backward: 'pane-up' },
+})
 
 const cfg = computed(() => (detail.value?.config ?? null) as Record<string, any> | null)
 const db = computed(() => detail.value?.db ?? null)
@@ -445,7 +469,8 @@ function timeAgo(ts: string | null | undefined): string {
 
           <!-- Body: 左侧圆角卡片导航 + 右侧无底色正文 -->
           <div class="editor-body">
-            <aside class="tab-side">
+            <aside ref="tabSideRef" class="tab-side">
+              <span class="tab-slider" :class="{ ready: tabSliderReady }" :style="tabSliderStyle"></span>
               <button class="tab-side-item" :class="{ active: activeTab === 'basic' }" @click="activeTab = 'basic'">基本信息</button>
               <button class="tab-side-item" :class="{ active: activeTab === 'instructions' }" @click="activeTab = 'instructions'">SKILL 指令</button>
               <button class="tab-side-item" :class="{ active: activeTab === 'resources' }" @click="activeTab = 'resources'">资源</button>
@@ -455,8 +480,17 @@ function timeAgo(ts: string | null | undefined): string {
             </aside>
 
             <div class="tab-content">
+              <transition-group
+                tag="div"
+                class="tab-pane-group"
+                :class="{ animating: paneAnimating }"
+                :name="paneTransition"
+                @after-enter="paneTransitionEnd"
+                @after-leave="paneTransitionEnd"
+                @enter-cancelled="paneTransitionEnd"
+              >
               <!-- Basic -->
-              <section v-if="activeTab === 'basic'" class="form-section full-width">
+              <section v-if="activeTab === 'basic'" key="basic" class="form-section full-width">
                 <div class="content-card">
                   <h3 class="card-title">通用信息</h3>
                   <div class="form-row">
@@ -503,22 +537,17 @@ function timeAgo(ts: string | null | undefined): string {
               </section>
 
               <!-- SKILL Instructions（含策略与依赖） -->
-              <section v-if="activeTab === 'instructions'" class="form-section full-width instructions-stack">
+              <section v-if="activeTab === 'instructions'" key="instructions" class="form-section full-width instructions-stack">
                 <div class="content-card">
                   <h3 class="card-title">
                     技能正文
-                    <HelpTip text="VibeSkill.md，纯 Markdown 格式。编写 Skill 的核心指令与工作流。" :size="17" />
+                    <HelpTip text="Skill.md，纯 Markdown 格式。编写 Skill 的核心指令与工作流。" :size="17" />
                   </h3>
                   <div class="form-row full">
-                    <textarea
-                      :value="editing ? draftVibeh : vibeh"
-                      :disabled="!editing"
-                      class="form-input textarea instructions-editor"
-                      rows="20"
-                      spellcheck="false"
-                      placeholder="# Skill Name&#10;&#10;## Overview&#10;...&#10;&#10;## Workflow&#10;1. Step one&#10;2. Step two"
-                      @input="draftVibeh = ($event.target as HTMLTextAreaElement).value"
-                    ></textarea>
+                    <MarkdownEditor v-if="editing" v-model="draftVibeh" />
+                    <div v-else class="instructions-view">
+                      <MarkdownView :source="vibeh" />
+                    </div>
                   </div>
                 </div>
 
@@ -564,7 +593,7 @@ function timeAgo(ts: string | null | undefined): string {
               </section>
 
               <!-- Resources -->
-              <section v-if="activeTab === 'resources'" class="form-section full-width">
+              <section v-if="activeTab === 'resources'" key="resources" class="form-section full-width">
                 <h3 class="card-title">
                   资源声明
                   <HelpTip text="以文件夹形式展开 scripts / references / assets；点击文件可打开查看云端真实内容。" :size="17" />
@@ -594,7 +623,7 @@ function timeAgo(ts: string | null | undefined): string {
               </section>
 
               <!-- Metadata -->
-              <section v-if="activeTab === 'metadata'" class="form-section">
+              <section v-if="activeTab === 'metadata'" key="metadata" class="form-section">
                 <div class="content-card">
                   <h3 class="card-title">
                     通用元数据
@@ -657,7 +686,7 @@ function timeAgo(ts: string | null | undefined): string {
               </section>
 
               <!-- Versions -->
-              <section v-if="activeTab === 'versions'" class="form-section full-width">
+              <section v-if="activeTab === 'versions'" key="versions" class="form-section full-width">
                 <div class="ver-head">
                   <h3 class="card-title ver-card-title">
                     版本历史
@@ -711,7 +740,7 @@ function timeAgo(ts: string | null | undefined): string {
               </section>
 
               <!-- Platform Structure（内嵌，与个人 Skill 编辑器一致；只读 Skill 时禁用编辑） -->
-              <section v-if="activeTab === 'platform'" class="form-section full-width">
+              <section v-if="activeTab === 'platform'" key="platform" class="form-section full-width">
                 <div v-if="skillStore.currentLoading" class="state-box">
                   <span class="spinner" /> 加载中...
                 </div>
@@ -727,6 +756,7 @@ function timeAgo(ts: string | null | undefined): string {
                   </div>
                 </template>
               </section>
+              </transition-group>
             </div>
           </div>
         </template>
@@ -750,7 +780,9 @@ function timeAgo(ts: string | null | undefined): string {
         </div>
         <div class="field">
           <label>VibeSkill.md 正文</label>
-          <pre class="ver-code">{{ viewingVersion.vibeh_content || '（空）' }}</pre>
+          <div class="ver-md">
+            <MarkdownView :source="viewingVersion.vibeh_content" placeholder="（空）" />
+          </div>
         </div>
         <div class="field">
           <label>资源文件（scripts / references / assets）</label>
@@ -1029,6 +1061,7 @@ function timeAgo(ts: string | null | undefined): string {
   padding-top: 1.25rem;
 }
 .tab-side {
+  position: relative;
   width: 176px;
   min-width: 176px;
   align-self: stretch;
@@ -1040,7 +1073,27 @@ function timeAgo(ts: string | null | undefined): string {
   border-radius: 14px;
   padding: 0.5rem;
 }
+/* 选中态黑色滑块：随选中标签纵向平滑滑动到对应位置（高度随项目变化）。 */
+.tab-slider {
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  top: 0;
+  height: 0;
+  border-radius: 9px;
+  background: #151717;
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+  will-change: transform, height;
+}
+.tab-slider.ready {
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    height 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
 .tab-side-item {
+  position: relative;
+  z-index: 1;
   text-align: left;
   padding: 0.6rem 0.8rem;
   background: transparent;
@@ -1054,7 +1107,8 @@ function timeAgo(ts: string | null | undefined): string {
   transition: background 0.15s ease, color 0.15s ease;
 }
 .tab-side-item:hover:not(.active) { background: #f6f7f8; color: #151717; }
-.tab-side-item.active { background: #151717; color: #ffffff; font-weight: 600; }
+/* 选中项：文字转白加粗；黑色底由 .tab-slider 提供（可滑动） */
+.tab-side-item.active { color: #ffffff; font-weight: 600; }
 
 /* 平台结构内嵌：只读 Skill（个人 / 非成员）禁用交互 */
 .platform-readonly { pointer-events: none; opacity: 0.92; }
@@ -1074,6 +1128,46 @@ function timeAgo(ts: string | null | undefined): string {
   overflow-y: auto;
   padding: 0.25rem 0.25rem 1.5rem;
 }
+
+/* 正文滑动容器：切换标签时新旧面板同处一格叠放，沿纵向滑入滑出。 */
+.tab-pane-group {
+  display: grid;
+}
+.tab-pane-group > * {
+  grid-area: 1 / 1;
+  align-self: start;
+}
+/* 仅在切换动画期间裁剪，避免纵向位移溢出滚动区。 */
+.tab-pane-group.animating {
+  overflow: hidden;
+}
+
+.pane-down-enter-active,
+.pane-down-leave-active,
+.pane-up-enter-active,
+.pane-up-leave-active {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.24s ease;
+  will-change: transform, opacity;
+}
+/* 选择更靠下的标签：新内容自下方滑入，旧内容向上滑出 */
+.pane-down-enter-from {
+  opacity: 0;
+  transform: translateY(26px);
+}
+.pane-down-leave-to {
+  opacity: 0;
+  transform: translateY(-26px);
+}
+/* 选择更靠上的标签：新内容自上方滑入，旧内容向下滑出 */
+.pane-up-enter-from {
+  opacity: 0;
+  transform: translateY(-26px);
+}
+.pane-up-leave-to {
+  opacity: 0;
+  transform: translateY(26px);
+}
+
 .form-section { max-width: 1320px; }
 .full-width { max-width: 100%; }
 
@@ -1144,6 +1238,24 @@ function timeAgo(ts: string | null | undefined): string {
 .form-input.textarea { resize: vertical; min-height: 80px; }
 .instructions-editor { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.6; min-height: 400px; }
 .code-area { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.8rem; }
+
+/* 查看态正文：渲染后的 Markdown 落在白色卡片里 */
+.instructions-view {
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  min-height: 120px;
+}
+/* 版本弹窗内的正文渲染区，限制高度可滚动 */
+.ver-md {
+  background: #ffffff;
+  border: 1px solid #ebedf0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  max-height: 360px;
+  overflow: auto;
+}
 
 .checkbox-row label {
   display: flex;
