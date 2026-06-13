@@ -9,10 +9,11 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import delete, func, select
 
+from app.core.config import settings
 from app.core.database import async_session_factory
 from app.models.project import Project, ProjectSkill, UserSkillDeployment
 from app.models.skill_change_log import SkillChangeLog
-from app.models.skill_package import TeamSkill
+from app.models.skill_package import PersonalSkill, TeamSkill
 from app.models.team import Team
 from app.models.user import User
 from app.services.content_transfer import (
@@ -1423,11 +1424,27 @@ async def _build_artifact_payload(
     if tool not in SUPPORTED_TOOLS:
         return {"success": False, "error": "tool must be cursor, codex, windsurf, claude, kiro, trae or qoder"}
 
-    async with async_session_factory() as session:
-        pkg = await session.get(TeamSkill, skill_id)
-        if not pkg or not pkg.store_path:
-            return {"success": False, "error": f"Skill '{skill_id}' not found"}
-        store_path = pkg.store_path
+    # store_path（= 对象键前缀）以对象存储为权威来源，与 _assert_skill_accessible
+    # (NativeSkillStore.get_by_id) 及 NativeSkillStore.build 的 _resolve_prefix 同口径。
+    # 历史实现改用 DB 行的 store_path 列：当对象存储已有该 Skill、但 DB 行缺失或
+    # store_path 列为空时（对象存储与库不同步 / 历史导入未回填 store_path），归属校验
+    # 已通过、build 也能成功，却在此处误报 "Skill '<id>' not found" 导致部署失败。
+    # 改为对象存储解析、DB 仅作兜底，消除该不一致。
+    store_path, _scope = NativeSkillStore._resolve_prefix(skill_id)
+    if not store_path:
+        async with async_session_factory() as session:
+            pkg = await session.get(TeamSkill, skill_id)
+            if pkg is None:
+                pkg = await session.get(PersonalSkill, skill_id)
+            store_path = pkg.store_path if pkg else ""
+    if not store_path:
+        logger.warning(
+            "[build-artifact] 未找到 Skill 内容 skill_id=%s backend=%s "
+            "（对象存储与 DB 均无 store_path）",
+            skill_id,
+            settings.STORAGE_BACKEND,
+        )
+        return {"success": False, "error": f"Skill '{skill_id}' not found"}
 
     try:
         build_result = await NativeSkillStore.build(skill_id, tool)
