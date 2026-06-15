@@ -266,6 +266,18 @@ class SkillVersionListResponse(BaseModel):
     error: Optional[str] = None
 
 
+class TeamSkillHistoryItem(SkillVersionItem):
+    """团队级聚合的提交记录：在版本快照基础上补 Skill 名，便于跨 Skill 展示。"""
+
+    skill_name: str = ""
+
+
+class TeamSkillHistoryResponse(BaseModel):
+    success: bool
+    items: List[TeamSkillHistoryItem] = []
+    error: Optional[str] = None
+
+
 class SkillVersionDetailResponse(BaseModel):
     success: bool
     version: Optional[SkillVersionDetail] = None

@@ -46,6 +46,27 @@ export interface MemberListResponse {
   error?: string
 }
 
+export interface TeamSkillHistoryItem {
+  id: string
+  skill_id: string
+  skill_name: string
+  team_id: string | null
+  seq: number
+  label: string
+  change_summary: string
+  resource_count: number
+  source: string
+  created_by: string
+  created_by_name: string
+  created_at: string | null
+}
+
+export interface TeamSkillHistoryResponse {
+  success: boolean
+  items: TeamSkillHistoryItem[]
+  error?: string
+}
+
 export async function createTeam(
   name: string,
   description: string = '',
@@ -147,4 +168,23 @@ export async function removeMember(
     `/teams/${teamId}/members/${userId}`,
   )
   return data as { success: boolean }
+}
+
+export async function listTeamSkillHistory(
+  teamId: string,
+  opts: { skillId?: string; limit?: number; offset?: number } = {},
+): Promise<TeamSkillHistoryResponse> {
+  // 开发者模式（跳过登录）下后端会因假 token 返回 401，这里回放空列表避免报错。
+  if (DEV_SKIP_AUTH) return { success: true, items: [] }
+  const { data } = await apiClient.get<TeamSkillHistoryResponse>(
+    `/teams/${teamId}/skill-history`,
+    {
+      params: {
+        skill_id: opts.skillId || undefined,
+        limit: opts.limit ?? 50,
+        offset: opts.offset ?? 0,
+      },
+    },
+  )
+  return data
 }

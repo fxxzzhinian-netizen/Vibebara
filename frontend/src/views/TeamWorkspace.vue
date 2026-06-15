@@ -7,6 +7,11 @@ import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { useProjectSyncStore } from '@/stores/projectSyncStore'
 import { useTeamSync } from '@/composables/useTeamSync'
 import { listNativeSkills, type NativeSkillItem } from '@/api/skillStore'
+import {
+  listTeamSkillHistory,
+  type TeamSkillHistoryItem,
+  type TeamMemberInfo,
+} from '@/api/teams'
 import { useSkillStore } from '@/stores/skillStore'
 import { toast } from '@/composables/useToast'
 import { getSkeletonCount, setSkeletonCount } from '@/utils/skeletonCount'
@@ -65,6 +70,15 @@ function formatTime(iso: string | null): string {
   return d.toLocaleDateString('zh-CN')
 }
 
+// 「最近一次提交」时间：后端返回的是无时区服务器时间字符串，
+// 直接按字符切片格式化为「YYYY-MM-DD HH:mm」，避免本地时区漂移。
+function formatCommitTime(iso: string | null): string {
+  if (!iso) return ''
+  const date = iso.slice(0, 10)
+  const time = iso.slice(11, 16)
+  return time ? `${date} ${time}` : date
+}
+
 // 顶栏中间导航对应的标签：team-projects → 项目；team-manage → 团队管理；其余 → 团队 SKILL。
 const activeTab = computed<'skill' | 'projects' | 'manage'>(() => {
   if (route.name === 'team-projects') return 'projects'
@@ -120,6 +134,87 @@ const canManageProjects = computed(() =>
 )
 
 const isOwner = computed(() => myRole.value === 'owner')
+
+// —— 角色 / 来源文案本地化 ——
+const ROLE_LABELS: Record<string, string> = {
+  owner: '所有者',
+  admin: '管理员',
+  member: '成员',
+}
+function roleLabel(role: string): string {
+  return ROLE_LABELS[role] || role
+}
+const SOURCE_LABELS: Record<string, string> = {
+  push: '部署推送',
+  web_edit: '网页编辑',
+  restore: '版本回滚',
+}
+function sourceLabel(src: string): string {
+  return SOURCE_LABELS[src] || src || '—'
+}
+
+// —— 分配权限（仅 owner）——
+const showAssignRole = ref(false)
+const roleSaving = ref<string | null>(null) // 正在保存的成员 user_id
+
+async function changeRole(member: TeamMemberInfo, role: string) {
+  if (member.role === role || roleSaving.value) return
+  roleSaving.value = member.user_id
+  const res = await teamStore.changeMemberRole(member.user_id, role)
+  roleSaving.value = null
+  if (res.success) {
+    toast.success(
+      `已将 ${member.display_name || member.username} 设为${roleLabel(role)}`,
+    )
+  } else {
+    toast.error(res.error || '修改成员角色失败')
+  }
+}
+
+// —— 提交历史 / 审计（owner + admin）——
+const HISTORY_PAGE = 20
+const historyItems = ref<TeamSkillHistoryItem[]>([])
+const historyLoading = ref(false)
+const historyHasMore = ref(false)
+const historyFilterSkillId = ref('')
+
+const historySkillOptions = computed(() =>
+  teamSkills.value.map((s) => ({ id: s.id, name: s.display_name || s.name || s.id })),
+)
+
+async function loadHistory(reset = true) {
+  const teamId = teamStore.currentTeamId
+  if (!teamId || historyLoading.value) return
+  if (reset) historyItems.value = []
+  historyLoading.value = true
+  try {
+    const offset = reset ? 0 : historyItems.value.length
+    const res = await listTeamSkillHistory(teamId, {
+      skillId: historyFilterSkillId.value || undefined,
+      limit: HISTORY_PAGE,
+      offset,
+    })
+    // 乱序保护：返回时若已切到别的团队则丢弃
+    if (teamStore.currentTeamId !== teamId) return
+    if (res.success) {
+      historyItems.value = reset ? res.items : [...historyItems.value, ...res.items]
+      historyHasMore.value = res.items.length === HISTORY_PAGE
+    }
+  } catch {
+    // 历史为辅助视图，失败不阻断管理页
+  } finally {
+    if (teamStore.currentTeamId === teamId) historyLoading.value = false
+  }
+}
+
+// 进入团队管理标签且具备管理权限时拉取聚合提交历史；切换团队/获得权限后自动重载。
+watch(
+  () => [activeTab.value, canManageProjects.value, teamStore.currentTeamId] as const,
+  ([tab, canManage]) => {
+    if (tab === 'manage' && canManage) loadHistory(true)
+  },
+  { immediate: true },
+)
 
 // —— 团队级实时同步：其他成员的结构性变更自动刷新，无需手动刷新 ——
 const { connected: teamSyncConnected } = useTeamSync(
@@ -485,11 +580,44 @@ watch(
               >
                 ×
               </button>
-              <h4>{{ project.name }}</h4>
-              <p>{{ project.description || '暂无描述' }}</p>
-              <div class="project-meta">
-                <span>{{ project.skill_count }} 个 Skill</span>
-                <span>{{ project.created_at?.slice(0, 10) }}</span>
+              <div class="project-head" :class="{ 'has-delete': canManageProjects }">
+                <h4 class="project-title">{{ project.name }}</h4>
+                <span class="project-date">{{ project.created_at?.slice(0, 10) }}</span>
+              </div>
+              <p class="project-desc">{{ project.description || '暂无描述' }}</p>
+
+              <div class="project-commit">
+                <svg class="stat-icon" viewBox="0 0 1024 1024" width="14" height="14" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                  <path d="M557.481057 77.283019a431.335849 431.335849 0 1 1-294.873359 746.128906 34.062491 34.062491 0 1 1 46.58234-49.692982 363.230189 363.230189 0 1 0-114.93917-268.288l43.703547-43.587622a34.04317 34.04317 0 0 1 45.712906-2.221887l2.434415 2.202566a34.04317 34.04317 0 0 1 2.202566 45.751547l-2.202566 2.434415-80.277736 80.258415a56.745057 56.745057 0 0 1-77.611472 2.55034l-2.724226-2.56966-80.277736-80.258415a34.04317 34.04317 0 0 1 45.751547-50.369208l2.434415 2.202566 32.845283 32.845283A431.316528 431.316528 0 0 1 557.481057 77.283019z m-11.341283 181.615094a34.04317 34.04317 0 0 1 34.043169 34.04317v190.058264l134.742944 134.704302a34.04317 34.04317 0 0 1 2.337811 45.635623l-2.337811 2.588981a34.062491 34.062491 0 0 1-48.166642 0l-142.973585-142.973585a33.985208 33.985208 0 0 1-11.766339-25.735245V292.941283a34.04317 34.04317 0 0 1 34.04317-34.04317z" fill="currentColor"></path>
+                </svg>
+                <span v-if="project.last_commit_at">最近一次提交：{{ formatCommitTime(project.last_commit_at) }}</span>
+                <span v-else class="muted">暂无提交记录</span>
+              </div>
+
+              <div class="project-foot">
+                <div class="project-tags">
+                  <span v-if="project.pending_commit_count" class="stat-tag tag-commit">
+                    <svg class="stat-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <circle cx="12" cy="12" r="9"></circle>
+                      <path d="M12 7.5V12l3 1.8"></path>
+                    </svg>
+                    {{ project.pending_commit_count }} 项待提交
+                  </span>
+                  <span v-if="project.pending_update_count" class="stat-tag tag-update">
+                    <svg class="stat-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <circle cx="12" cy="12" r="9"></circle>
+                      <path d="M8.5 13L12 9.5l3.5 3.5"></path>
+                    </svg>
+                    {{ project.pending_update_count }} 项待更新
+                  </span>
+                  <span class="stat-tag tag-link">
+                    <svg class="stat-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <path d="M10 13a4 4 0 0 0 6 .4l2.5-2.5a4 4 0 0 0-5.7-5.7l-1.4 1.4"></path>
+                      <path d="M14 11a4 4 0 0 0-6-.4l-2.5 2.5a4 4 0 0 0 5.7 5.7l1.4-1.4"></path>
+                    </svg>
+                    关联 {{ project.skill_count }} 个 Skill
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -533,14 +661,22 @@ watch(
                 <button class="btn-text" :disabled="profileSaving" @click="cancelEditProfile">取消</button>
               </template>
             </div>
-            <button
-              v-if="isOwner"
-              class="btn-add btn-add-danger"
-              title="解散团队（不可恢复）"
-              @click="askRemoveTeam"
-            >
-              解散团队
-            </button>
+            <div v-if="isOwner" class="toolbar-actions">
+              <button
+                class="btn-add btn-add-assign"
+                title="给成员分配管理员 / 成员权限"
+                @click="showAssignRole = true"
+              >
+                分配权限
+              </button>
+              <button
+                class="btn-add btn-add-danger"
+                title="解散团队（不可恢复）"
+                @click="askRemoveTeam"
+              >
+                解散团队
+              </button>
+            </div>
           </div>
 
           <!-- 团队信息（标题在卡片外） -->
@@ -586,11 +722,58 @@ watch(
               <li v-for="m in teamStore.members" :key="m.user_id">
                 <span class="member-avatar">{{ (m.display_name || m.username || '?').slice(0, 1).toUpperCase() }}</span>
                 <span class="member-name">{{ m.display_name || m.username }}</span>
-                <span class="member-role">{{ m.role }}</span>
+                <span class="member-role" :class="`role-${m.role}`">{{ roleLabel(m.role) }}</span>
               </li>
               <li v-if="!teamStore.members.length" class="member-empty">暂无成员</li>
             </ul>
           </div>
+
+          <!-- 提交历史 / 审计（仅 owner / admin 可见） -->
+          <template v-if="canManageProjects">
+            <div class="manage-section-title">
+              提交历史 / 审计
+              <select
+                v-if="historySkillOptions.length"
+                v-model="historyFilterSkillId"
+                class="history-filter"
+                @change="loadHistory(true)"
+              >
+                <option value="">全部 Skill</option>
+                <option v-for="o in historySkillOptions" :key="o.id" :value="o.id">{{ o.name }}</option>
+              </select>
+            </div>
+            <div class="manage-card">
+              <ul v-if="historyItems.length" class="history-list">
+                <li v-for="h in historyItems" :key="h.id" class="history-item">
+                  <div class="history-head">
+                    <span class="history-skill">{{ h.skill_name }}</span>
+                    <span class="history-seq">v{{ h.seq }}</span>
+                    <span class="history-source" :class="`src-${h.source}`">{{ sourceLabel(h.source) }}</span>
+                  </div>
+                  <div class="history-summary">{{ h.change_summary || '（无变更说明）' }}</div>
+                  <div class="history-meta">
+                    <span>{{ h.created_by_name || h.created_by || '—' }}</span>
+                    <span class="dot">·</span>
+                    <span>{{ formatCommitTime(h.created_at) }}</span>
+                    <template v-if="h.resource_count">
+                      <span class="dot">·</span>
+                      <span>{{ h.resource_count }} 个资源</span>
+                    </template>
+                  </div>
+                </li>
+              </ul>
+              <div v-else-if="historyLoading" class="history-empty">加载中…</div>
+              <div v-else class="history-empty">暂无提交记录</div>
+              <button
+                v-if="historyHasMore"
+                class="history-more"
+                :disabled="historyLoading"
+                @click="loadHistory(false)"
+              >
+                {{ historyLoading ? '加载中…' : '加载更多' }}
+              </button>
+            </div>
+          </template>
         </section>
         </transition>
         </div>
@@ -659,6 +842,29 @@ watch(
           {{ dissolvingTeam ? '解散中…' : '确认解散' }}
         </button>
       </template>
+    </BaseModal>
+
+    <!-- 分配权限（仅 owner）：给成员设置 管理员 / 成员 角色 -->
+    <BaseModal v-model="showAssignRole" title="分配权限" width="460px">
+      <p class="assign-hint">仅所有者可调整成员角色。管理员可编辑团队信息、查看提交历史。</p>
+      <ul class="assign-list">
+        <li v-for="m in teamStore.members" :key="m.user_id" class="assign-row">
+          <span class="member-avatar">{{ (m.display_name || m.username || '?').slice(0, 1).toUpperCase() }}</span>
+          <span class="assign-name">{{ m.display_name || m.username }}</span>
+          <span v-if="m.role === 'owner'" class="member-role role-owner">所有者</span>
+          <select
+            v-else
+            class="assign-select"
+            :value="m.role"
+            :disabled="roleSaving === m.user_id"
+            @change="changeRole(m, ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="admin">管理员</option>
+            <option value="member">成员</option>
+          </select>
+        </li>
+        <li v-if="!teamStore.members.length" class="member-empty">暂无成员</li>
+      </ul>
     </BaseModal>
 
     <!-- 新增 Skill 到团队仓库（方式/解析/导入逻辑见共享组件 AddSkillModal） -->
@@ -809,6 +1015,22 @@ watch(
   border: 1px solid #dc2626;
 }
 .btn-add-danger:hover { background: #b91c1c; border-color: #b91c1c; }
+
+/* 工具栏右侧多操作按钮组（分配权限 + 解散团队） */
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* 分配权限：团队紫纯色按钮（遵循 solid-color-buttons 规范，边框与底色同色） */
+.btn-add-assign {
+  background: #4f46e5;
+  color: #ffffff;
+  border: 1px solid #4f46e5;
+}
+.btn-add-assign:hover { background: #4338ca; border-color: #4338ca; }
 
 .manage-error {
   margin-bottom: 16px;
@@ -973,18 +1195,25 @@ watch(
   font-size: 0.84rem;
 }
 
+/* 项目卡片网格 / 卡片尺寸与「团队 SKILL」保持一致（同列宽、同间距、同高度基线） */
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.1rem;
+  /* 同行卡片等高，配合卡片内 .project-foot 贴底 */
+  align-items: stretch;
 }
 
 .project-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-height: 180px;
   background: #ffffff;
   border: 1px solid #ebedf0;
   border-radius: 16px;
-  padding: 20px;
+  padding: 1.25rem 1.3rem;
   cursor: pointer;
   transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
@@ -1030,24 +1259,120 @@ watch(
   margin-bottom: 12px;
 }
 
-.project-card h4 {
-  margin: 0 0 8px;
+/* 标题行：项目名（左）+ 创建日期（右上角，与标题同行） */
+.project-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 管理者卡片悬停时右上角会出现删除按钮，预留空间避免与日期重叠 */
+.project-head.has-delete {
+  padding-right: 22px;
+}
+
+.project-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
   font-size: 0.98rem;
   font-weight: 600;
   color: #151717;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.project-card p {
+.project-desc {
+  margin: 0;
   font-size: 0.84rem;
+  line-height: 1.55;
   color: #6b7280;
-  margin: 0 0 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* 预留两行高度，描述长短不改变卡片高度（与团队 SKILL 卡片一致的做法） */
+  min-height: 3.1em;
 }
 
-.project-meta {
+/* 最近一次提交行：时钟图标 + 时间，弱化为辅助信息 */
+.project-commit {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 5px;
   font-size: 0.76rem;
   color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-commit .muted {
+  color: #b6bcc4;
+}
+
+/* 卡片底部：三个状态标签，贴底对齐（margin-top: auto），上方分隔线 */
+.project-foot {
+  margin-top: auto;
+  padding-top: 0.7rem;
+  border-top: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+}
+
+.project-tags {
+  display: flex;
+  /* 三个标签固定占一行，不换行（底部信息行恒为单行高度） */
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 创建日期：移到标题行右上角，被标题（flex:1）推到最右 */
+.project-date {
+  flex-shrink: 0;
+  font-size: 0.74rem;
+  color: #b6bcc4;
+  white-space: nowrap;
+}
+
+/* 三个状态小标签：柔和底色 + 同色文字（软标签，非按钮，不受纯色按钮规范约束） */
+.stat-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.tag-commit {
+  background: #fff1e6;
+  color: #ea580c;
+}
+
+.tag-update {
+  background: #efeafe;
+  color: #7c3aed;
+}
+
+.tag-link {
+  background: #e7f8ee;
+  color: #16a34a;
+}
+
+/* 三个图标统一为线性图标：同一 viewBox(0 0 24 24) + 同一线宽(stroke-width:2)，
+   保证尺寸与线条粗细完全一致；颜色随父级文字 currentColor */
+.stat-icon {
+  flex-shrink: 0;
+  display: block;
+  width: 14px;
+  height: 14px;
 }
 
 /* —— 骨架屏（团队 Skill / 团队项目共用，与个人仓库一致） —— */
@@ -1287,11 +1612,142 @@ watch(
   border-radius: 999px;
   padding: 0.15rem 0.6rem;
 }
+/* 角色徽章按角色着色：所有者(琥珀) / 管理员(紫) / 成员(灰) */
+.member-role.role-owner { color: #b45309; background: #fef3c7; }
+.member-role.role-admin { color: #4f46e5; background: #eef2ff; }
+.member-role.role-member { color: #6b7280; background: #f3f4f6; }
 
 .member-empty {
   color: #9ca3af;
   font-size: 0.84rem;
 }
+
+/* —— 分配权限弹窗 —— */
+.assign-hint {
+  margin: 0 0 12px;
+  font-size: 0.82rem;
+  color: #6b7280;
+  line-height: 1.5;
+}
+.assign-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.assign-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid #f2f3f5;
+}
+.assign-row:first-child { border-top: none; padding-top: 0; }
+.assign-name {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #151717;
+}
+.assign-select {
+  flex-shrink: 0;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #151717;
+  cursor: pointer;
+}
+.assign-select:disabled { opacity: 0.6; cursor: default; }
+
+/* —— 提交历史 / 审计 —— */
+.history-filter {
+  margin-left: auto;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+}
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.history-item {
+  padding: 12px 0;
+  border-top: 1px solid #f2f3f5;
+}
+.history-item:first-child { border-top: none; padding-top: 0; }
+.history-item:last-child { padding-bottom: 0; }
+.history-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.history-skill {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #151717;
+}
+.history-seq {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #4f46e5;
+  background: #eef2ff;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+.history-source {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+.history-source.src-push { color: #ea580c; background: #fff1e6; }
+.history-source.src-restore { color: #b45309; background: #fef3c7; }
+.history-source.src-web_edit { color: #16a34a; background: #e7f8ee; }
+.history-summary {
+  font-size: 0.84rem;
+  color: #374151;
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+.history-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+.history-meta .dot { color: #d1d5db; }
+.history-empty {
+  color: #9ca3af;
+  font-size: 0.84rem;
+  text-align: center;
+  padding: 8px 0;
+}
+.history-more {
+  display: block;
+  margin: 12px auto 0;
+  padding: 0.4rem 1.1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+}
+.history-more:hover:not(:disabled) { background: #f9fafb; }
+.history-more:disabled { opacity: 0.6; cursor: default; }
 
 .empty-hint {
   text-align: center;

@@ -352,6 +352,9 @@ function makeProject(
     description: '',
     created_by: 'dev-user',
     skill_count: 0,
+    pending_commit_count: 0,
+    pending_update_count: 0,
+    last_commit_at: null,
     created_at: NOW,
     updated_at: NOW,
     ...partial,
@@ -366,6 +369,9 @@ const DEV_PROJECTS: Record<string, ProjectInfo[]> = {
       name: '官网改版',
       description: '落地页与定价页重做，统一组件与动效。',
       skill_count: 3,
+      pending_commit_count: 2,
+      pending_update_count: 1,
+      last_commit_at: '2026-06-10T18:24:00',
     }),
     makeProject({
       id: 'proj-dashboard',
@@ -373,6 +379,8 @@ const DEV_PROJECTS: Record<string, ProjectInfo[]> = {
       name: '控制台 2.0',
       description: '数据看板信息架构升级。',
       skill_count: 2,
+      pending_update_count: 1,
+      last_commit_at: '2026-06-08T10:12:00',
     }),
   ],
   'design-guild': [

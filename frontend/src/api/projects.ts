@@ -18,6 +18,12 @@ export interface ProjectInfo {
   description: string
   created_by: string
   skill_count: number
+  // 当前用户在该项目下本地有改动待推送的 Skill 数（待提交）
+  pending_commit_count: number
+  // 当前用户在该项目下团队仓库有新版本可拉取的 Skill 数（待更新）
+  pending_update_count: number
+  // 该项目最近一次推送到团队仓库（提交）的时间
+  last_commit_at: string | null
   created_at: string | null
   updated_at: string | null
 }

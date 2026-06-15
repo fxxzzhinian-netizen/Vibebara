@@ -100,6 +100,12 @@ class ProjectInfo(BaseModel):
     description: str
     created_by: str
     skill_count: int = 0
+    # 当前用户在该项目下本地有改动待推送的 Skill 数（待提交）
+    pending_commit_count: int = 0
+    # 当前用户在该项目下团队仓库有新版本可拉取的 Skill 数（待更新）
+    pending_update_count: int = 0
+    # 该项目最近一次推送到团队仓库（提交）的时间
+    last_commit_at: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

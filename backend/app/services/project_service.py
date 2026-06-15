@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import case, delete, func, select
 
 from app.core.config import settings
 from app.core.database import async_session_factory
@@ -44,7 +44,13 @@ GITIGNORE_BLOCK = [
 ]
 
 
-def _project_to_dict(project: Project, skill_count: int = 0) -> Dict[str, Any]:
+def _project_to_dict(
+    project: Project,
+    skill_count: int = 0,
+    pending_commit_count: int = 0,
+    pending_update_count: int = 0,
+    last_commit_at: Optional[str] = None,
+) -> Dict[str, Any]:
     return {
         "id": project.id,
         "team_id": project.team_id,
@@ -52,6 +58,9 @@ def _project_to_dict(project: Project, skill_count: int = 0) -> Dict[str, Any]:
         "description": project.description,
         "created_by": project.created_by,
         "skill_count": skill_count,
+        "pending_commit_count": pending_commit_count,
+        "pending_update_count": pending_update_count,
+        "last_commit_at": last_commit_at,
         "created_at": project.created_at.isoformat() if project.created_at else None,
         "updated_at": project.updated_at.isoformat() if project.updated_at else None,
     }
@@ -278,7 +287,12 @@ async def delete_project(project_id: str, user_id: str = "system") -> bool:
     return True
 
 
-async def list_projects(team_id: str) -> List[Dict[str, Any]]:
+async def list_projects(team_id: str, user_id: str) -> List[Dict[str, Any]]:
+    """团队项目列表（含当前用户视角的卡片摘要）。
+
+    每张卡片附带：关联 Skill 数、当前用户的「待提交」（本地有改动待推送）/
+    「待更新」（团队仓库有新版本可拉取）数，以及该项目「最近一次提交（推送）」时间。
+    """
     async with async_session_factory() as session:
         result = await session.execute(
             select(Project, func.count(ProjectSkill.id).label("cnt"))
@@ -287,7 +301,62 @@ async def list_projects(team_id: str) -> List[Dict[str, Any]]:
             .group_by(Project.id)
             .order_by(Project.created_at.desc())
         )
-        return [_project_to_dict(project, skill_count=cnt) for project, cnt in result.all()]
+        rows = result.all()
+        project_ids = [project.id for project, _ in rows]
+        if not project_ids:
+            return []
+
+        # 当前用户在各项目下的待提交 / 待更新数（按部署实例聚合）。
+        # 待提交 = 本地有改动（local_dirty）；待更新 = 团队仓库有新版本（status=outdated）。
+        dep_result = await session.execute(
+            select(
+                UserSkillDeployment.project_id,
+                func.sum(
+                    case((UserSkillDeployment.local_dirty.is_(True), 1), else_=0)
+                ).label("pending_commit"),
+                func.sum(
+                    case((UserSkillDeployment.status == "outdated", 1), else_=0)
+                ).label("pending_update"),
+            )
+            .where(
+                UserSkillDeployment.user_id == user_id,
+                UserSkillDeployment.project_id.in_(project_ids),
+            )
+            .group_by(UserSkillDeployment.project_id)
+        )
+        pending_map = {
+            pid: (int(commit or 0), int(update or 0))
+            for pid, commit, update in dep_result.all()
+        }
+
+        # 各项目最近一次「提交」（推送到团队仓库）的时间。
+        commit_result = await session.execute(
+            select(
+                SkillChangeLog.project_id,
+                func.max(SkillChangeLog.created_at).label("last_commit"),
+            )
+            .where(
+                SkillChangeLog.project_id.in_(project_ids),
+                SkillChangeLog.action == "pushed",
+            )
+            .group_by(SkillChangeLog.project_id)
+        )
+        commit_map = {pid: ts for pid, ts in commit_result.all()}
+
+        out: List[Dict[str, Any]] = []
+        for project, cnt in rows:
+            commit, update = pending_map.get(project.id, (0, 0))
+            last_commit = commit_map.get(project.id)
+            out.append(
+                _project_to_dict(
+                    project,
+                    skill_count=cnt or 0,
+                    pending_commit_count=commit,
+                    pending_update_count=update,
+                    last_commit_at=last_commit.isoformat() if last_commit else None,
+                )
+            )
+        return out
 
 
 # ------------------------------------------------------------------

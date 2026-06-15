@@ -8,6 +8,7 @@ import {
   listMembers,
   updateTeam,
   updateTeamSettings,
+  updateMemberRole,
   deleteTeam,
   type TeamInfo,
   type TeamMemberInfo,
@@ -133,6 +134,30 @@ export const useTeamStore = defineStore('team', () => {
     return res
   }
 
+  // 调整成员角色（仅 owner）。成功后重新拉取成员列表刷新 UI 上的角色徽章。
+  async function changeMemberRole(
+    userId: string,
+    role: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!currentTeamId.value) return { success: false, error: 'No team selected' }
+    const teamId = currentTeamId.value
+    try {
+      const res = await updateMemberRole(teamId, userId, role)
+      if (res.success) {
+        const mRes = await listMembers(teamId)
+        if (mRes.success && currentTeamId.value === teamId) {
+          members.value = mRes.members
+        }
+      }
+      return res
+    } catch (e: any) {
+      return {
+        success: false,
+        error: e?.response?.data?.detail || e.message || '修改成员角色失败',
+      }
+    }
+  }
+
   async function remove(
     teamId: string,
   ): Promise<{ success: boolean; error?: string }> {
@@ -181,6 +206,7 @@ export const useTeamStore = defineStore('team', () => {
     join,
     updateProfile,
     updateSettings,
+    changeMemberRole,
     remove,
     handleTeamDeleted,
     clearCurrent,

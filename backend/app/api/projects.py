@@ -76,7 +76,7 @@ async def list_projects(
 ):
     if not await team_service.is_team_member(team_id, user_id):
         raise HTTPException(status_code=403, detail="无权访问该团队")
-    projects = await project_service.list_projects(team_id)
+    projects = await project_service.list_projects(team_id, user_id)
     return {"success": True, "projects": projects}
 
 

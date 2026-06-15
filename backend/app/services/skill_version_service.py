@@ -174,6 +174,44 @@ class SkillVersionService:
             ]
 
     @classmethod
+    async def list_team_versions(
+        cls,
+        team_id: str,
+        *,
+        skill_id: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """团队维度聚合：该团队下所有（或指定）Skill 的版本提交记录。
+
+        join `team_skills` 补 `skill_name`，按 `created_at` 倒序分页，供团队管理页
+        「提交历史 / 审计」聚合视图使用（仅 owner/admin 可访问，闸门在 API 层）。
+        """
+        limit = max(1, min(int(limit or 50), 200))
+        offset = max(0, int(offset or 0))
+        async with async_session_factory() as session:
+            stmt = (
+                select(SkillVersion, TeamSkill.name, TeamSkill.display_name)
+                .join(TeamSkill, TeamSkill.id == SkillVersion.skill_id, isouter=True)
+                .where(SkillVersion.team_id == team_id)
+            )
+            if skill_id:
+                stmt = stmt.where(SkillVersion.skill_id == skill_id)
+            stmt = (
+                stmt.order_by(SkillVersion.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            rows = (await session.execute(stmt)).all()
+            names = await cls._display_names([r[0].created_by for r in rows])
+            items: List[Dict[str, Any]] = []
+            for ver, skill_name, skill_display in rows:
+                data = cls._row_to_dict(ver, include_content=False, name_map=names)
+                data["skill_name"] = skill_display or skill_name or ver.skill_id
+                items.append(data)
+            return items
+
+    @classmethod
     async def get_version(cls, version_id: str) -> Optional[Dict[str, Any]]:
         async with async_session_factory() as session:
             row = await session.get(SkillVersion, version_id)

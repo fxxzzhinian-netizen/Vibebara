@@ -1,8 +1,10 @@
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.auth import get_current_user_id
+from app.schemas.skill_forge import TeamSkillHistoryResponse
 from app.schemas.team import (
     InviteCodeResponse,
     JoinTeamRequest,
@@ -15,6 +17,7 @@ from app.schemas.team import (
     UpdateMemberRoleRequest,
 )
 from app.services import team_service
+from app.services.skill_version_service import SkillVersionService
 
 logger = logging.getLogger(__name__)
 
@@ -136,9 +139,27 @@ async def update_member_role(
     user_id: str = Depends(get_current_user_id),
 ):
     role = await team_service.get_member_role(team_id, user_id)
-    if role not in ("owner", "admin"):
-        raise HTTPException(status_code=403, detail="仅管理员可修改成员角色")
+    if role != "owner":
+        raise HTTPException(status_code=403, detail="仅 owner 可分配权限")
     return await team_service.update_member_role(team_id, target_user_id, data.role)
+
+
+@api_router.get("/{team_id}/skill-history", response_model=TeamSkillHistoryResponse)
+async def list_team_skill_history(
+    team_id: str,
+    skill_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    user_id: str = Depends(get_current_user_id),
+):
+    """团队提交历史 / 审计聚合：仅 owner/admin 可查看该团队所有 Skill 的版本提交记录。"""
+    role = await team_service.get_member_role(team_id, user_id)
+    if role not in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="仅管理员可查看提交历史")
+    items = await SkillVersionService.list_team_versions(
+        team_id, skill_id=skill_id, limit=limit, offset=offset
+    )
+    return {"success": True, "items": items}
 
 
 @api_router.delete("/{team_id}/members/{target_user_id}")
