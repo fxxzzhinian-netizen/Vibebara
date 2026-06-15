@@ -296,10 +296,6 @@ function changeItemText(item: ChangeItem): string {
   return `${verb}资源 ${item.path}`
 }
 
-const incompleteFields = computed(
-  () => (cfg.value?._import_meta?.incomplete_fields ?? []) as string[],
-)
-
 // 表单取值源：编辑态读草稿、查看态读已保存配置；输入框在查看态禁用（与个人编辑器视觉一致）。
 const view = computed<Record<string, any>>(() =>
   editing.value && draft.value ? draft.value : (cfg.value ?? {}),
@@ -513,11 +509,6 @@ function timeAgo(ts: string | null | undefined): string {
                       placeholder="简要描述 Skill 的用途"
                       @input="setDraft('description', ($event.target as HTMLTextAreaElement).value)"
                     ></textarea>
-                  </div>
-                  <div v-if="incompleteFields.length" class="incomplete-hint">
-                    <span>平台特有字段待补齐</span>
-                    <HelpTip :text="'待补齐字段：' + incompleteFields.join(', ')" :size="14" />
-                    <span class="hint-action" @click="activeTab = 'platform'">查看平台结构 →</span>
                   </div>
                   <div class="meta-inline">
                     <span class="meta-item">
@@ -1267,22 +1258,6 @@ function timeAgo(ts: string | null | undefined): string {
   cursor: pointer;
 }
 .checkbox-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: #151717; }
-
-.incomplete-hint {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-  padding: 0.5rem 0.75rem;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  border-radius: 8px;
-  color: #b45309;
-  font-size: 0.82rem;
-  margin-top: 0.5rem;
-}
-.hint-action { display: inline-block; margin-left: 0.5rem; color: #4f46e5; cursor: pointer; font-weight: 500; }
-.hint-action:hover { text-decoration: underline; }
 
 /* 版本弹窗底部操作按钮 */
 .hdr-btn {

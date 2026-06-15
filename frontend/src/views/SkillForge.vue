@@ -2,8 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSkillStore } from '@/stores/skillStore'
-import { useTeamStore } from '@/stores/teamStore'
-import { copySkillToTeam, type NativeSkillItem } from '@/api/skillStore'
+import { type NativeSkillItem } from '@/api/skillStore'
 import { promptOpenAfterDeploy } from '@/utils/openAfterDeploy'
 import AppTopNav from '@/components/AppTopNav.vue'
 import FolderPicker from '@/components/FolderPicker.vue'
@@ -21,7 +20,6 @@ import { useDirectionalTransition } from '@/composables/useDirectionalTransition
 
 const router = useRouter()
 const store = useSkillStore()
-const teamStore = useTeamStore()
 
 const showCreateModal = ref(false)
 
@@ -261,36 +259,6 @@ async function handleLLMTest() {
   }
 }
 
-// 放入团队 Skill 仓库（复制语义）
-const showTeamRepoModal = ref(false)
-const copyTeamId = ref('')
-const copyingTeam = ref(false)
-
-function openTeamRepoModal() {
-  if (!store.currentId || isTeamSkill.value) return
-  copyTeamId.value = teamStore.teams[0]?.id || ''
-  showTeamRepoModal.value = true
-}
-
-async function handleCopyToTeam() {
-  if (!store.currentId || !copyTeamId.value) return
-  copyingTeam.value = true
-  try {
-    const res = await copySkillToTeam(copyTeamId.value, store.currentId)
-    if (res.success) {
-      const teamName = teamStore.teams.find((t) => t.id === copyTeamId.value)?.name || '团队'
-      toast.success(`已放入「${teamName}」Skill 仓库`)
-      showTeamRepoModal.value = false
-    } else {
-      toast.error(res.error || '放入失败')
-    }
-  } catch (e: any) {
-    toast.error(e?.response?.data?.detail || e.message || '放入失败')
-  } finally {
-    copyingTeam.value = false
-  }
-}
-
 function timeAgo(iso: string | null): string {
   if (!iso) return '-'
   const d = new Date(iso)
@@ -304,7 +272,6 @@ function timeAgo(iso: string | null): string {
 
 onMounted(() => {
   store.fetchList('personal')
-  teamStore.fetchTeams()
 })
 </script>
 
@@ -379,12 +346,6 @@ onMounted(() => {
               </svg>
               删除
             </button>
-            <button class="btn tool-btn team-repo" :disabled="isTeamSkill || !store.currentId" @click="openTeamRepoModal" title="复制一份到团队 Skill 仓库">
-              <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <path fill="currentColor" d="M629.956 486.519c44.718-34.903 73.61-88.978 73.61-149.734 0-105.01-85.99-190.453-191.72-190.453s-191.72 85.444-191.72 190.453c0 60.756 28.886 114.83 73.609 149.734-117.862 46.786-201.415 161.14-201.415 294.66v63.467c0 17.554 14.295 31.75 31.943 31.75h575.16c17.653 0 31.944-14.196 31.944-31.75V781.18c0.001-133.572-83.552-247.876-201.411-294.661zM373.152 336.534c0-75.995 62.198-137.774 138.694-137.774 76.492 0 138.693 61.78 138.693 137.774 0 75.976-62.2 137.774-138.693 137.774-76.496 0-138.694-61.773-138.694-137.774z m410.165 487.78h-542.97v-33.713c0-148.708 121.79-269.705 271.523-269.705 149.68 0 271.447 120.997 271.447 269.705v33.713zM264.212 515.95l6.24-1.489c13.4-4.453 22.945-16.136 22.945-29.858 0-13.253-8.924-24.586-21.575-29.36-34.212-15.44-56.284-49.323-56.284-86.663 0-42.311 36.768-77.958 75.251-90.315 6.737-20.659 16.928-39.777 29.904-56.681a214.079 214.079 0 0 1 7.137-10.963c-2.584-0.124-5.045-0.768-7.703-0.768-88.083 0-159.775 71.196-159.775 158.728 0 40.175 15.41 77.838 41.564 106.478C118.734 517.866 64.49 603.482 64.49 700.339v49.096c0 17.553 14.296 31.745 31.944 31.745h57.25c0-21.75 2.24-35.695 6.44-56.208h-40.446V700.34c0-87.736 59.365-163.034 144.535-184.39z m557.213-40.892c26.155-28.64 41.565-66.303 41.565-106.478 0-87.533-71.67-158.756-159.776-158.756-2.66 0-5.12 0.649-7.704 0.771a213.392 213.392 0 0 1 7.137 10.963c12.978 16.904 23.167 36.022 29.881 56.683 38.484 12.352 80.57 48.004 80.57 90.314 0 37.341-22.101 71.248-56.284 86.664-12.655 4.77-21.58 16.107-21.58 29.36 0 13.723 9.574 25.406 22.946 29.853l6.24 1.493c85.199 21.38 144.536 96.655 144.536 184.413v24.632h-45.79c4.225 20.514 6.44 34.458 6.44 56.209h57.25c17.677 0 31.945-14.192 31.945-31.745v-49.096c0.052-96.856-54.193-182.472-137.376-225.28z m0 0" />
-              </svg>
-              放入团队
-            </button>
             <span class="toolbar-divider" aria-hidden="true"></span>
             <button class="btn tool-btn deploy" :disabled="isTeamSkill || !store.currentId" @click="showDeployModal = true">
               <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -435,11 +396,6 @@ onMounted(() => {
                   <HelpTip text="说明 Skill 做什么、何时使用；所有平台共用。" :size="14" />
                 </label>
                 <textarea :value="cfg.description" @input="setField('description', ($event.target as HTMLTextAreaElement).value)" class="form-input textarea" rows="5" placeholder="简要描述 Skill 的用途"></textarea>
-              </div>
-              <div v-if="cfg._import_meta?.incomplete_fields?.length" class="incomplete-hint">
-                <span>平台特有字段待补齐</span>
-                <HelpTip :text="'待补齐字段：' + cfg._import_meta.incomplete_fields.join(', ')" :size="14" />
-                <span class="hint-action" @click="activeTab = 'platform'">查看平台结构 →</span>
               </div>
               <div class="meta-inline">
                 <span class="meta-item">
@@ -568,27 +524,6 @@ onMounted(() => {
 
     <!-- ===== Create / Import Modal（手动新建 / 从链接导入 / 从本地文件夹 / 从 IDE 导入） ===== -->
     <AddSkillModal v-model="showCreateModal" scope="personal" @done="onAddSkillDone" />
-
-    <!-- ===== Copy to Team Repo Modal ===== -->
-    <BaseModal v-model="showTeamRepoModal" title="放入团队 Skill 仓库">
-      <p class="modal-hint">将个人 Skill「{{ store.currentId }}」复制一份到所选团队的 Skill 仓库，个人仓库保留原件。</p>
-      <div v-if="teamStore.teams.length === 0" class="form-error">
-        你还没有加入任何团队，请先在「团队协作」中创建或加入团队。
-      </div>
-      <div v-else class="form-row">
-        <label>目标团队</label>
-        <BaseSelect
-          v-model="copyTeamId"
-          :options="teamStore.teams.map((t) => ({ value: t.id, label: t.name }))"
-          placeholder="选择团队"
-        />
-      </div>
-      <template #footer>
-        <button class="btn primary" :disabled="copyingTeam || !copyTeamId || teamStore.teams.length === 0" @click="handleCopyToTeam">
-          {{ copyingTeam ? '放入中...' : '确认放入' }}
-        </button>
-      </template>
-    </BaseModal>
 
     <!-- ===== Preview Modal ===== -->
     <BaseModal v-model="showPreview" :title="`构建预览 — ${previewTarget}`" :width="720">
@@ -1098,18 +1033,6 @@ onMounted(() => {
   border-color: #15803d;
   color: #ffffff;
   box-shadow: 0 6px 14px rgba(22, 163, 74, 0.2);
-}
-
-.tool-btn.team-repo {
-  background: #4f46e5;
-  color: #ffffff;
-  border-color: #4f46e5;
-}
-.tool-btn.team-repo:hover:not(:disabled) {
-  background: #4338ca;
-  border-color: #4338ca;
-  color: #ffffff;
-  box-shadow: 0 6px 14px rgba(79, 70, 229, 0.2);
 }
 
 .tool-btn.danger {
@@ -1633,30 +1556,6 @@ onMounted(() => {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
-
-.incomplete-hint {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-  padding: 0.5rem 0.75rem;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
-  border-radius: 8px;
-  color: #b45309;
-  font-size: 0.82rem;
-  margin-top: 0.5rem;
-}
-
-/* Hint action link */
-.hint-action {
-  display: inline-block;
-  margin-left: 0.5rem;
-  color: #4f46e5;
-  cursor: pointer;
-  font-weight: 500;
-}
-.hint-action:hover { text-decoration: underline; }
 
 .full-width { max-width: 100%; }
 
