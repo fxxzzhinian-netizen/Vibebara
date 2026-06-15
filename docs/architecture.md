@@ -289,15 +289,17 @@ skill-forge migrate -p ./my-skill -t codex         # 迁移到 Codex
 
 ## LLM 能力集成
 
-通过 GPTs API Gateway 统一接入大模型能力，当前用于 Skill Forge 的字段补齐场景。
+大模型能力统一经 **Provider 抽象层**（`app/services/llm/`）接入：上层业务只面向
+`LLMProvider` 接口编程，切换厂商仅改配置。默认厂商为 **百炼**（阿里云 DashScope OpenAI 兼容模式）。
 
 ### 配置
 
 | 配置项 | 环境变量 | 说明 |
 |--------|----------|------|
-| Base URL | `LLM_BASE_URL` | `https://api.gptsapi.net`（兼容 OpenAI/Claude/Gemini） |
-| API Key | `LLM_API_KEY` | GPTs API 密钥 |
-| Model | `LLM_MODEL` | 默认 `gpt-4o` |
+| Provider | `LLM_PROVIDER` | 厂商：`bailian`（默认，阿里云百炼/DashScope 兼容模式）/ `openai-compatible`（其它 OpenAI 兼容网关） |
+| Base URL | `LLM_BASE_URL` | 接入点（不含 `/v1`，抽象层自动补全）。留空 → 取厂商预设（bailian → `https://dashscope.aliyuncs.com/compatible-mode`） |
+| API Key | `LLM_API_KEY` | 百炼 API Key（控制台「API-KEY 管理」获取，形如 `sk-xxxx`） |
+| Model | `LLM_MODEL` | 留空 → 取厂商预设（bailian → `qwen-plus`）；常用 `qwen-plus`/`qwen-max`/`qwen-turbo` |
 
 ### 当前用途
 
@@ -308,7 +310,7 @@ skill-forge migrate -p ./my-skill -t codex         # 迁移到 Codex
 ```
 用户点击【部署】
     → 后端检测缺失字段
-    → POST GPTs API (OpenAI-compatible chat completions)
+    → LLMProvider.chat()（百炼 DashScope 兼容模式 chat completions）
     → 返回建议值 JSON
     → 前端展示确认对话框
     → 用户确认/修改
@@ -318,7 +320,8 @@ skill-forge migrate -p ./my-skill -t codex         # 迁移到 Codex
 
 ### 服务模块
 
-- `app/services/llm_service.py` — LLM 调用封装（`complete_skill_fields`、`detect_incomplete_fields`）
+- `app/services/llm/` — LLM Provider 抽象层（`LLMProvider` 接口 + `OpenAICompatibleProvider` 实现 + 厂商预设/工厂 `get_provider`）
+- `app/services/llm_service.py` — 业务封装（`complete_skill_fields`、`detect_incomplete_fields`、`test_connection`），经抽象层调用
 
 ---
 

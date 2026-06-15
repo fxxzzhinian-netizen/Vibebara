@@ -110,9 +110,17 @@ class Settings(BaseSettings):
     # 启动时按 COS 前缀列举重建 DB 索引（_sync_from_filesystem）。skill 多时可关，信任 DB。
     SKILL_STORE_SYNC_ON_START: bool = True
 
-    LLM_BASE_URL: str = "https://api.gptsapi.net"
+    # ------------------------------------------------------------------
+    # 大模型接口（统一经 Provider 抽象层，见 app/services/llm/）
+    # ------------------------------------------------------------------
+    # 厂商：bailian（阿里云百炼 / DashScope 兼容模式，默认）| openai-compatible（其它 OpenAI 兼容网关）
+    LLM_PROVIDER: str = "bailian"
+    # 接入点（不含 /v1，由抽象层自动补全）。留空 → 取所选厂商预设：
+    #   bailian → https://dashscope.aliyuncs.com/compatible-mode
+    LLM_BASE_URL: str = ""
     LLM_API_KEY: str = ""
-    LLM_MODEL: str = "gpt-4o"
+    # 模型名。留空 → 取所选厂商预设（bailian → qwen-plus）
+    LLM_MODEL: str = ""
 
     class Config:
         env_file = ".env"

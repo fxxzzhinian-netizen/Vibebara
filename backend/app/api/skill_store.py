@@ -384,6 +384,26 @@ async def complete_skill(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@api_router.post("/{skill_id}/tags/generate")
+async def generate_skill_tags(
+    skill_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """调用 LLM 从固定词表为该 Skill 重新生成标签并落库，返回最终标签。
+
+    供卡片上「重新生成标签」等手动触发使用；force=True 覆盖已有标签。
+    """
+    try:
+        await _assert_skill_accessible(skill_id, user_id)
+        tags = await NativeSkillStore.regenerate_tags(skill_id, force=True)
+        return {"success": True, "tags": tags}
+    except (FileNotFoundError, PermissionError) as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.exception(f"[store/tags] {skill_id} 标签生成失败")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @api_router.post("/{skill_id}/build")
 async def build_skill(
     skill_id: str, data: NativeSkillBuildRequest,

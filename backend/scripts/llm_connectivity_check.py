@@ -1,9 +1,9 @@
 """
-LLM 连通性测试脚本
-直接调用 GPTs API Gateway 验证配置是否正确（独立运行，不依赖数据库）。
+LLM 连通性测试脚本（独立运行，不依赖数据库）。
 
+统一经 app/services/llm 抽象层调用，默认厂商为「百炼」（阿里云 DashScope 兼容模式）。
 运行（backend 目录）：python scripts/llm_connectivity_check.py
-读取 backend/.env 中的 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL。
+读取 backend/.env 中的 LLM_PROVIDER / LLM_BASE_URL / LLM_API_KEY / LLM_MODEL。
 """
 import asyncio
 import json
@@ -13,6 +13,13 @@ import sys
 # 脚本位于 backend/scripts/ 下，向上一级即 backend 根目录（.env 所在）。
 _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _BACKEND_DIR)
+
+from app.services.llm import (  # noqa: E402
+    ChatMessage,
+    OpenAICompatibleProvider,
+    PROVIDER_PRESETS,
+    normalize_base_url,
+)
 
 
 def _load_env():
@@ -31,96 +38,53 @@ def _load_env():
     return cfg
 
 
-async def basic_connection(base_url, api_key, model):
-    """测试基本连通性：发送简单消息"""
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(
-        base_url=base_url + "/v1",
-        api_key=api_key,
-        timeout=60.0,
-    )
-
-    response = await client.chat.completions.create(
+def _build_provider(cfg) -> OpenAICompatibleProvider:
+    """按 .env 配置构造 Provider（与运行时工厂同口径：留空回退厂商预设）。"""
+    provider_key = (cfg.get("LLM_PROVIDER") or "bailian").lower()
+    preset = PROVIDER_PRESETS.get(provider_key, PROVIDER_PRESETS["openai-compatible"])
+    base_url = cfg.get("LLM_BASE_URL") or preset["base_url"]
+    model = cfg.get("LLM_MODEL") or preset["model"]
+    return OpenAICompatibleProvider(
+        base_url=normalize_base_url(base_url),
+        api_key=cfg.get("LLM_API_KEY", ""),
         model=model,
-        messages=[{"role": "user", "content": "Hello, respond in 10 words or less."}],
-        max_tokens=50,
+        name=provider_key,
     )
-
-    content = response.choices[0].message.content or ""
-    usage = None
-    if response.usage:
-        usage = {
-            "prompt_tokens": response.usage.prompt_tokens,
-            "completion_tokens": response.usage.completion_tokens,
-            "total_tokens": response.usage.total_tokens,
-        }
-    return content, usage
-
-
-async def field_completion(base_url, api_key, model):
-    """测试字段补齐功能：模拟 Skill 字段推断"""
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(
-        base_url=base_url + "/v1",
-        api_key=api_key,
-        timeout=60.0,
-    )
-
-    system_prompt = (
-        "You are an AI Coding Skill metadata expert. "
-        "Given the skill's name, description, and body preview, infer the missing fields. "
-        "Return strict JSON with only the requested fields."
-    )
-
-    user_msg = json.dumps({
-        "name": "test-helper",
-        "description": "Full test skill for validating that agents can discover, load, and follow a local skill.",
-        "body_preview": "# Test Helper\n\n## Overview\nUse this skill to confirm that a local skill loads correctly...",
-        "incomplete_fields": ["ui.display_name", "ui.short_description", "ui.default_prompt"],
-    }, ensure_ascii=False, indent=2)
-
-    response = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_msg},
-        ],
-        temperature=0.3,
-        max_tokens=500,
-    )
-
-    content = response.choices[0].message.content or "{}"
-    return json.loads(content)
 
 
 async def main():
     cfg = _load_env()
-    base_url = cfg.get("LLM_BASE_URL", "https://api.gptsapi.net")
+    provider = _build_provider(cfg)
     api_key = cfg.get("LLM_API_KEY", "")
-    model = cfg.get("LLM_MODEL", "gpt-5.5")
 
     print("=" * 60)
     print("  LLM Connectivity Test")
     print("=" * 60)
-    print(f"  Base URL : {base_url}")
-    print(f"  Model    : {model}")
+    print(f"  Provider : {provider.name}")
+    print(f"  Base URL : {provider.base_url}")
+    print(f"  Model    : {provider.model}")
     key_display = f"{api_key[:12]}...{api_key[-4:]}" if len(api_key) > 16 else "***"
     print(f"  API Key  : {key_display}")
     print("=" * 60)
     print()
 
+    if not provider.is_configured():
+        print("  [FAIL] LLM_API_KEY 未配置")
+        return False
+
     # === Test 1: Basic connectivity ===
     print("  [Test 1] Basic connectivity...")
     try:
-        content, usage = await basic_connection(base_url, api_key, model)
-        print(f"  [OK] Connected!")
-        print(f"  Response: {content}")
-        if usage:
-            print(f"  Tokens: prompt={usage['prompt_tokens']}, "
-                  f"completion={usage['completion_tokens']}, "
-                  f"total={usage['total_tokens']}")
+        result = await provider.chat(
+            [ChatMessage(role="user", content="Hello, respond in 10 words or less.")],
+            max_tokens=50,
+        )
+        print("  [OK] Connected!")
+        print(f"  Response: {result.content}")
+        if result.usage:
+            print(f"  Tokens: prompt={result.usage.prompt_tokens}, "
+                  f"completion={result.usage.completion_tokens}, "
+                  f"total={result.usage.total_tokens}")
     except Exception as e:
         print(f"  [FAIL] Connection failed: {e}")
         print()
@@ -131,8 +95,27 @@ async def main():
 
     # === Test 2: Field completion ===
     print("  [Test 2] Skill field completion...")
+    system_prompt = (
+        "You are an AI Coding Skill metadata expert. "
+        "Given the skill's name, description, and body preview, infer the missing fields. "
+        "Return strict JSON with only the requested fields."
+    )
+    user_msg = json.dumps({
+        "name": "test-helper",
+        "description": "Full test skill for validating that agents can discover, load, and follow a local skill.",
+        "body_preview": "# Test Helper\n\n## Overview\nUse this skill to confirm that a local skill loads correctly...",
+        "incomplete_fields": ["ui.display_name", "ui.short_description", "ui.default_prompt"],
+    }, ensure_ascii=False, indent=2)
     try:
-        suggestions = await field_completion(base_url, api_key, model)
+        result = await provider.chat(
+            [
+                ChatMessage(role="system", content=system_prompt),
+                ChatMessage(role="user", content=user_msg),
+            ],
+            temperature=0.3,
+            max_tokens=500,
+        )
+        suggestions = json.loads(result.content or "{}")
         if suggestions:
             print(f"  [OK] Completed! ({len(suggestions)} fields)")
             for k, v in suggestions.items():

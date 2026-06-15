@@ -853,6 +853,31 @@ class NativeSkillStore:
         return {"path": safe, "content_hash": row.content_hash or ""}
 
     @classmethod
+    async def _apply_auto_tags(
+        cls, config: Dict[str, Any], body: str, *, force: bool = False
+    ) -> None:
+        """创建/导入时由 LLM 从固定词表分类标签，写入 config["metadata"]["tags"]。
+
+        仅在 tags 为空（或 force）时生成；best-effort：LLM 未配置/失败一律静默跳过，
+        绝不阻断创建或导入流程。
+        """
+        metadata = config.setdefault("metadata", {})
+        if metadata.get("tags") and not force:
+            return
+        try:
+            from app.services.llm_service import classify_skill_tags
+
+            tags = await classify_skill_tags(
+                config.get("name", ""),
+                config.get("description", ""),
+                body or "",
+            )
+            if tags:
+                metadata["tags"] = tags
+        except Exception as e:  # 分类失败不阻断主流程
+            logger.warning(f"[auto-tags] 标签分类失败 name='{config.get('name')}': {e}")
+
+    @classmethod
     async def create(
         cls, config: Dict[str, Any], vibeh_content: Optional[str] = None,
         owner_id: Optional[str] = None,
@@ -880,11 +905,15 @@ class NativeSkillStore:
             "incomplete_fields": [],
         })
 
+        if not body:
+            body = f"# {skill_id}\n\n在此编写 Skill 指令。\n"
+
+        # LLM 自动分类标签（best-effort；tags 为空时才生成，失败不阻断创建）。
+        await cls._apply_auto_tags(config, body)
+
         # 对象存储无空目录概念，scripts/references/assets 待有文件时自然出现。
         cls._write_store_config(prefix, config)
 
-        if not body:
-            body = f"# {skill_id}\n\n在此编写 Skill 指令。\n"
         cls._write_store_vibeh(prefix, body)
 
         row = await cls._upsert_db(skill_id, config, prefix, owner_id=owner_id)
@@ -1234,6 +1263,10 @@ class NativeSkillStore:
         config["meta"]["createdAt"] = _now_iso()
         config["meta"]["updatedAt"] = _now_iso()
 
+        # LLM 自动分类标签（best-effort；导入源未带 metadata.tags 时才生成，失败不阻断导入）。
+        # 该处收口覆盖 import / import-content / import-url / import_external_to_team 全部导入路径。
+        await cls._apply_auto_tags(config, body)
+
         # 拆表路由：allow_team_update ⟹ 写团队表（target_skill_id 即团队代理 id）；
         # 否则写个人表。团队在独立表，个人导入永远不会与团队同名冲突。
         scope = "team" if allow_team_update else "personal"
@@ -1496,6 +1529,28 @@ class NativeSkillStore:
             "incomplete_fields": incomplete,
             "suggestions": suggestions,
         }
+
+    @classmethod
+    async def regenerate_tags(
+        cls, skill_id: str, *, force: bool = False
+    ) -> List[str]:
+        """为已存在的 skill 重新（或首次）生成标签并落库。
+
+        force=False（默认）仅在 tags 为空时生成，便于存量回填；force=True 强制重生成。
+        返回最终标签列表。供回填脚本与手动重生成端点复用。
+        """
+        prefix, scope = cls._resolve_prefix(skill_id)
+        if prefix is None:
+            raise FileNotFoundError(f"Skill '{skill_id}' not found")
+
+        config = cls._read_store_config(prefix)
+        body = cls._read_store_vibeh(prefix)
+
+        await cls._apply_auto_tags(config, body, force=force)
+
+        cls._write_store_config(prefix, config)
+        row = await cls._upsert_db(skill_id, config, prefix, scope=scope)
+        return _normalize_tags(row.tags)
 
     # ------------------------------------------------------------------
     # Build & Deploy
