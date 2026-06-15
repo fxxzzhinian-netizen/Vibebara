@@ -21,11 +21,14 @@ const props = withDefaults(
     disabled?: boolean
     /** 占位时是否撑满父容器宽度，默认 true */
     block?: boolean
+    /** 胶囊形（圆角拉满），默认 false */
+    pill?: boolean
   }>(),
   {
     placeholder: '请选择',
     disabled: false,
     block: true,
+    pill: false,
   },
 )
 
@@ -122,7 +125,7 @@ onBeforeUnmount(() => {
   <div
     ref="rootEl"
     class="bs-trigger"
-    :class="{ open, disabled, block }"
+    :class="{ open, disabled, block, pill }"
     role="combobox"
     :aria-expanded="open"
     tabindex="0"
@@ -186,6 +189,14 @@ onBeforeUnmount(() => {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .bs-trigger.block { display: flex; width: 100%; }
+.bs-trigger.pill {
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  min-width: 88px;
+  gap: 4px;
+  font-size: 0.8rem;
+}
+.bs-trigger.pill .bs-arrow { width: 14px; height: 14px; }
 .bs-trigger:hover:not(.disabled) { border-color: #d1d5db; }
 .bs-trigger:focus-visible { outline: none; border-color: #151717; }
 .bs-trigger.open { border-color: #151717; box-shadow: 0 0 0 3px rgba(21, 23, 23, 0.06); }

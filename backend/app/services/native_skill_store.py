@@ -24,6 +24,7 @@ from sqlalchemy import delete, select, update
 
 from app.core.config import settings
 from app.core.database import async_session_factory
+from app.models.project import UserSkillDeployment
 from app.models.skill_package import PersonalSkill, TeamSkill
 from app.models.user import User
 from app.services.skill_forge_service import call_bridge
@@ -1089,10 +1090,7 @@ class NativeSkillStore:
     async def delete(cls, skill_id: str, user_id: str = "system") -> bool:
         async with async_session_factory() as session:
             row, scope = await cls._get_row(session, skill_id)
-            if scope == "team":
-                raise PermissionError(
-                    "Team repository skills can only be changed by deployment promotion"
-                )
+            # 团队 Skill 的成员归属校验在 API 层完成（与 update 一致）；服务层仅校验个人归属。
             if (
                 isinstance(row, PersonalSkill) and user_id and user_id != "system"
                 and row.owner_id and row.owner_id != user_id
@@ -1110,6 +1108,13 @@ class NativeSkillStore:
             cls._store().delete_prefix(prefix)
 
         async with async_session_factory() as session:
+            # 团队 Skill 的成员部署记录需显式清理，不依赖 DB 外键级联，保证跨引擎一致；
+            # project_skills 关联已由 on_skill_changed(action="deleted") 一并清理。
+            await session.execute(
+                delete(UserSkillDeployment).where(
+                    UserSkillDeployment.team_skill_id == skill_id
+                )
+            )
             await session.execute(
                 delete(PersonalSkill).where(PersonalSkill.id == skill_id)
             )

@@ -233,6 +233,17 @@ async def delete_skill(
     user_id: str = Depends(get_current_user_id),
 ):
     try:
+        # 团队（平台）仓库 Skill：任意团队成员均可删除，非成员拒绝。
+        async with async_session_factory() as session:
+            team_row = await session.get(TeamSkill, skill_id)
+        if team_row is not None:
+            team_ids = await _user_team_ids(user_id)
+            if team_row.team_id not in team_ids:
+                return {
+                    "success": False,
+                    "error": "无权删除该团队 Skill（非团队成员）",
+                }
+
         await NativeSkillStore.delete(skill_id, user_id=user_id)
         return {"success": True}
     except PermissionError as e:

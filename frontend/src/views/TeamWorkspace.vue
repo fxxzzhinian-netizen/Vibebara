@@ -19,6 +19,7 @@ import { useDirectionalTransition } from '@/composables/useDirectionalTransition
 import AppTopNav from '@/components/AppTopNav.vue'
 import AddSkillModal from '@/components/AddSkillModal.vue'
 import BaseModal from '@/components/BaseModal.vue'
+import BaseSelect from '@/components/BaseSelect.vue'
 import SyncStatusBadge from '@/components/SyncStatusBadge.vue'
 import cursorIcon from '@/img/icon/cursor.svg'
 import codexIcon from '@/img/icon/codex.svg'
@@ -156,6 +157,10 @@ function sourceLabel(src: string): string {
 // —— 分配权限（仅 owner）——
 const showAssignRole = ref(false)
 const roleSaving = ref<string | null>(null) // 正在保存的成员 user_id
+const ROLE_OPTIONS = [
+  { label: '管理员', value: 'admin' },
+  { label: '成员', value: 'member' },
+]
 
 async function changeRole(member: TeamMemberInfo, role: string) {
   if (member.role === role || roleSaving.value) return
@@ -181,6 +186,12 @@ const historyFilterSkillId = ref('')
 const historySkillOptions = computed(() =>
   teamSkills.value.map((s) => ({ id: s.id, name: s.display_name || s.name || s.id })),
 )
+
+// 历史筛选下拉选项（全局 BaseSelect 格式）：首项「全部 Skill」+ 各团队 Skill
+const historyFilterOptions = computed(() => [
+  { label: '全部 Skill', value: '' },
+  ...historySkillOptions.value.map((o) => ({ label: o.name, value: o.id })),
+])
 
 async function loadHistory(reset = true) {
   const teamId = teamStore.currentTeamId
@@ -732,15 +743,15 @@ watch(
           <template v-if="canManageProjects">
             <div class="manage-section-title">
               提交历史 / 审计
-              <select
+              <BaseSelect
                 v-if="historySkillOptions.length"
                 v-model="historyFilterSkillId"
                 class="history-filter"
+                :options="historyFilterOptions"
+                :block="false"
+                pill
                 @change="loadHistory(true)"
-              >
-                <option value="">全部 Skill</option>
-                <option v-for="o in historySkillOptions" :key="o.id" :value="o.id">{{ o.name }}</option>
-              </select>
+              />
             </div>
             <div class="manage-card">
               <ul v-if="historyItems.length" class="history-list">
@@ -852,16 +863,16 @@ watch(
           <span class="member-avatar">{{ (m.display_name || m.username || '?').slice(0, 1).toUpperCase() }}</span>
           <span class="assign-name">{{ m.display_name || m.username }}</span>
           <span v-if="m.role === 'owner'" class="member-role role-owner">所有者</span>
-          <select
+          <BaseSelect
             v-else
             class="assign-select"
-            :value="m.role"
+            :model-value="m.role"
+            :options="ROLE_OPTIONS"
+            :block="false"
+            pill
             :disabled="roleSaving === m.user_id"
-            @change="changeRole(m, ($event.target as HTMLSelectElement).value)"
-          >
-            <option value="admin">管理员</option>
-            <option value="member">成员</option>
-          </select>
+            @change="changeRole(m, String($event))"
+          />
         </li>
         <li v-if="!teamStore.members.length" class="member-empty">暂无成员</li>
       </ul>
@@ -1650,28 +1661,11 @@ watch(
 }
 .assign-select {
   flex-shrink: 0;
-  padding: 0.35rem 0.6rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: #ffffff;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #151717;
-  cursor: pointer;
 }
-.assign-select:disabled { opacity: 0.6; cursor: default; }
 
 /* —— 提交历史 / 审计 —— */
 .history-filter {
   margin-left: auto;
-  padding: 0.3rem 0.55rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  background: #ffffff;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #374151;
-  cursor: pointer;
 }
 .history-list {
   list-style: none;
