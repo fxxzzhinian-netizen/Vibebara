@@ -20,6 +20,8 @@ const ACTION_LABELS: Record<string, string> = {
   pushed: '推送了',
   pulled: '更新了本地',
   conflict: '推送冲突',
+  linked: '关联了',
+  unlinked: '移除了',
 }
 
 export function formatNotification(msg: NotificationMessage): string {

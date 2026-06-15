@@ -573,11 +573,12 @@ onMounted(() => {
 }
 
 .empty-illu {
-  margin-bottom: 0.75rem;
+  /* 插画底部有大片透明留白，用负边距把下方文字拉近 */
+  margin-bottom: -3rem;
 }
 
 .empty-illu img {
-  width: 200px;
+  width: 280px;
   height: auto;
   user-select: none;
   -webkit-user-drag: none;

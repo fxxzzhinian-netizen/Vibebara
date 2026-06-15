@@ -1764,9 +1764,10 @@ watch(
 }
 
 .team-empty img {
-  width: 300px;
+  width: 380px;
   height: auto;
-  margin-bottom: 0.1rem;
+  /* 插画底部有大片透明留白，用负边距把下方文字拉近 */
+  margin-bottom: -5rem;
   user-select: none;
   -webkit-user-drag: none;
 }

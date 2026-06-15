@@ -400,8 +400,31 @@ async def add_skill_to_project(
                 content_hash=latest_hash,
             )
         )
+        # 记入项目动态 / 审计：关联 Skill 到项目。version≥1 以通过 get_changes_since 过滤。
+        await _write_change_log(
+            session=session,
+            team_id=project.team_id,
+            project_id=project_id,
+            deployment_id=None,
+            skill_id=skill_id,
+            user_id=user_id,
+            action="linked",
+            version=1,
+            source="project_skill",
+            new_hash=latest_hash,
+        )
         await session.commit()
-        return {"success": True}
+
+    await _broadcast_push_event(
+        project_id=project_id,
+        skill_id=skill_id,
+        user_id=user_id,
+        change_items=[],
+        summary="",
+        status="",
+        event_type="skill.linked",
+    )
+    return {"success": True}
 
 
 async def remove_skill_from_project(
@@ -439,6 +462,10 @@ async def remove_skill_from_project(
                 "error": "请先停止跟踪再移除",
             }
 
+        removed_version = ps.version or 1
+        project = await session.get(Project, project_id)
+        team_id = project.team_id if project else None
+
         await session.execute(
             delete(UserSkillDeployment).where(
                 UserSkillDeployment.project_id == project_id,
@@ -447,8 +474,30 @@ async def remove_skill_from_project(
             )
         )
         await session.delete(ps)
+        # 记入项目动态 / 审计：从项目移除 Skill 关联。version≥1 以通过 get_changes_since 过滤。
+        await _write_change_log(
+            session=session,
+            team_id=team_id,
+            project_id=project_id,
+            deployment_id=None,
+            skill_id=skill_id,
+            user_id=user_id,
+            action="unlinked",
+            version=removed_version,
+            source="project_skill",
+        )
         await session.commit()
-        return {"success": True}
+
+    await _broadcast_push_event(
+        project_id=project_id,
+        skill_id=skill_id,
+        user_id=user_id,
+        change_items=[],
+        summary="",
+        status="",
+        event_type="skill.unlinked",
+    )
+    return {"success": True}
 
 
 async def list_project_skills(

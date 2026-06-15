@@ -57,10 +57,15 @@ body {
   --scrollbar-track: transparent;
 }
 
-/* Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+/* Firefox（及不支持 ::-webkit-scrollbar 的引擎）才使用标准属性。
+   重要：标准 scrollbar-width / scrollbar-color 一旦为非初始值，Chromium 会按规范
+   忽略 ::-webkit-scrollbar 自定义样式（圆头滑块失效、退化为方头细滚动条）。
+   因此用 @supports 仅在不支持 webkit 伪元素时启用，确保 Chromium/Electron 走下方圆头样式。 */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
 }
 
 /* WebKit / Chromium / Edge */
