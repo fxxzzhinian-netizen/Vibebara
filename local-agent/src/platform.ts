@@ -44,7 +44,7 @@ export function kiroSkillsDir(): string {
 }
 
 /**
- * Trae 全局 skill 目录自动探测（docs/skill-forge-design.md §8.5）：
+ * Trae 全局 skill 目录自动探测（docs/design/skill-forge.md §8.5）：
  *   - 若 ~/.trae 存在     → ~/.trae/skills（国际版 trae.ai）
  *   - 否则若 ~/.trae-cn 存在 → ~/.trae-cn/skills（国内版 trae.cn）
  *   - 否则                → ~/.trae/skills（默认）
@@ -60,7 +60,7 @@ export function traeSkillsDir(): string {
 }
 
 /**
- * Qoder 全局 skill 目录（docs/skill-forge-design.md §9.5）：
+ * Qoder 全局 skill 目录（docs/design/skill-forge.md §9.5）：
  * 统一为 ~/.qoder/skills，**无国内/国际分叉，无须探测**（与 Trae 不同）。
  * 与 skill-forge 的 resolveQoderSkillsDir / 后端 qoder_skills_dir 口径一致。
  */

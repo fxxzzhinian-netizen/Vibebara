@@ -18,7 +18,7 @@ from app.core.database import Base
 class _SkillColumnsMixin:
     """个人 / 团队 Skill 共用列（数据层拆表后两表复用）。
 
-    拆表说明（docs/ide-import-design.md 后续设计）：原单表 `skill_packages` 用 `scope`
+    拆表说明（docs/design/ide-import.md 后续设计）：原单表 `skill_packages` 用 `scope`
     字段区分个人/团队，现拆为 `personal_skills` 与 `team_skills` 两张物理表实现数据层隔离。
     scope 由「所在表」隐含，不再有 scope 列。
     """

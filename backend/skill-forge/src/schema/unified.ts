@@ -43,7 +43,7 @@ export const UnifiedSkillSchema = z.object({
     .default({}),
 
   // Claude Code 专有运行时 frontmatter 字段（与 Codex 专有的 `ui` 块平行）。
-  // 构建到 Cursor/Codex/Windsurf 时整体丢弃；详见 docs/skill-forge-design.md §五。
+  // 构建到 Cursor/Codex/Windsurf 时整体丢弃；详见 docs/design/skill-forge.md §五。
   claude: z
     .object({
       allowedTools: z.union([z.string(), z.array(z.string())]).optional(),

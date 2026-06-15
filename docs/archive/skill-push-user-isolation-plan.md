@@ -1,6 +1,6 @@
 # 推送用户隔离 + 同步到平台 + 其他用户拉取更新 设计方案
 
-> **本文档已归档** — 所述功能均已落地，当前实现以 [`../skill-collaboration-sync.md`](../skill-collaboration-sync.md) 为准；本文仅作决策溯源。
+> **本文档已归档** — 所述功能均已落地，当前实现以 [`../design/skill-collaboration-sync.md`](../design/skill-collaboration-sync.md) 为准；本文仅作决策溯源。
 
 > 状态：待确认（先评审本文档，确认无误后再改代码）
 > 关联文档：`skill-push-and-abstract-diff-plan.md`、`team-project-skill-sync-plan.md`（同目录）、`../architecture.md`

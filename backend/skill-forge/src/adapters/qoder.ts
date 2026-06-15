@@ -7,7 +7,7 @@ import { buildFrontmatter } from "../utils/yaml.js";
 import { writeFile, copyResourceDirs } from "../utils/fs.js";
 
 /**
- * 解析 Qoder 全局 skill 目录（docs/skill-forge-design.md §9.5）。
+ * 解析 Qoder 全局 skill 目录（docs/design/skill-forge.md §9.5）。
  *
  * Qoder 全局目录统一为 ~/.qoder/skills，**无国内/国际分叉，无须自动探测**
  * （与 Trae 不同）。项目级目录为 .qoder/skills/，同名时项目级优先于全局。
@@ -23,7 +23,7 @@ export function resolveQoderSkillsDir(): string {
  * 文件夹格式：目录含 SKILL.md（YAML frontmatter）+ 任意附带文件。Qoder 启动时
  * 只加载 name+description，匹配请求或 `/skill-name` 显式调用时才加载全文。
  *
- * 严格约束（docs/skill-forge-design.md §九）：Qoder 官方 frontmatter（IDE 与
+ * 严格约束（docs/design/skill-forge.md §九）：Qoder 官方 frontmatter（IDE 与
  * CLI 文档一致）仅文档化 `name` + `description`。本适配器**只输出这两个字段**，
  * 不泄漏 Cursor 的 disable-model-invocation、Codex 的 openai.yaml、Claude 的
  * 运行时字段或任何 metadata，忠于官方规范——与 Windsurf/Trae 适配器完全一致。

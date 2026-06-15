@@ -1,7 +1,7 @@
 """
 NativeSkillStore — 平台原生 Skill 的 CRUD + 文件系统 + MySQL 索引
 
-存储格式遵循 docs/skill-forge-design.md 设计文档：
+存储格式遵循 docs/design/skill-forge.md 设计文档：
     skill.config.yaml   — 统一配置（design-doc 格式，嵌套 ui/policy/metadata）
     SKILL.md            — 技能正文（纯 Markdown）
     scripts/
@@ -45,7 +45,7 @@ KIRO_SKILLS_DIR = Path.home() / ".kiro" / "skills"
 
 
 def trae_skills_dir() -> Path:
-    """Trae 全局 skill 目录自动探测（docs/skill-forge-design.md §8.5）。
+    """Trae 全局 skill 目录自动探测（docs/design/skill-forge.md §8.5）。
 
     Trae 国际版（trae.ai）用 ~/.trae，国内版（trae.cn）用 ~/.trae-cn，两版项目
     目录都是 .trae/skills/。择优规则：优先已存在的 ~/.trae，否则 ~/.trae-cn，
@@ -63,7 +63,7 @@ def trae_skills_dir() -> Path:
 
 
 def qoder_skills_dir() -> Path:
-    """Qoder 全局 skill 目录（docs/skill-forge-design.md §9.5）。
+    """Qoder 全局 skill 目录（docs/design/skill-forge.md §9.5）。
 
     Qoder 全局目录统一为 ~/.qoder/skills，**无国内/国际分叉，无须探测**
     （与 Trae 不同）。项目级目录为 .qoder/skills/，同名时项目级优先于全局。
@@ -186,7 +186,7 @@ def _detect_origin(src: Path, frontmatter: Dict[str, Any]) -> str:
 
     路径为强信号；frontmatter 为细分信号。注意 Cursor 与 Claude 都可能含
     `disable-model-invocation`，故优先用 Claude 专有运行时字段区分，避免误判。
-    详见 docs/skill-forge-design.md §八。
+    详见 docs/design/skill-forge.md §八。
     """
     src_str = str(src).replace("\\", "/").lower()
 
@@ -326,7 +326,7 @@ def _config_to_ts_format(config: Dict[str, Any], vibeh_content: str = "") -> Dic
         ts_config["claude"] = claude_ts
 
     # Agent Skills 标准元数据（license/compatibility/author/version/surfaces）。
-    # 各平台适配器按支持情况选择性输出（详见 docs/skill-forge-design.md §2.4 矩阵）。
+    # 各平台适配器按支持情况选择性输出（详见 docs/design/skill-forge.md §2.4 矩阵）。
     meta_ts = {
         k: v
         for k, v in {

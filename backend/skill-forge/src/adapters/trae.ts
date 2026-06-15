@@ -8,7 +8,7 @@ import { buildFrontmatter } from "../utils/yaml.js";
 import { writeFile, copyResourceDirs } from "../utils/fs.js";
 
 /**
- * 解析 Trae 全局 skill 目录（docs/skill-forge-design.md §8.5）。
+ * 解析 Trae 全局 skill 目录（docs/design/skill-forge.md §8.5）。
  *
  * Trae 国际版（trae.ai）用 ~/.trae，国内版（trae.cn）用 ~/.trae-cn，两版项目目录
  * 都是 .trae/skills/。全局部署与安装态探测共用本解析逻辑：
@@ -32,7 +32,7 @@ export function resolveTraeSkillsDir(): string {
  * 目录含 SKILL.md（YAML frontmatter）+ 任意附带文件。Trae 启动时只扫描一级子目录
  * （不递归嵌套），匹配请求或显式调用时才加载全文。
  *
- * 严格约束（docs/skill-forge-design.md §八）：Trae 官方 frontmatter 仅文档化
+ * 严格约束（docs/design/skill-forge.md §八）：Trae 官方 frontmatter 仅文档化
  * `name` + `description`。本适配器**只输出这两个字段**，不泄漏 Cursor 的
  * disable-model-invocation、Codex 的 openai.yaml、Claude 的运行时字段或任何
  * metadata，忠于官方规范——与 WindsurfAdapter 完全一致。附带 scripts/references/

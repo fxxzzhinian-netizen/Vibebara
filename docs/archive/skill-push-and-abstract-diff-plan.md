@@ -1,6 +1,6 @@
 # Skill 手动推送 + 抽象层改动点展示 改造方案
 
-> **本文档已归档** — 所述功能均已落地，当前实现以 [`../skill-collaboration-sync.md`](../skill-collaboration-sync.md) 为准；本文仅作决策溯源。
+> **本文档已归档** — 所述功能均已落地，当前实现以 [`../design/skill-collaboration-sync.md`](../design/skill-collaboration-sync.md) 为准；本文仅作决策溯源。
 
 > 状态：待确认（先评审本文档，确认无误后再改代码）
 > 关联文档：`team-project-skill-sync-plan.md`（同目录）、`../architecture.md`

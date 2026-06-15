@@ -90,7 +90,7 @@ function importFromWindsurf(
 /**
  * Trae 原生 skill：与 Windsurf 同源，frontmatter 仅 name + description。
  * 还原到抽象包的核心字段，无 ui.* / claude.* / policy / metadata 概念
- * （docs/skill-forge-design.md §11.9）。
+ * （docs/design/skill-forge.md §11.9）。
  */
 function importFromTrae(
   frontmatter: Record<string, unknown>,
@@ -107,7 +107,7 @@ function importFromTrae(
 /**
  * Qoder 原生 skill：与 Windsurf/Trae 同源，frontmatter 仅 name + description。
  * 还原到抽象包的核心字段，无 ui.* / claude.* / policy / metadata 概念
- * （docs/skill-forge-design.md §11.10）。
+ * （docs/design/skill-forge.md §11.10）。
  */
 function importFromQoder(
   frontmatter: Record<string, unknown>,
@@ -124,7 +124,7 @@ function importFromQoder(
 /**
  * Kiro 原生 skill：Agent Skills 标准核心字段——name + description + 可选
  * license / compatibility / metadata(author/version)。还原到抽象包的标准 metadata
- * 块；无 ui.* / claude.* / policy 概念（docs/skill-forge-design.md §11.8）。
+ * 块；无 ui.* / claude.* / policy 概念（docs/design/skill-forge.md §11.8）。
  */
 function importFromKiro(
   frontmatter: Record<string, unknown>,
@@ -151,7 +151,7 @@ function importFromKiro(
 
 /**
  * Claude Code 原生 skill：解析标准字段 + 全部 Claude 专有运行时 frontmatter，
- * 还原到抽象包的 metadata 与 claude 块（docs/skill-forge-design.md §11.6）。
+ * 还原到抽象包的 metadata 与 claude 块（docs/design/skill-forge.md §11.6）。
  */
 function importFromClaude(
   frontmatter: Record<string, unknown>,

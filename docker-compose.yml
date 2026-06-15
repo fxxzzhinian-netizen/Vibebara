@@ -56,7 +56,7 @@ services:
       # 邀请码管理端点的管理员用户名白名单（JSON 数组）
       ADMIN_USERNAMES: '${ADMIN_USERNAMES:-["DAIL"]}'
       # 对象存储后端：Skill 持久化改用腾讯云 COS（不再用本地磁盘卷）。
-      # 详见 docs/cos-storage-migration.md。密钥务必经 .env 注入，勿入 git。
+      # 详见 docs/design/cos-storage.md。密钥务必经 .env 注入，勿入 git。
       # 凭证非 compose 级强制：STORAGE_BACKEND=cos 时由后端 CosObjectStore 启动校验
       # 并给出清晰报错；STORAGE_BACKEND=local 时无需 COS 凭证即可启动。
       STORAGE_BACKEND: ${STORAGE_BACKEND:-cos}

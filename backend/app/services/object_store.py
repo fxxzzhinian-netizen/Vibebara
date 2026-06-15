@@ -11,7 +11,7 @@
   skills/team/{id}/...
   skill_versions/{skill_id}/{version_id}/scripts|references|assets/**
 
-哈希口径见 docs/cos-storage-migration.md §5：与本地代理 / 旧 `_compute_dir_hash` 位级一致，
+哈希口径见 docs/design/cos-storage.md §5：与本地代理 / 旧 `_compute_dir_hash` 位级一致，
 仅数据来源从「磁盘 rglob」改为「对象列举」。
 """
 
@@ -71,7 +71,7 @@ class ObjectStore:
     def compute_prefix_hash(self, prefix: str) -> str:
         """对前缀下对象按相对前缀 POSIX 路径的 UTF-8 字节序排序后逐个喂 sha256。
 
-        与 docs/cos-storage-migration.md §5 / 本地代理算法位级一致。
+        与 docs/design/cos-storage.md §5 / 本地代理算法位级一致。
         """
         base = _norm_prefix(prefix)
         keys = self.list(base)

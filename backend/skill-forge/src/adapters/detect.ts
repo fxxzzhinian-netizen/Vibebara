@@ -22,7 +22,7 @@ export interface DetectResult {
 /**
  * 识别原生 skill 的来源平台。
  *
- * 双层判定（docs/skill-forge-design.md §8.3）：
+ * 双层判定（docs/design/skill-forge.md §8.3）：
  *   1. 来源路径主信号（+5）—— 最小化的 Cursor/Windsurf/Claude skill 结构无法区分，
  *      路径是最强信号。`skillDir` 本身即来源路径，无需额外上下文。
  *   2. frontmatter / 文件结构辅信号 —— Claude 专有字段、openai.yaml、metadata.surfaces 等。

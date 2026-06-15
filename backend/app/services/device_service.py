@@ -1,6 +1,6 @@
 """设备身份服务（方案 B · M5-b 设备身份地基）。
 
-依据 `docs/方案B-桌面客户端迁移/M5-平台安装状态-多用户多机设计.md` §3：
+依据 `docs/archive/desktop-migration/M5-平台安装状态-多用户多机设计.md` §3：
   · register_device —— 按 `(user_id, client_uuid)` 幂等 upsert，服务端铸造规范 device_id；
     **只铸造设备身份、绝不签发配对令牌**（守 M2 决议④）。
   · list_devices —— 列举「我的」设备（默认含 revoked，便于前端展示/管理）。

@@ -1,5 +1,5 @@
 /**
- * 本地代理 API 类型 —— 与 docs/方案B-桌面客户端迁移/contracts/local-agent-api.md
+ * 本地代理 API 类型 —— 与 docs/archive/desktop-migration/contracts/local-agent-api.md
  * 的 TypeScript interface **逐字对齐**（camelCase）。这是 M3 实现的权威字段形状，
  * 与契约不得单边偏移。
  */

@@ -1,6 +1,6 @@
-# VibeHub — AI 协作中台
+# Vibebara — AI 协作中台
 
-VibeHub 是一个面向 Vibe Coding 工具（Cursor / Codex 等）的 **Skill 协作平台**：在平台抽象层统一管理 Skill，支持团队 / 项目维度的 Skill 关联、本地部署、改动推送与拉取更新，并通过 WebSocket 实时同步「项目动态」。
+Vibebara 是一个面向 Vibe Coding 工具（Cursor / Codex 等）的 **Skill 协作平台**：在平台抽象层统一管理 Skill，支持团队 / 项目维度的 Skill 关联、本地部署、改动推送与拉取更新，并通过 WebSocket 实时同步「项目动态」。
 
 ## 产品形态
 
@@ -71,7 +71,7 @@ curl http://localhost:8000/health       # {"status":"healthy",...}
 ```
 
 > 个人/团队 Skill 拆表（破坏性 schema 变更，丢弃旧数据）部署一次性命令：
-> `git pull && docker compose down -v && docker compose up -d --build`（`down -v` 会清空全部数据卷并重建空库，种子用户 DAIL/DAIL2 自动重建）。详见 `docs/personal-team-skill-split.md`。
+> `git pull && docker compose down -v && docker compose up -d --build`（`down -v` 会清空全部数据卷并重建空库，种子用户 DAIL/DAIL2 自动重建）。详见 `docs/design/personal-team-skill-split.md`。
 
 > 若构建走了缓存导致依赖没更新：`docker compose build --no-cache backend && docker compose up -d`。
 
@@ -105,14 +105,14 @@ $env:VIBEBARA_CLOUD_WS_BASE  = "ws://43.136.128.162:8000"
 
 ```bash
 # 1. 拉取代码
-git clone https://github.com/fxxzzhinian-netizen/Vibebara.git vibehub
-cd vibehub
+git clone https://github.com/fxxzzhinian-netizen/Vibebara.git vibebara
+cd vibebara
 
 # 2. 配置环境变量（.env 与 docker-compose.yml 同目录，不进 git）
 echo "JWT_SECRET=$(python3 -c 'import secrets;print(secrets.token_urlsafe(48))')" >> .env
 printf 'DB_USER=cowork\nDB_PASSWORD=你的数据库密码\nMYSQL_ROOT_PASSWORD=你的Root密码\n' >> .env
 # Skill 持久化改用腾讯云 COS 对象存储（不再用本地磁盘卷）。COS_BUCKET/COS_REGION 已在
-# docker-compose 设默认值，仅需补密钥；详见 docs/cos-storage-migration.md。
+# docker-compose 设默认值，仅需补密钥；详见 docs/design/cos-storage.md。
 printf 'STORAGE_BACKEND=cos\nCOS_SECRET_ID=你的SecretId\nCOS_SECRET_KEY=你的SecretKey\n' >> .env
 
 # 3. 构建并启动
@@ -222,7 +222,7 @@ docker compose build --build-arg APT_MIRROR=mirrors.aliyun.com backend
 
 ## 桌面客户端开发与联调
 
-桌面壳是 VibeHub 的**唯一发布形态**，架构为「桌面壳 + 本地代理 + 云端后端」三层。
+桌面壳是 Vibebara 的**唯一发布形态**，架构为「桌面壳 + 本地代理 + 云端后端」三层。
 
 | 层 | 目录 | 说明 |
 | --- | --- | --- |
@@ -240,8 +240,8 @@ docker compose build --build-arg APT_MIRROR=mirrors.aliyun.com backend
 云端后端已在服务器部署后，开发者本机只需指定服务器地址：
 
 ```powershell
-$env:VIBEHUB_CLOUD_API_BASE = "http://服务器公网IP:8000/api/v1"
-$env:VIBEHUB_CLOUD_WS_BASE  = "ws://服务器公网IP:8000"
+$env:VIBEBARA_CLOUD_API_BASE = "http://服务器公网IP:8000/api/v1"
+$env:VIBEBARA_CLOUD_WS_BASE  = "ws://服务器公网IP:8000"
 .\build-desktop.ps1 -NoBe     # 不启动本地后端，直连云端
 ```
 
@@ -296,11 +296,11 @@ cd ..
 - **环境变量**（联调优先级最高）：
 
 ```powershell
-$env:VIBEHUB_CLOUD_API_BASE = "http://服务器IP:8000/api/v1"
-$env:VIBEHUB_CLOUD_WS_BASE  = "ws://服务器IP:8000"
+$env:VIBEBARA_CLOUD_API_BASE = "http://服务器IP:8000/api/v1"
+$env:VIBEBARA_CLOUD_WS_BASE  = "ws://服务器IP:8000"
 ```
 
-- **配置文件**：`%APPDATA%/@vibehub/desktop/vibehub-desktop.config.json`
+- **配置文件**：`%APPDATA%/@vibebara/desktop/vibebara-desktop.config.json`
 
 ```json
 {

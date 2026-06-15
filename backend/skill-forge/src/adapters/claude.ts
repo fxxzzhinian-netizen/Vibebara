@@ -17,7 +17,7 @@ import { writeFile, copyResourceDirs } from "../utils/fs.js";
  *
  * 因此「按 Claude 平台特有结构构建」= 把抽象包里的标准字段与 `claude` 块完整
  * 映射进 SKILL.md frontmatter，而非退化为只写 name + description。
- * 详见 docs/skill-forge-design.md §五。
+ * 详见 docs/design/skill-forge.md §五。
  *
  * Deploy dirs:
  *   - workspace: {project}/.claude/skills/  (handled by callers)

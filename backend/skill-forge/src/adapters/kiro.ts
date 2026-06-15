@@ -14,7 +14,7 @@ import { writeFile, copyResourceDirs } from "../utils/fs.js";
  * metadata（如 author/version）。Kiro 采用渐进式披露：启动时只加载 name +
  * description，匹配请求或用户以 `/` 显式调用时才加载全文。
  *
- * 定位（docs/skill-forge-design.md §七）：Kiro 介于 Windsurf 与 Claude 之间——
+ * 定位（docs/design/skill-forge.md §七）：Kiro 介于 Windsurf 与 Claude 之间——
  * 比 Windsurf（仅 name+description）多出标准可选字段，但不含 Claude 的运行时
  * 扩展（model/effort/context/hooks/allowed-tools 等），也不含 Codex 的 ui.*。
  * 本适配器只输出 name + description + 条件 license/compatibility/metadata，其余

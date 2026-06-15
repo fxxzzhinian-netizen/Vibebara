@@ -13,7 +13,7 @@ import { writeFile, copyResourceDirs } from "../utils/fs.js";
  * SKILL.md 文件夹格式：目录含 SKILL.md（YAML frontmatter）+ 任意附带文件。Cascade
  * 采用渐进式披露：默认只读取 name + description，技能被调用或 @mention 时才加载全文。
  *
- * 严格约束（docs/skill-forge-design.md §六）：Windsurf 官方 frontmatter 仅文档化
+ * 严格约束（docs/design/skill-forge.md §六）：Windsurf 官方 frontmatter 仅文档化
  * `name` + `description`。本适配器**只输出这两个字段**，不泄漏 Cursor 的
  * disable-model-invocation、Codex 的 openai.yaml、Claude 的运行时字段或任何
  * metadata，忠于官方规范。附带 scripts/references/assets 全部复制。

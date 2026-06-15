@@ -494,7 +494,7 @@ hooks:                                # 仅当 claude.hooks 有值时输出（�
 
 ## 六、Windsurf 构建规则
 
-> **结论更正**：早期调研（`docs/research-ai-coding-skills.md`，2026-05-26）记载 Windsurf「无正式 Skill 系统」。该结论已**过时**。Windsurf Cascade 现已**原生支持 Agent Skills 标准的 skill 系统**：
+> **结论更正**：早期调研（`docs/research/ai-coding-skills.md`，2026-05-26）记载 Windsurf「无正式 Skill 系统」。该结论已**过时**。Windsurf Cascade 现已**原生支持 Agent Skills 标准的 skill 系统**：
 >
 > - 工作区：`.windsurf/skills/<name>/SKILL.md`
 > - 全局：`~/.codeium/windsurf/skills/<name>/SKILL.md`
@@ -1670,7 +1670,7 @@ Use this skill to confirm that a local skill loads correctly...
 | `backend/skill-forge/tests/adapters/claude.test.ts` | 增加运行时字段映射、删除清单、回退策略用例 |
 | `backend/skill-forge/tests/adapters/windsurf.test.ts` | 增加「仅输出 name+description、不泄漏其他字段」断言 |
 | `local-agent/src/gitignore.ts` | 现已忽略 `.windsurf/skills/`、`.claude/skills/`，与第 11.12 一致，无需改动 |
-| `docs/research-ai-coding-skills.md` | 更正 Windsurf「无正式 Skill 系统」的结论 |
+| `docs/research/ai-coding-skills.md` | 更正 Windsurf「无正式 Skill 系统」的结论 |
 
 ### 15.1 Kiro 适配落地触点（已实施）
 

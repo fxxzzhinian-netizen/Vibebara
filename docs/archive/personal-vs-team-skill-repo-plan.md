@@ -1,6 +1,6 @@
 # 个人 Skill 仓库 vs 团队 Skill 仓库 —— 隔离与编辑器并入团队协作设计文档
 
-> **本文档已归档** — 所述功能均已落地，当前实现以 [`../skill-collaboration-sync.md`](../skill-collaboration-sync.md) 为准；本文仅作决策溯源。
+> **本文档已归档** — 所述功能均已落地，当前实现以 [`../design/skill-collaboration-sync.md`](../design/skill-collaboration-sync.md) 为准；本文仅作决策溯源。
 
 > 状态：**待评审（未开始写代码）**
 > 目标读者：本人 review 确认后再实施

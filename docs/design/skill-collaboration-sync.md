@@ -200,7 +200,7 @@
 
 | 归档文档 | 贡献的内容 |
 |----------|------------|
-| [`archive/team-project-skill-sync-plan.md`](archive/team-project-skill-sync-plan.md) | 四层资产模型、数据模型、部署/监听/冲突的总体设计 |
-| [`archive/skill-push-and-abstract-diff-plan.md`](archive/skill-push-and-abstract-diff-plan.md) | 手动推送 + 抽象层改动点 diff |
-| [`archive/skill-push-user-isolation-plan.md`](archive/skill-push-user-isolation-plan.md) | 推送即同步、outdated、拉取更新、用户隔离边界 |
-| [`archive/personal-vs-team-skill-repo-plan.md`](archive/personal-vs-team-skill-repo-plan.md) | 个人/团队仓库隔离、owner_id、编辑器并入团队协作 |
+| [`../archive/team-project-skill-sync-plan.md`](../archive/team-project-skill-sync-plan.md) | 四层资产模型、数据模型、部署/监听/冲突的总体设计 |
+| [`../archive/skill-push-and-abstract-diff-plan.md`](../archive/skill-push-and-abstract-diff-plan.md) | 手动推送 + 抽象层改动点 diff |
+| [`../archive/skill-push-user-isolation-plan.md`](../archive/skill-push-user-isolation-plan.md) | 推送即同步、outdated、拉取更新、用户隔离边界 |
+| [`../archive/personal-vs-team-skill-repo-plan.md`](../archive/personal-vs-team-skill-repo-plan.md) | 个人/团队仓库隔离、owner_id、编辑器并入团队协作 |

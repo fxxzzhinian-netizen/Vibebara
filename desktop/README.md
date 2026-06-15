@@ -4,8 +4,8 @@
 `window.__VIBEBARA_RUNTIME__` 运行时配置、用 `safeStorage` 安全存储登录 token、在本机
 重做一键启动 launcher。渲染层复用 `../frontend/dist` 构建产物。
 
-> 设计与决策见 `docs/方案B-桌面客户端迁移/M5-实施计划.md`、落地与验证见
-> `docs/方案B-桌面客户端迁移/M5-a-桌面壳骨架实施记录.md`。
+> 设计与决策见 `docs/archive/desktop-migration/M5-实施计划.md`、落地与验证见
+> `docs/archive/desktop-migration/M5-a-桌面壳骨架实施记录.md`。
 
 ## 目录结构
 

@@ -1,6 +1,6 @@
 # 团队/项目 Skill 仓库与同步重构计划
 
-> **本文档已归档** — 所述功能均已落地，当前实现以 [`../skill-collaboration-sync.md`](../skill-collaboration-sync.md) 为准；本文仅作决策溯源。
+> **本文档已归档** — 所述功能均已落地，当前实现以 [`../design/skill-collaboration-sync.md`](../design/skill-collaboration-sync.md) 为准；本文仅作决策溯源。
 
 > 状态：已确认，进入实现  
 > 目标：厘清个人仓库、团队仓库、项目 Skill 列表、用户部署实例之间的边界，避免当前全局 Skill 与项目动态混在一起。

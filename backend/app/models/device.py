@@ -10,7 +10,7 @@ from app.core.database import Base
 class Device(Base):
     """桌面客户端设备身份（方案 B · M5-b 设备身份地基）。
 
-    依据 `docs/方案B-桌面客户端迁移/M5-平台安装状态-多用户多机设计.md` §2.2 / §3：
+    依据 `docs/archive/desktop-migration/M5-平台安装状态-多用户多机设计.md` §2.2 / §3：
       · 服务端在 `POST /devices/register` 时铸造规范 `id`（uuid4 = device_id），
         前端正式形态用它做平台安装态上报的设备维度键；
       · `client_uuid` 为桌面壳本机持久 uuid（M5-a vibebara-device.json），仅作

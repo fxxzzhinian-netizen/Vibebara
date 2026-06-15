@@ -1,7 +1,7 @@
 /**
  * 本地代理（Local Agent）client 封装 —— 7 端点（M4 前端分流）。
  *
- * 类型严格对齐 `docs/方案B-桌面客户端迁移/contracts/local-agent-api.md`（冻结契约），
+ * 类型严格对齐 `docs/archive/desktop-migration/contracts/local-agent-api.md`（冻结契约），
  * 字段命名 camelCase；鉴权头 `X-Pairing-Token` 由 localAgentClient 拦截器统一附加。
  *
  * Base：`http://127.0.0.1:<PORT>`，前缀 `/local`，版本 `local-agent/v1`。
