@@ -65,6 +65,13 @@ services:
       COS_SECRET_ID: ${COS_SECRET_ID:-}
       COS_SECRET_KEY: ${COS_SECRET_KEY:-}
       COS_PREFIX: ${COS_PREFIX:-}
+      # 大模型接口：默认走阿里云百炼（DashScope 兼容模式）。base_url/model 有默认值，
+      # 仅 LLM_API_KEY 必须经 .env 注入（敏感，勿写默认值/勿入 git）；留空则 LLM 功能
+      # （标签分类 / 字段补齐）静默跳过，不影响其它功能。
+      LLM_PROVIDER: ${LLM_PROVIDER:-bailian}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-qwen-plus}
     ports:
       - "8000:8000"
     depends_on:
