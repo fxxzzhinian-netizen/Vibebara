@@ -8,11 +8,17 @@ import {
   listSkillVersions,
   getSkillVersion,
   restoreSkillVersion,
+  readVersionResourceFile,
   type NativeSkillDetail,
   type SkillVersionItem,
   type SkillVersionDetail,
+  type VersionResourceFileResponse,
+  type VersionResourceFileSide,
 } from '@/api/skillStore'
 import type { ChangeItem } from '@/api/projects'
+import { parseUnifiedDiff, inlineSegments } from '@/utils/diffView'
+import type { DiffRow, DiffRowType, InlinePair, SegOp } from '@/utils/diffView'
+import { isMockForced, mockVersions, mockVersionDetail, mockResourceFile } from '@/utils/devMockVersions'
 import { useTeamStore } from '@/stores/teamStore'
 import { useSkillStore } from '@/stores/skillStore'
 import { promptInput } from '@/composables/useInputDialog'
@@ -171,25 +177,44 @@ async function doSave(createVersion: boolean) {
 const versions = ref<SkillVersionItem[]>([])
 const versionsLoading = ref(false)
 const versionsLoaded = ref(false)
-const expandedVersionId = ref('')
+// 改动明细弹窗：保存当前展示的版本（替代原先的下拉展开）。
+const changesVersion = ref<SkillVersionItem | null>(null)
 const restoringId = ref('')
 const viewingVersion = ref<SkillVersionDetail | null>(null)
 const viewLoading = ref(false)
+// 开发者模式：?mock=1 / localStorage 强制用模拟数据；dev 构建下真实数据为空/报错时也会自动回退
+const devMockForced = isMockForced()
+const devMock = ref(devMockForced)
 
 async function loadVersions() {
+  // 强制模拟：跳过后端请求，直接填充模拟数据
+  if (devMockForced) {
+    versions.value = mockVersions()
+    versionsLoaded.value = true
+    versionsLoading.value = false
+    return
+  }
   versionsLoading.value = true
   try {
     const res = await listSkillVersions(skillId.value)
     if (res.success) {
       versions.value = res.versions
       versionsLoaded.value = true
-    } else {
+    } else if (!import.meta.env.DEV) {
       toast.error(res.error || '加载版本失败')
     }
   } catch (e: any) {
-    toast.error(e?.response?.data?.detail || e.message || '请求异常')
+    if (!import.meta.env.DEV) {
+      toast.error(e?.response?.data?.detail || e.message || '请求异常')
+    }
   } finally {
     versionsLoading.value = false
+  }
+  // 开发构建：真实版本为空（或请求失败）时回退到模拟数据，便于无数据时调 UI（生产不受影响）
+  if (import.meta.env.DEV && versions.value.length === 0) {
+    versions.value = mockVersions()
+    versionsLoaded.value = true
+    devMock.value = true
   }
 }
 
@@ -222,11 +247,105 @@ async function savePlatform() {
   }
 }
 
-function toggleVersion(id: string) {
-  expandedVersionId.value = expandedVersionId.value === id ? '' : id
+function openChanges(v: SkillVersionItem) {
+  changesVersion.value = v
+}
+
+function closeChanges() {
+  changesVersion.value = null
+}
+
+// —— 资源文件内容查看（明细弹窗里点击资源文件，叠加一层弹窗看内容/diff）——
+interface ResourceViewState {
+  path: string
+  change: string
+  loading: boolean
+  error: string
+  data: VersionResourceFileResponse | null
+}
+const resourceView = ref<ResourceViewState | null>(null)
+
+async function openResource(item: ChangeItem) {
+  const v = changesVersion.value
+  if (!v) return
+  const change = item.change || 'modified'
+  resourceView.value = { path: item.path, change, loading: true, error: '', data: null }
+  // 开发者模式：用模拟内容，跳过后端
+  if (devMock.value) {
+    resourceView.value = {
+      path: item.path,
+      change,
+      loading: false,
+      error: '',
+      data: mockResourceFile(item),
+    }
+    return
+  }
+  try {
+    const res = await readVersionResourceFile(v.skill_id, v.id, item.path)
+    if (res.success) {
+      resourceView.value = {
+        path: item.path,
+        change: res.change || change,
+        loading: false,
+        error: '',
+        data: res,
+      }
+    } else {
+      resourceView.value = {
+        path: item.path,
+        change,
+        loading: false,
+        error: res.error || '读取失败',
+        data: null,
+      }
+    }
+  } catch (e: any) {
+    resourceView.value = {
+      path: item.path,
+      change,
+      loading: false,
+      error: e?.response?.data?.detail || e.message || '请求异常',
+      data: null,
+    }
+  }
+}
+
+function closeResource() {
+  resourceView.value = null
+}
+
+const rvData = computed(() => resourceView.value?.data ?? null)
+const rvNew = computed<VersionResourceFileSide | null>(() => rvData.value?.new ?? null)
+const rvOld = computed<VersionResourceFileSide | null>(() => rvData.value?.old ?? null)
+const rvChange = computed(() => resourceView.value?.change ?? 'modified')
+const rvDiffRows = computed<DiffRow[]>(() => parseUnifiedDiff(rvData.value?.diff || ''))
+
+function isImagePath(p: string): boolean {
+  return /\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(p)
+}
+const rvIsImage = computed(() => isImagePath(resourceView.value?.path ?? ''))
+
+function imageDataUrl(side: VersionResourceFileSide | null, path: string): string {
+  if (!side || side.encoding !== 'base64') return ''
+  const ext = (path.split('.').pop() || '').toLowerCase()
+  const mime = ext === 'jpg' ? 'jpeg' : ext
+  return `data:image/${mime};base64,${side.content}`
+}
+
+function fmtSize(n?: number): string {
+  if (n === undefined || n === null) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
 async function viewVersion(v: SkillVersionItem) {
+  // 开发者模式：直接用模拟详情，跳过后端请求
+  if (devMock.value) {
+    viewingVersion.value = mockVersionDetail(v)
+    return
+  }
   viewLoading.value = true
   try {
     const res = await getSkillVersion(skillId.value, v.id)
@@ -254,6 +373,11 @@ async function restore(v: SkillVersionItem) {
     danger: true,
   })
   if (!ok) return
+  // 开发者模式：不调用真实接口，仅提示
+  if (devMock.value) {
+    toast.info(`（模拟）已回滚到 v${v.seq}`)
+    return
+  }
   restoringId.value = v.id
   try {
     const res = await restoreSkillVersion(skillId.value, v.id)
@@ -282,18 +406,38 @@ function sourceLabel(source: string): string {
   return m[source] || source
 }
 
-function changeItemText(item: ChangeItem): string {
-  if (item.kind === 'field') {
-    const fmt = (v: unknown) =>
-      v === undefined || v === null || v === '' ? '空' : String(v)
-    return `${item.label || item.path}：${fmt(item.old)} → ${fmt(item.new)}`
-  }
-  if (item.kind === 'body') {
-    return `正文 VibeSkill.md  +${item.added_lines ?? 0} / -${item.removed_lines ?? 0} 行`
-  }
-  const verb =
-    item.change === 'added' ? '新增' : item.change === 'removed' ? '删除' : '修改'
-  return `${verb}资源 ${item.path}`
+// —— 改动明细：逐项渲染具体的文件改动位置（字段 inline diff / 正文 unified diff / 资源） ——
+function formatVal(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '空'
+  if (typeof v === 'boolean') return v ? '是' : '否'
+  if (Array.isArray(v)) return v.join(', ') || '空'
+  return String(v)
+}
+
+function fieldSegs(item: ChangeItem): InlinePair {
+  return inlineSegments(formatVal(item.old), formatVal(item.new))
+}
+
+function bodyRows(item: ChangeItem): DiffRow[] {
+  return parseUnifiedDiff(item.diff || '')
+}
+
+function segClass(op: SegOp): string {
+  if (op < 0) return 'seg-del'
+  if (op > 0) return 'seg-add'
+  return ''
+}
+
+function rowSign(type: DiffRowType): string {
+  if (type === 'add') return '+'
+  if (type === 'del') return '-'
+  return ''
+}
+
+function resourceVerb(change?: string): string {
+  if (change === 'added') return '新增'
+  if (change === 'removed') return '删除'
+  return '修改'
 }
 
 // 表单取值源：编辑态读草稿、查看态读已保存配置；输入框在查看态禁用（与个人编辑器视觉一致）。
@@ -471,7 +615,7 @@ function timeAgo(ts: string | null | undefined): string {
               <button class="tab-side-item" :class="{ active: activeTab === 'instructions' }" @click="activeTab = 'instructions'">SKILL 指令</button>
               <button class="tab-side-item" :class="{ active: activeTab === 'resources' }" @click="activeTab = 'resources'">资源</button>
               <button class="tab-side-item" :class="{ active: activeTab === 'metadata' }" @click="activeTab = 'metadata'">元数据</button>
-              <button v-if="isTeamSkill" class="tab-side-item" :class="{ active: activeTab === 'versions' }" @click="activeTab = 'versions'">版本</button>
+              <button v-if="isTeamSkill || devMock" class="tab-side-item" :class="{ active: activeTab === 'versions' }" @click="activeTab = 'versions'">版本</button>
               <button class="tab-side-item" :class="{ active: activeTab === 'platform' }" @click="activeTab = 'platform'" title="查看各平台 Skill 结构">平台结构</button>
             </aside>
 
@@ -682,9 +826,19 @@ function timeAgo(ts: string | null | undefined): string {
                   <h3 class="card-title ver-card-title">
                     版本历史
                     <HelpTip text="每次推送到团队或团队仓库网页编辑保存时，可选择「更新版本序列号」生成一条版本快照；以下为该 Skill 的全部版本（按序列号倒序）。" :size="17" />
+                    <span v-if="devMock" class="dev-mock-chip" title="开发者模式：当前为模拟数据（?mock=1 开启 / ?mock=0 关闭）">模拟数据</span>
                   </h3>
-                  <button class="btn tool-btn" :disabled="versionsLoading" @click="loadVersions">
-                    {{ versionsLoading ? '刷新中...' : '刷新' }}
+                  <button
+                    class="ver-refresh-btn"
+                    :class="{ spinning: versionsLoading }"
+                    :disabled="versionsLoading"
+                    title="刷新"
+                    aria-label="刷新"
+                    @click="loadVersions"
+                  >
+                    <svg viewBox="0 0 1024 1024" width="22" height="22" version="1.1" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                      <path d="M958.681412 457.499032c-6.170072-50.632177-20.854483-99.563886-43.643361-145.434552-45.779694-92.144205-122.249797-166.333021-215.325711-208.898719-20.083724-9.18513-43.810309-0.349891-52.995439 19.734833-9.18413 20.082724-0.349891 43.810309 19.733833 52.996438 159.26323 72.834239 245.755201 249.640987 205.658732 420.410622-30.735395 130.876101-129.201624 233.321087-256.187941 270.333521l-0.262918-70.800875-196.843487 114.650172 197.690222 113.176632-0.275914-74.43274c75.398438-17.911403 144.809747-54.929834 202.084849-108.039237 65.597501-60.827991 111.122274-139.186504 131.651859-226.606186 12.170197-51.828803 15.10328-104.683286 8.715276-157.089909zM408.299406-0.001l0.271915 74.43374c-75.404436 17.911403-144.820744 54.931834-202.099843 108.046235-65.6005 60.83099-111.124274 139.191503-131.651859 226.616183-7.987504 34.034364-11.994252 68.507591-11.994252 103.010809 0 17.994377 1.090659 35.996751 3.271978 53.946142 6.152077 50.59119 20.803499 99.48891 43.545392 145.333583 45.678725 92.080225 122.012871 166.270041 214.936832 208.900718 20.071728 9.209122 43.810309 0.401874 53.018432-19.670852 9.210122-20.076726 0.400875-43.810309-19.671853-53.019432-158.963324-72.92821-245.278351-249.658982-205.24886-420.22368 30.732396-130.883099 129.201624-233.333083 256.195939-270.345517l0.259919 70.801874 196.850484-114.640174L408.299406-0.001z" fill="currentColor"></path>
+                    </svg>
                   </button>
                 </div>
 
@@ -706,7 +860,7 @@ function timeAgo(ts: string | null | undefined): string {
                       <span class="ver-actions">
                         <button class="btn-xs" :disabled="viewLoading" @click="viewVersion(v)">查看</button>
                         <button
-                          v-if="canEdit"
+                          v-if="canEdit || devMock"
                           class="btn-xs danger"
                           :disabled="restoringId === v.id"
                           @click="restore(v)"
@@ -716,16 +870,14 @@ function timeAgo(ts: string | null | undefined): string {
                       </span>
                     </div>
                     <div v-if="v.change_summary" class="ver-summary">{{ v.change_summary }}</div>
-                    <div
+                    <button
                       v-if="v.change_items && v.change_items.length"
-                      class="ver-changes-toggle"
-                      @click="toggleVersion(v.id)"
+                      type="button"
+                      class="ver-changes-btn"
+                      @click="openChanges(v)"
                     >
-                      {{ expandedVersionId === v.id ? '▾' : '▸' }} 改动明细（{{ v.change_items.length }}）
-                    </div>
-                    <ul v-if="expandedVersionId === v.id" class="ver-changes">
-                      <li v-for="(item, i) in v.change_items" :key="i">{{ changeItemText(item) }}</li>
-                    </ul>
+                      改动明细（{{ v.change_items.length }}）
+                    </button>
                   </li>
                 </ul>
               </section>
@@ -795,6 +947,175 @@ function timeAgo(ts: string | null | undefined): string {
         >
           回滚到此版本
         </button>
+      </template>
+    </BaseModal>
+
+    <!-- 改动明细弹窗：逐项渲染字段 / 正文 / 资源的具体改动（替代原下拉栏） -->
+    <BaseModal
+      :model-value="!!changesVersion"
+      :title="changesVersion ? `版本 v${changesVersion.seq} 改动明细` : ''"
+      :width="820"
+      @update:model-value="closeChanges"
+    >
+      <template v-if="changesVersion">
+        <p class="ver-modal-sub">
+          {{ sourceLabel(changesVersion.source) }} · {{ changesVersion.created_by_name || changesVersion.created_by || '—' }} · {{ timeAgo(changesVersion.created_at) }}
+        </p>
+        <p v-if="changesVersion.change_summary" class="changes-summary">{{ changesVersion.change_summary }}</p>
+        <div
+          v-for="(item, i) in changesVersion.change_items"
+          :key="i"
+          class="diff-block"
+        >
+          <!-- 字段改动：行内字符级高亮 -->
+          <template v-if="item.kind === 'field'">
+            <div class="diff-block-head">{{ item.label || item.path }}</div>
+            <div class="diff-code">
+              <div class="diff-line del">
+                <span class="ln">-</span>
+                <span class="code"><span
+                  v-for="(s, j) in fieldSegs(item).left"
+                  :key="j"
+                  :class="segClass(s.op)"
+                >{{ s.text }}</span></span>
+              </div>
+              <div class="diff-line add">
+                <span class="ln">+</span>
+                <span class="code"><span
+                  v-for="(s, j) in fieldSegs(item).right"
+                  :key="j"
+                  :class="segClass(s.op)"
+                >{{ s.text }}</span></span>
+              </div>
+            </div>
+          </template>
+
+          <!-- 正文改动：unified diff 逐行（含 @@ 行号定位） -->
+          <template v-else-if="item.kind === 'body'">
+            <div class="diff-block-head">
+              正文 VibeSkill.md
+              <span class="counts">
+                <span class="add">+{{ item.added_lines || 0 }}</span>
+                <span class="del">-{{ item.removed_lines || 0 }}</span>
+              </span>
+            </div>
+            <div v-if="bodyRows(item).length" class="diff-code">
+              <div
+                v-for="(row, k) in bodyRows(item)"
+                :key="k"
+                class="diff-line"
+                :class="row.type"
+              >
+                <span class="ln">{{ rowSign(row.type) }}</span>
+                <span class="code"><template v-if="row.segs"><span
+                  v-for="(s, j) in row.segs"
+                  :key="j"
+                  :class="segClass(s.op)"
+                >{{ s.text }}</span></template><template v-else>{{ row.text }}</template></span>
+              </div>
+            </div>
+            <p v-else class="diff-trunc">无正文行级差异记录</p>
+            <p v-if="item.diff_truncated" class="diff-trunc">差异较长，仅展示前若干行变更</p>
+          </template>
+
+          <!-- 资源改动：可点击，叠加弹窗查看文件内容 / diff -->
+          <template v-else>
+            <button
+              type="button"
+              class="diff-resource diff-resource-btn"
+              :class="item.change"
+              @click="openResource(item)"
+            >
+              <span class="res-verb">{{ resourceVerb(item.change) }}</span>
+              <span class="res-path">{{ item.path }}</span>
+              <span class="res-view-hint">查看内容 ›</span>
+            </button>
+          </template>
+        </div>
+      </template>
+    </BaseModal>
+
+    <!-- 资源文件内容/差异弹窗（叠在改动明细弹窗之上） -->
+    <BaseModal
+      :model-value="!!resourceView"
+      :title="resourceView ? resourceView.path : ''"
+      :width="820"
+      @update:model-value="closeResource"
+    >
+      <template v-if="resourceView">
+        <p class="ver-modal-sub">
+          <span class="res-verb" :class="rvChange">{{ resourceVerb(rvChange) }}</span>
+          <template v-if="rvData?.prev_seq != null">相对上一版本 v{{ rvData.prev_seq }}</template>
+          <template v-else>该版本无可对比的上一版本</template>
+        </p>
+
+        <div v-if="resourceView.loading" class="state-box"><span class="spinner" /> 加载中...</div>
+        <div v-else-if="resourceView.error" class="state-box err">{{ resourceView.error }}</div>
+
+        <template v-else>
+          <!-- 图片资源：直接预览（修改则前后并排） -->
+          <template v-if="rvIsImage">
+            <div class="res-img-grid" :class="{ dual: rvChange === 'modified' && rvOld && rvNew }">
+              <div v-if="rvChange === 'modified' && rvOld" class="res-img-cell">
+                <div class="res-img-cap del">旧 (v{{ rvData?.prev_seq }})</div>
+                <img v-if="imageDataUrl(rvOld, resourceView.path)" :src="imageDataUrl(rvOld, resourceView.path)" alt="旧版本" />
+                <div v-else class="res-empty">无法预览（{{ fmtSize(rvOld.size) }}）</div>
+              </div>
+              <div v-if="rvChange !== 'removed' && rvNew" class="res-img-cell">
+                <div class="res-img-cap add">{{ rvChange === 'modified' ? '新 (v' + rvData?.seq + ')' : '内容' }}</div>
+                <img v-if="imageDataUrl(rvNew, resourceView.path)" :src="imageDataUrl(rvNew, resourceView.path)" alt="新版本" />
+                <div v-else class="res-empty">无法预览（{{ fmtSize(rvNew.size) }}）</div>
+              </div>
+              <div v-if="rvChange === 'removed' && rvOld" class="res-img-cell">
+                <div class="res-img-cap del">已删除内容</div>
+                <img v-if="imageDataUrl(rvOld, resourceView.path)" :src="imageDataUrl(rvOld, resourceView.path)" alt="已删除" />
+                <div v-else class="res-empty">无法预览（{{ fmtSize(rvOld.size) }}）</div>
+              </div>
+            </div>
+          </template>
+
+          <!-- 文本「修改」：unified diff -->
+          <template v-else-if="rvChange === 'modified' && rvNew && rvOld && !rvNew.is_binary && !rvOld.is_binary">
+            <div v-if="rvDiffRows.length" class="diff-code">
+              <div
+                v-for="(row, k) in rvDiffRows"
+                :key="k"
+                class="diff-line"
+                :class="row.type"
+              >
+                <span class="ln">{{ rowSign(row.type) }}</span>
+                <span class="code"><template v-if="row.segs"><span
+                  v-for="(s, j) in row.segs"
+                  :key="j"
+                  :class="segClass(s.op)"
+                >{{ s.text }}</span></template><template v-else>{{ row.text }}</template></span>
+              </div>
+            </div>
+            <p v-else class="diff-trunc">内容无文本行级差异（可能仅元信息变化）</p>
+            <p v-if="rvData?.diff_truncated" class="diff-trunc">差异较长，仅展示前若干行变更</p>
+          </template>
+
+          <!-- 文本「新增」：展示新内容；「删除」：展示被删内容 -->
+          <template v-else-if="rvChange === 'added' && rvNew && !rvNew.is_binary">
+            <pre class="res-code">{{ rvNew.content || '（空文件）' }}</pre>
+          </template>
+          <template v-else-if="rvChange === 'removed' && rvOld && !rvOld.is_binary">
+            <pre class="res-code">{{ rvOld.content || '（空文件）' }}</pre>
+          </template>
+
+          <!-- 兜底：二进制 / 超大 / 无快照 -->
+          <div v-else class="res-empty">
+            <template v-if="(rvNew && rvNew.too_large) || (rvOld && rvOld.too_large)">
+              文件过大，暂不支持在线预览（{{ fmtSize((rvNew || rvOld)?.size) }}）。
+            </template>
+            <template v-else-if="rvNew || rvOld">
+              二进制文件，暂不支持文本预览（{{ fmtSize((rvNew || rvOld)?.size) }}）。
+            </template>
+            <template v-else>
+              未找到该文件的内容快照（可能为较早版本未保存资源快照）。
+            </template>
+          </div>
+        </template>
       </template>
     </BaseModal>
 
@@ -1346,7 +1667,15 @@ function timeAgo(ts: string | null | undefined): string {
   gap: 12px;
   margin-bottom: 12px;
 }
-.ver-card-title { flex: 1; margin: 0; }
+.ver-card-title { flex: 1; margin: 0; display: inline-flex; align-items: center; gap: 8px; }
+.dev-mock-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #b45309;
+}
 .ver-list { list-style: none; margin: 0; padding: 0; }
 .ver-item {
   background: #ffffff;
@@ -1407,42 +1736,230 @@ function timeAgo(ts: string | null | undefined): string {
   padding: 2px 0;
 }
 .ver-actions { margin-left: auto; display: flex; gap: 6px; }
+/* 卡片右上角操作按钮：统一为纯色按钮（边框与底色同色，遵循 solid-color-buttons 规范）。
+   查看=实底浅灰次级，回滚=实底危险红，与项目页 .btn-soft / .btn-danger 口径一致。 */
 .btn-xs {
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
-  color: #6b7280;
+  border: 1px solid #d4d8db;
+  background: #d4d8db;
+  color: #3b434f;
   border-radius: 7px;
-  padding: 3px 10px;
+  padding: 4px 12px;
   font-size: 12px;
+  font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-.btn-xs:hover:not(:disabled) { border-color: #d1d5db; color: #151717; }
+.btn-xs:hover:not(:disabled) { background: #c1c7cd; border-color: #c1c7cd; color: #151717; }
 .btn-xs:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-xs.danger { color: #dc2626; border-color: #fecaca; }
-.btn-xs.danger:hover:not(:disabled) { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
-.ver-summary { margin-top: 8px; font-size: 13px; color: #374151; }
-.ver-changes-toggle {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #4f46e5;
+.btn-xs.danger { background: #dc2626; border-color: #dc2626; color: #ffffff; }
+.btn-xs.danger:hover:not(:disabled) { background: #b91c1c; border-color: #b91c1c; color: #ffffff; }
+
+/* 刷新：纯图标按钮（无背景无边框，hover 绕中心转 60°） */
+.ver-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: #6b7280;
   cursor: pointer;
+  transition: color 0.15s ease;
+}
+.ver-refresh-btn:hover:not(:disabled) { color: #151717; }
+.ver-refresh-btn:disabled { cursor: not-allowed; opacity: 0.7; }
+.ver-refresh-btn svg {
+  transform-origin: 50% 50%;
+  transition: transform 0.3s ease;
+}
+.ver-refresh-btn:hover:not(:disabled) svg,
+.ver-refresh-btn.spinning svg { transform: rotate(60deg); }
+.ver-summary { margin-top: 8px; font-size: 13px; color: #374151; }
+/* 改动明细触发按钮：纯色浅紫文字按钮，点击打开弹窗（替代原下拉展开）。 */
+.ver-changes-btn {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #e0e7ff;
+  background: #eef2ff;
+  color: #4f46e5;
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.ver-changes-btn:hover {
+  background: #e0e7ff;
+  border-color: #c7d2fe;
+  color: #4338ca;
+}
+
+/* 改动明细弹窗顶部摘要 */
+.changes-summary {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+/* —— 改动明细：具体文件改动位置（与项目动态「详情」一致的 diff 渲染） —— */
+.diff-block { margin-bottom: 12px; }
+.diff-block:last-child { margin-bottom: 0; }
+.diff-block-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #4b5563;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.diff-block-head .counts { font-family: 'JetBrains Mono', monospace; font-weight: 400; }
+.diff-block-head .counts .add { color: #16a34a; margin-right: 6px; }
+.diff-block-head .counts .del { color: #dc2626; }
+.diff-code {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.diff-line {
+  display: flex;
+  font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.diff-line .ln {
+  flex-shrink: 0;
+  width: 22px;
+  text-align: center;
+  color: #b6bcc4;
   user-select: none;
 }
-.ver-changes {
-  list-style: none;
-  margin: 6px 0 0;
-  padding: 8px 12px;
+.diff-line .code { flex: 1; padding-right: 8px; }
+.diff-line.add { background: rgba(22, 163, 74, 0.08); }
+.diff-line.add .ln { color: #16a34a; }
+.diff-line.del { background: rgba(220, 38, 38, 0.07); }
+.diff-line.del .ln { color: #dc2626; }
+.diff-line.hunk { background: #f6f7f8; color: #6b7280; }
+.diff-line.context { color: #6b7280; }
+.seg-del { background: rgba(220, 38, 38, 0.18); border-radius: 2px; }
+.seg-add { background: rgba(22, 163, 74, 0.2); border-radius: 2px; }
+.diff-trunc { margin: 6px 0 0; font-size: 12px; color: #9ca3af; }
+.diff-resource {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #4b5563;
+}
+.res-verb {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 6px;
+  margin-right: 8px;
+  font-size: 11px;
+}
+.added .res-verb,
+.res-verb.added { background: #f0fdf4; color: #15803d; }
+.removed .res-verb,
+.res-verb.removed { background: #fef2f2; color: #dc2626; }
+.modified .res-verb,
+.res-verb.modified { background: #fef3c7; color: #b45309; }
+
+/* 资源条目按钮：整行可点击，hover 提示「查看内容」 */
+.diff-resource-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  border: 1px solid #ebedf0;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.diff-resource-btn:hover { background: #f6f7f8; border-color: #d8dbdf; }
+.diff-resource-btn .res-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.res-view-hint {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4f46e5;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.diff-resource-btn:hover .res-view-hint { opacity: 1; }
+
+/* 资源文件内容预览（新增/删除时展示纯文本） */
+.res-code {
   background: #f6f7f8;
   border: 1px solid #ebedf0;
   border-radius: 8px;
-}
-.ver-changes li {
-  font-size: 12px;
-  color: #4b5563;
+  padding: 12px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  padding: 2px 0;
+  color: #374151;
+  overflow: auto;
+  max-height: 460px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 图片资源预览（修改时前后并排） */
+.res-img-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+.res-img-grid.dual { grid-template-columns: 1fr 1fr; }
+.res-img-cell {
+  border: 1px solid #ebedf0;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f6f7f8;
+  text-align: center;
+}
+.res-img-cell img {
+  max-width: 100%;
+  max-height: 360px;
+  border-radius: 6px;
+  background:
+    linear-gradient(45deg, #e9ebee 25%, transparent 25%, transparent 75%, #e9ebee 75%) 0 0/16px 16px,
+    linear-gradient(45deg, #e9ebee 25%, #ffffff 25%, #ffffff 75%, #e9ebee 75%) 8px 8px/16px 16px;
+}
+.res-img-cap {
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.res-img-cap.add { background: #f0fdf4; color: #15803d; }
+.res-img-cap.del { background: #fef2f2; color: #dc2626; }
+.res-empty {
+  background: #f6f7f8;
+  border: 1px dashed #d8dbdf;
+  border-radius: 8px;
+  padding: 18px;
+  text-align: center;
+  font-size: 13px;
+  color: #9ca3af;
 }
 
 .ver-modal-sub { font-size: 12px; color: #9ca3af; margin: 0 0 12px; }

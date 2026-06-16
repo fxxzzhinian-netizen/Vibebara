@@ -8,6 +8,8 @@ SkillVersionService — 团队 Skill 的「版本快照」服务（创建 / 列�
 所有 Skill 内容读写仍由 NativeSkillStore 负责，本服务只管版本快照与回滚编排。
 """
 
+import base64
+import difflib
 import hashlib
 import json
 import logging
@@ -25,6 +27,10 @@ from app.models.user import User
 logger = logging.getLogger(__name__)
 
 _RESOURCE_DIRS = ("scripts", "references", "assets")
+
+# 查看版本快照资源文件内容时的体积/差异上限，避免一次性回传巨大文本。
+_RESOURCE_CONTENT_MAX_BYTES = 512 * 1024
+_RESOURCE_DIFF_MAX_LINES = 600
 
 
 def _version_prefix(skill_id: str, version_id: str) -> str:
@@ -219,6 +225,128 @@ class SkillVersionService:
                 return None
             names = await cls._display_names([row.created_by])
             return cls._row_to_dict(row, include_content=True, name_map=names)
+
+    @classmethod
+    async def get_resource_file(
+        cls, skill_id: str, version_id: str, rel_path: str
+    ) -> Optional[Dict[str, Any]]:
+        """读取某版本快照中的单个资源文件内容。
+
+        同时尝试读取**上一版本**（seq 紧邻且更小）同名文件，据此判定增/删/改并在
+        文本-文本场景下计算 unified diff，供「改动明细」里查看资源文件的实际内容/差异。
+
+        返回 None 表示版本不存在或不属于该 skill；非法路径抛 ValueError。
+        """
+        # 复用 native store 的路径白名单校验（仅 scripts/references/assets/**）。
+        from app.services.native_skill_store import NativeSkillStore
+        from app.services.object_store import get_object_store
+
+        safe = NativeSkillStore._safe_resource_rel(rel_path)
+
+        async with async_session_factory() as session:
+            ver = await session.get(SkillVersion, version_id)
+            if ver is None or ver.skill_id != skill_id:
+                return None
+            cur_seq = ver.seq
+            prev = (
+                await session.execute(
+                    select(SkillVersion)
+                    .where(
+                        SkillVersion.skill_id == skill_id,
+                        SkillVersion.seq < cur_seq,
+                    )
+                    .order_by(SkillVersion.seq.desc())
+                    .limit(1)
+                )
+            ).scalars().first()
+            prev_id = prev.id if prev else None
+            prev_seq = prev.seq if prev else None
+
+        store = get_object_store()
+
+        def _read(vid: Optional[str]) -> Optional[bytes]:
+            if not vid:
+                return None
+            return store.get_bytes(_version_prefix(skill_id, vid) + "/" + safe)
+
+        new_side = cls._encode_side(_read(version_id))
+        old_side = cls._encode_side(_read(prev_id))
+
+        if new_side and not old_side:
+            change = "added"
+        elif old_side and not new_side:
+            change = "removed"
+        elif new_side and old_side:
+            change = "modified"
+        else:
+            change = "unknown"
+
+        diff = ""
+        diff_truncated = False
+        if (
+            change == "modified"
+            and new_side and old_side
+            and not new_side["is_binary"] and not old_side["is_binary"]
+        ):
+            old_lines = cls._split_lines(old_side["content"])
+            new_lines = cls._split_lines(new_side["content"])
+            diff_lines = [
+                line
+                for line in difflib.unified_diff(old_lines, new_lines, lineterm="")
+                if not line.startswith(("+++", "---"))
+            ]
+            diff_truncated = len(diff_lines) > _RESOURCE_DIFF_MAX_LINES
+            diff = "\n".join(diff_lines[:_RESOURCE_DIFF_MAX_LINES])
+
+        return {
+            "path": safe,
+            "change": change,
+            "seq": cur_seq,
+            "prev_version_id": prev_id,
+            "prev_seq": prev_seq,
+            "new": new_side,
+            "old": old_side,
+            "diff": diff,
+            "diff_truncated": diff_truncated,
+        }
+
+    @staticmethod
+    def _encode_side(data: Optional[bytes]) -> Optional[Dict[str, Any]]:
+        """把字节解码为返回结构：文本→utf8，二进制→base64，超大→不回传内容。"""
+        if data is None:
+            return None
+        size = len(data)
+        if size > _RESOURCE_CONTENT_MAX_BYTES:
+            return {
+                "exists": True,
+                "encoding": "none",
+                "content": "",
+                "size": size,
+                "is_binary": True,
+                "too_large": True,
+            }
+        try:
+            return {
+                "exists": True,
+                "encoding": "utf8",
+                "content": data.decode("utf-8"),
+                "size": size,
+                "is_binary": False,
+                "too_large": False,
+            }
+        except UnicodeDecodeError:
+            return {
+                "exists": True,
+                "encoding": "base64",
+                "content": base64.b64encode(data).decode("ascii"),
+                "size": size,
+                "is_binary": True,
+                "too_large": False,
+            }
+
+    @staticmethod
+    def _split_lines(text: str) -> List[str]:
+        return text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
     # ------------------------------------------------------------------
     # 回滚

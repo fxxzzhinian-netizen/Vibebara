@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -550,6 +550,46 @@ async def get_skill_version(
         return {"success": False, "error": str(e)}
     except Exception as e:
         logger.exception(f"[store/versions] {skill_id}/{version_id} 查看失败")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class VersionResourceFileResponse(BaseModel):
+    success: bool
+    path: str = ""
+    change: str = ""
+    seq: Optional[int] = None
+    prev_version_id: Optional[str] = None
+    prev_seq: Optional[int] = None
+    new: Optional[Dict[str, Any]] = None
+    old: Optional[Dict[str, Any]] = None
+    diff: str = ""
+    diff_truncated: bool = False
+    error: Optional[str] = None
+
+
+@api_router.get(
+    "/{skill_id}/versions/{version_id}/resource-file",
+    response_model=VersionResourceFileResponse,
+)
+async def read_version_resource_file(
+    skill_id: str, version_id: str, path: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """读取某版本快照中的单个资源文件内容（含与上一版本的 unified diff）。"""
+    try:
+        await _assert_skill_accessible(skill_id, user_id)
+        data = await SkillVersionService.get_resource_file(
+            skill_id, version_id, path
+        )
+        if data is None:
+            return {"success": False, "error": "版本不存在"}
+        return {"success": True, **data}
+    except (FileNotFoundError, PermissionError, ValueError) as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.exception(
+            f"[store/versions] {skill_id}/{version_id} 资源文件读取失败: {path}"
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 

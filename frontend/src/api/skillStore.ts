@@ -250,6 +250,43 @@ export async function getSkillVersion(
   return data
 }
 
+/** 版本快照中某个资源文件的一侧内容（新/旧）。 */
+export interface VersionResourceFileSide {
+  exists: boolean
+  encoding: 'utf8' | 'base64' | 'none'
+  content: string
+  size: number
+  is_binary: boolean
+  too_large: boolean
+}
+
+export interface VersionResourceFileResponse {
+  success: boolean
+  path?: string
+  change?: 'added' | 'removed' | 'modified' | 'unknown'
+  seq?: number
+  prev_version_id?: string | null
+  prev_seq?: number | null
+  new?: VersionResourceFileSide | null
+  old?: VersionResourceFileSide | null
+  diff?: string
+  diff_truncated?: boolean
+  error?: string
+}
+
+/** 读取某版本快照里单个资源文件的内容，并附带与上一版本的 unified diff。 */
+export async function readVersionResourceFile(
+  skillId: string,
+  versionId: string,
+  path: string,
+): Promise<VersionResourceFileResponse> {
+  const { data } = await apiClient.get<VersionResourceFileResponse>(
+    `/skill-forge/store/${skillId}/versions/${versionId}/resource-file`,
+    { params: { path } },
+  )
+  return data
+}
+
 export async function restoreSkillVersion(
   skillId: string,
   versionId: string,
