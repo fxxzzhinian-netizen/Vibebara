@@ -37,6 +37,15 @@ $agentDir     = Join-Path $ROOT "local-agent"
 $desktopDir   = Join-Path $ROOT "desktop"
 $venvPython   = Join-Path $backendDir ".venv\Scripts\python.exe"
 
+# 云端默认地址：必须与 desktop/src/main/userConfig.ts 的 PACKAGED_DEFAULTS 保持一致。
+# 背景（本次「网络不可用」根因）：dev/未打包模式（npm start）下 electron 读不到
+# VIBEBARA_CLOUD_* 环境变量时，会回退到 userConfig.ts 的 DEV_DEFAULTS = 127.0.0.1:8000。
+# 配合 -NoBe（不在本机起后端）就没有任何服务监听 127.0.0.1:8000 → 前端所有云端请求失败，
+# 表现为「网络不可用」。打包 exe 不受影响：app.isPackaged=true 直接用 PACKAGED_DEFAULTS。
+# 故 -NoBe 直连云端时，本脚本兜底把云端地址写进 env（未显式设置时用下面默认），杜绝静默回退。
+$DEFAULT_CLOUD_API_BASE = "http://43.136.128.162:8000/api/v1"
+$DEFAULT_CLOUD_WS_BASE   = "ws://43.136.128.162:8000"
+
 # ── 工具函数 ────────────────────────────────────────────────
 
 function Write-Section($text) {
@@ -237,7 +246,15 @@ if (-not $NoBe) {
     Start-Backend
 }
 else {
-    Write-Host "  [后端] -NoBe: 跳过，请确保 cloud 后端已在 :8000 运行" -ForegroundColor Yellow
+    # -NoBe：不在本机起后端，直连云端。dev/未打包模式 electron 默认连 127.0.0.1:8000
+    # （userConfig.ts DEV_DEFAULTS）；若未显式提供云端地址会回退到本地空端口 → 前端所有
+    # 云端请求失败，表现为「网络不可用」。这里兜底：未设环境变量时填入云端默认地址，
+    # 确保 -NoBe 始终直连云端（与打包 exe 的 PACKAGED_DEFAULTS 一致）。env 已设则尊重既有值。
+    if (-not $env:VIBEBARA_CLOUD_API_BASE) { $env:VIBEBARA_CLOUD_API_BASE = $DEFAULT_CLOUD_API_BASE }
+    if (-not $env:VIBEBARA_CLOUD_WS_BASE)  { $env:VIBEBARA_CLOUD_WS_BASE  = $DEFAULT_CLOUD_WS_BASE }
+    Write-Host "  [后端] -NoBe: 不起本地后端，直连云端" -ForegroundColor Yellow
+    Write-Host "  [云端] API → $($env:VIBEBARA_CLOUD_API_BASE)" -ForegroundColor Cyan
+    Write-Host "  [云端] WS  → $($env:VIBEBARA_CLOUD_WS_BASE)"  -ForegroundColor Cyan
 }
 
 if ($Dev) {
