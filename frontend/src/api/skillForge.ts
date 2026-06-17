@@ -62,6 +62,7 @@ export interface InstalledAtStatus {
   kiro: boolean
   trae: boolean
   qoder: boolean
+  workbuddy: boolean
 }
 
 export interface UnifiedSkillPackage {

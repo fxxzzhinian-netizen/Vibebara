@@ -15,6 +15,7 @@ export { ClaudeAdapter } from "./adapters/claude.js";
 export { KiroAdapter } from "./adapters/kiro.js";
 export { TraeAdapter, resolveTraeSkillsDir } from "./adapters/trae.js";
 export { QoderAdapter, resolveQoderSkillsDir } from "./adapters/qoder.js";
+export { WorkBuddyAdapter, resolveWorkbuddySkillsDir } from "./adapters/workbuddy.js";
 export { detectOrigin, type SkillOrigin, type Confidence, type DetectResult } from "./adapters/detect.js";
 export { buildSkill, type BuildOptions, type Target } from "./commands/build.js";
 export { deploySkill, type DeployOptions } from "./commands/deploy.js";

@@ -36,6 +36,7 @@ class InstalledAtStatus(BaseModel):
     kiro: bool = False
     trae: bool = False
     qoder: bool = False
+    workbuddy: bool = False
 
 
 class UnifiedSkillPackage(BaseModel):
@@ -108,6 +109,7 @@ class NativeSkillItem(BaseModel):
     deployed_kiro: bool = False
     deployed_trae: bool = False
     deployed_qoder: bool = False
+    deployed_workbuddy: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

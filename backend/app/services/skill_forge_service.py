@@ -191,6 +191,7 @@ class SkillRegistry:
                     "kiro": installed.get("kiro", False),
                     "trae": installed.get("trae", False),
                     "qoder": installed.get("qoder", False),
+                    "workbuddy": installed.get("workbuddy", False),
                 },
             })
         return result

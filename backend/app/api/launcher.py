@@ -29,6 +29,7 @@ SUPPORTED_TOOLS = (
     "kiro",
     "trae",
     "qoder",
+    "workbuddy",
 )
 IS_WINDOWS = platform.system() == "Windows"
 
@@ -42,6 +43,7 @@ TOOL_LABELS = {
     "kiro": "Kiro",
     "trae": "Trae",
     "qoder": "Qoder",
+    "workbuddy": "WorkBuddy",
 }
 
 # 交互式 CLI 工具（新终端窗口启动）；其余按 GUI 应用后台启动。
@@ -49,7 +51,7 @@ TERMINAL_TOOLS = ("codex-cli", "claude-code")
 
 # 「以目标文件夹为工作区打开」的 IDE 工具：仅这些工具才把 project_path 作为命令行参数传入。
 # Codex / Claude 桌面端是对话类应用，不接受工作区路径参数，传入反而会破坏启动。
-WORKSPACE_TOOLS = ("cursor", "windsurf", "kiro", "trae", "qoder")
+WORKSPACE_TOOLS = ("cursor", "windsurf", "kiro", "trae", "qoder", "workbuddy")
 
 
 class LaunchRequest(BaseModel):
@@ -233,6 +235,23 @@ def _resolve_command(tool: str) -> tuple[list[str], bool]:
             "qoder 命令未找到，请确认 Qoder 已安装且在 PATH 中"
         )
 
+    if tool == "workbuddy":
+        if IS_WINDOWS:
+            exe = _find_executable("workbuddy.cmd", "workbuddy", "WorkBuddy.exe")
+            if exe:
+                return [exe], False
+            # WorkBuddy（腾讯 CodeBuddy 生态）开始菜单注册名形态多样，用通配匹配
+            appx_uri = _find_appx_app("*WorkBuddy*")
+            if appx_uri:
+                return ["explorer.exe", appx_uri], True
+        else:
+            exe = _find_executable("workbuddy", "WorkBuddy")
+            if exe:
+                return [exe], False
+        raise FileNotFoundError(
+            "workbuddy 命令未找到，请确认 WorkBuddy 已安装且在 PATH 中"
+        )
+
     raise ValueError(f"不支持的工具: {tool}")
 
 
@@ -306,6 +325,8 @@ async def list_tools(user_id: str = Depends(get_current_user_id)):
             mode, desc = "app", "启动 Trae IDE"
         elif tool_id == "qoder":
             mode, desc = "app", "启动 Qoder IDE"
+        elif tool_id == "workbuddy":
+            mode, desc = "app", "启动 WorkBuddy IDE"
         else:
             mode, desc = "app", "启动 Cursor IDE"
 

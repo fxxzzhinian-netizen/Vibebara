@@ -5,6 +5,8 @@ import AppTopNav from '@/components/AppTopNav.vue'
 import { toast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirmDialog'
 import { promptInput } from '@/composables/useInputDialog'
+import { useSlideIndicator } from '@/composables/useSlideIndicator'
+import { useDirectionalTransition } from '@/composables/useDirectionalTransition'
 import {
   listMarket,
   listMine,
@@ -41,6 +43,28 @@ const tabs = computed<{ key: Tab; label: string }[]>(() => {
   if (isReviewer.value) base.push({ key: 'review', label: '审核' })
   if (canManageAdmins.value) base.push({ key: 'admins', label: '管理员' })
   return base
+})
+
+// 分段切换：选中态白色滑块随激活分页平滑滑动（与顶栏/编辑器一致）。
+// trigger 同时观察激活分页与分页数量（审核/管理员分页按权限增减时重新测量）。
+const segRef = ref<HTMLElement | null>(null)
+const { style: segSliderStyle, ready: segSliderReady } = useSlideIndicator({
+  container: segRef,
+  activeSelector: '.seg-item.active',
+  axis: 'x',
+  trigger: () => [activeTab.value, tabs.value.length],
+})
+
+// 内容面板方向感知过渡：右切（forward）从右滑入、左切（backward）从左滑入。
+const TAB_ORDER = ['market', 'mine', 'review', 'admins'] as const
+const {
+  name: paneTransition,
+  animating: paneAnimating,
+  end: paneTransitionEnd,
+} = useDirectionalTransition({
+  value: () => activeTab.value,
+  order: TAB_ORDER,
+  names: { forward: 'pane-fwd', backward: 'pane-bwd' },
 })
 
 const SKELETON = 6
@@ -261,7 +285,8 @@ onMounted(() => {
         <div class="toolbar-titles">
           <h1 class="page-title">SKILL 市场</h1>
         </div>
-        <div class="seg">
+        <div ref="segRef" class="seg">
+          <span class="seg-slider" :class="{ ready: segSliderReady }" :style="segSliderStyle"></span>
           <button
             v-for="t in tabs"
             :key="t.key"
@@ -273,25 +298,36 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- 错误态 -->
-      <div v-if="error && !loading" class="error-bar">
-        {{ error }}
-        <button class="btn-retry" @click="loadTab(activeTab)">重试</button>
-      </div>
+      <!-- 内容区：分页切换按方向滑入滑出（与编辑器正文一致） -->
+      <transition-group
+        tag="div"
+        class="pane-group"
+        :class="{ animating: paneAnimating }"
+        :name="paneTransition"
+        @after-enter="paneTransitionEnd"
+        @after-leave="paneTransitionEnd"
+        @enter-cancelled="paneTransitionEnd"
+      >
+        <section :key="activeTab" class="pane">
+          <!-- 加载骨架 -->
+          <div v-if="loading" class="skill-grid">
+            <div v-for="i in SKELETON" :key="i" class="skill-card skeleton">
+              <div class="sk-line sk-title"></div>
+              <div class="sk-line sk-text"></div>
+              <div class="sk-line sk-text short"></div>
+              <div class="sk-line sk-foot"></div>
+            </div>
+          </div>
 
-      <!-- 加载骨架 -->
-      <div v-if="loading" class="skill-grid">
-        <div v-for="i in SKELETON" :key="i" class="skill-card skeleton">
-          <div class="sk-line sk-title"></div>
-          <div class="sk-line sk-text"></div>
-          <div class="sk-line sk-text short"></div>
-          <div class="sk-line sk-foot"></div>
-        </div>
-      </div>
+          <!-- 错误态 -->
+          <div v-else-if="error" class="error-bar">
+            {{ error }}
+            <button class="btn-retry" @click="loadTab(activeTab)">重试</button>
+          </div>
 
-      <!-- 市场（全体可见，已通过） -->
-      <template v-else-if="activeTab === 'market'">
-        <div v-if="marketSkills.length" class="skill-grid">
+          <!-- 市场（全体可见，已通过） -->
+          <template v-else-if="activeTab === 'market'">
+            <div v-if="marketSkills.length" class="skill-grid">
           <div v-for="s in marketSkills" :key="s.id" class="skill-card">
             <div class="card-head">
               <span class="card-name">{{ s.display_name || s.source_skill_id }}</span>
@@ -412,6 +448,8 @@ onMounted(() => {
           <p>添加平台管理员后，他们可以审核市场发布</p>
         </div>
       </template>
+        </section>
+      </transition-group>
     </main>
   </div>
 </template>
@@ -461,6 +499,7 @@ onMounted(() => {
 
 /* —— 分段切换 —— */
 .seg {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -469,7 +508,30 @@ onMounted(() => {
   background: #f0f1f3;
 }
 
+/* 选中态白色胶囊滑块：绝对定位于分页项之下，随选中项平滑滑动 + 变宽。 */
+.seg-slider {
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  left: 0;
+  width: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(21, 23, 23, 0.1);
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+  will-change: transform, width;
+}
+
+.seg-slider.ready {
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
+
 .seg-item {
+  position: relative;
+  z-index: 1;
   border: none;
   border-radius: 999px;
   background: transparent;
@@ -479,18 +541,17 @@ onMounted(() => {
   font-weight: 500;
   padding: 0.4rem 0.95rem;
   cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition: color 0.15s ease;
 }
 
 .seg-item:hover:not(.active) {
   color: #202124;
 }
 
+/* 选中项：文字加深加粗；白色胶囊底由 .seg-slider 提供（可滑动） */
 .seg-item.active {
-  background: #ffffff;
   color: #151717;
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(21, 23, 23, 0.1);
 }
 
 /* —— 错误态 —— */
@@ -522,6 +583,45 @@ onMounted(() => {
 
 .btn-retry:hover {
   background: #fef2f2;
+}
+
+/* —— 分页内容方向过渡（进出叠放于同一网格单元，避免位移挤动布局） —— */
+.pane-group {
+  display: grid;
+}
+
+.pane-group > * {
+  grid-area: 1 / 1;
+  align-self: start;
+}
+
+.pane-group.animating {
+  overflow: hidden;
+}
+
+.pane-fwd-enter-active,
+.pane-fwd-leave-active,
+.pane-bwd-enter-active,
+.pane-bwd-leave-active {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.24s ease;
+  will-change: transform, opacity;
+}
+
+.pane-fwd-enter-from {
+  opacity: 0;
+  transform: translateX(30px);
+}
+.pane-fwd-leave-to {
+  opacity: 0;
+  transform: translateX(-30px);
+}
+.pane-bwd-enter-from {
+  opacity: 0;
+  transform: translateX(-30px);
+}
+.pane-bwd-leave-to {
+  opacity: 0;
+  transform: translateX(30px);
 }
 
 /* —— 卡片网格 —— */

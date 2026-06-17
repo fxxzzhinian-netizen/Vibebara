@@ -54,6 +54,7 @@ function makeItem(partial: Partial<NativeSkillItem> & { id: string }): NativeSki
     deployed_kiro: false,
     deployed_trae: false,
     deployed_qoder: false,
+    deployed_workbuddy: false,
     created_at: NOW,
     updated_at: NOW,
     ...partial,

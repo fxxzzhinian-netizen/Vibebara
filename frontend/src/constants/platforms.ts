@@ -16,6 +16,7 @@ export const TOOL_TYPES = [
   'kiro',
   'trae',
   'qoder',
+  'workbuddy',
 ] as const
 
 export type ToolType = (typeof TOOL_TYPES)[number]
@@ -29,4 +30,5 @@ export const TOOL_LABELS: Record<ToolType, string> = {
   kiro: 'Kiro',
   trae: 'Trae',
   qoder: 'Qoder',
+  workbuddy: 'WorkBuddy',
 }

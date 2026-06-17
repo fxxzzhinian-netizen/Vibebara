@@ -1,4 +1,4 @@
-﻿import type { UnifiedSkillConfig } from "../schema/unified.js";
+import type { UnifiedSkillConfig } from "../schema/unified.js";
 
 export interface BuildResult {
   outputDir: string;
@@ -12,7 +12,8 @@ export type AdapterTarget =
   | "claude"
   | "kiro"
   | "trae"
-  | "qoder";
+  | "qoder"
+  | "workbuddy";
 
 export interface Adapter {
   readonly target: AdapterTarget;

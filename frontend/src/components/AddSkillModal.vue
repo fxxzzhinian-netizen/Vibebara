@@ -62,6 +62,7 @@ const TOOL_LABELS: Record<IdeSkillGroup['tool'], string> = {
   kiro: 'Kiro',
   trae: 'Trae',
   qoder: 'Qoder',
+  workbuddy: 'WorkBuddy',
 }
 
 // —— 手动新建（仅 personal）——

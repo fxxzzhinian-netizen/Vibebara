@@ -11,6 +11,7 @@ import claudeIcon from '@/img/icon/claudecode.svg'
 import kiroIcon from '@/img/icon/kiro.svg'
 import traeIcon from '@/img/icon/trae.svg'
 import qoderIcon from '@/img/icon/qoder.svg'
+import workbuddyIcon from '@/img/icon/workbuddy.svg'
 
 // 平台结构内容面板：可内嵌于 SkillForge 标签页，也可被 PlatformStructure 路由页包裹复用。
 // 直接读写 skillStore.currentConfig（updateLocalConfig 会置 dirty，由外层工具栏统一保存）。
@@ -24,10 +25,11 @@ const platformIcons: Record<string, string> = {
   kiro: kiroIcon,
   trae: traeIcon,
   qoder: qoderIcon,
+  workbuddy: workbuddyIcon,
 }
 
 const activePlatform = ref<
-  'overview' | 'codex' | 'cursor' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'
+  'overview' | 'codex' | 'cursor' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder' | 'workbuddy'
 >('overview')
 
 const cfg = computed(() => store.currentConfig as Record<string, any> | null)
@@ -46,7 +48,7 @@ interface FieldDef {
   placeholder?: string
   options?: string[]
   help?: string
-  platforms: ('cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder')[]
+  platforms: ('cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder' | 'workbuddy')[]
 }
 
 const allFields: FieldDef[] = [
@@ -70,6 +72,12 @@ const allFields: FieldDef[] = [
   { key: 'when_to_use', label: '触发提示 (when_to_use)', type: 'textarea', parent: 'claude', placeholder: 'Use when user asks to deploy.', help: '用自然语言描述什么情况下应该使用这个 Skill，帮助模型判断是否自动调用。', platforms: ['claude'] },
   { key: 'user_invocable', label: '可手动调用 (user-invocable)', type: 'boolean', parent: 'claude', help: '是否允许用户手动调用该 Skill；设为 false 则只能由模型自动触发。', platforms: ['claude'] },
   { key: 'hooks', label: 'Hooks (高级, JSON)', type: 'json', parent: 'claude', placeholder: '{"PreToolUse": [{"matcher": "Bash(git commit)", "hooks": [...]}]}', help: '高级功能：用 JSON 配置在特定时机（如执行某命令前后）自动运行的钩子脚本。', platforms: ['claude'] },
+  // WorkBuddy（腾讯 CodeBuddy 生态）marketplace 风格 frontmatter 字段（均带回退）。
+  { key: 'displayName', label: '显示名称 (display_name)', type: 'text', parent: 'workbuddy', placeholder: '人类友好的中文标题', help: 'WorkBuddy 市场中展示的主标题（中文）。留空则回退使用通用「显示名称」或 Skill 名称。', platforms: ['workbuddy'] },
+  { key: 'displayNameEn', label: '英文显示名称 (display_name_en)', type: 'text', parent: 'workbuddy', placeholder: 'Human-friendly English title', help: 'WorkBuddy 市场中展示的英文标题。留空则不输出该字段。', platforms: ['workbuddy'] },
+  { key: 'descriptionZh', label: '中文描述 (description_zh)', type: 'textarea', parent: 'workbuddy', placeholder: '一句话中文描述', help: 'WorkBuddy 市场中的中文描述。留空则回退使用通用「描述」。', platforms: ['workbuddy'] },
+  { key: 'descriptionEn', label: '英文描述 (description_en)', type: 'textarea', parent: 'workbuddy', placeholder: 'One-line English description', help: 'WorkBuddy 市场中的英文描述。留空则不输出该字段。', platforms: ['workbuddy'] },
+  { key: 'visibility', label: '可见性 (visibility)', type: 'select', parent: 'workbuddy', options: ['', 'public', 'private'], help: '在 WorkBuddy 市场中的可见性：public 公开 / private 私有。留空则默认 public。', platforms: ['workbuddy'] },
 ]
 
 const commonFields = [
@@ -208,6 +216,13 @@ const platformMeta: Record<string, PlatformMeta> = {
     badge: 'SKILL.md frontmatter (仅 name + description)',
     desc: 'Qoder（阿里）原生支持开放 Agent Skills 标准',
   },
+  workbuddy: {
+    name: 'WorkBuddy',
+    color: '#1e6fff',
+    badge: 'SKILL.md frontmatter (marketplace 风格)',
+    desc: 'WorkBuddy（腾讯 CodeBuddy 生态）遵循开放 Agent Skills 标准，并扩展 marketplace 风格字段',
+    descMore: '在 name + description 之外，输出 version / display_name / display_name_en / description_zh / description_en / visibility（均带回退，无平台特有必填项）。市场安装态边文件 _skillhub_meta.json / _icon.svg 为发布/安装产物，部署时不生成。项目级落 .workbuddy/skills/，全局级落 ~/.workbuddy/skills/。',
+  },
 }
 
 const fieldsForPlatform = computed(() => {
@@ -257,6 +272,12 @@ const buildInfo: Record<string, string[]> = {
     '严格只输出这两个字段，其余平台特有字段（UI / 运行时 / metadata 等）全部丢弃，忠于 Qoder 官方规范',
     '可携带 <code>scripts</code> / <code>references</code> / <code>assets</code>；无独立 <code>openai.yaml</code> / <code>LICENSE.txt</code>',
     '项目级落 <code>.qoder/skills/{id}/</code>；全局级落 <code>~/.qoder/skills/{id}/</code>（统一目录，无国内/国际分叉），项目级优先于全局级',
+  ],
+  workbuddy: [
+    '输出含 <code>SKILL.md</code> 的文件夹，frontmatter 为 marketplace 风格：<code>name</code> / <code>description</code> / <code>version</code> / <code>display_name</code> / <code>display_name_en</code> / <code>description_zh</code> / <code>description_en</code> / <code>visibility</code>',
+    '新增字段取自抽象包 <code>workbuddy</code> 块并带回退：<code>display_name</code> ← displayName/通用显示名/name；<code>description_zh</code> ← description；<code>visibility</code> ← public；<code>_en</code> 缺省时省略',
+    '<strong>不</strong>生成 <code>_skillhub_meta.json</code> / <code>_icon.svg</code>（市场发布/安装态产物，含无法本地伪造的 skillId/source；WorkBuddy 加载只读 SKILL.md frontmatter）',
+    '可携带 <code>scripts</code> / <code>references</code> / <code>assets</code>；项目级落 <code>.workbuddy/skills/{id}/</code>，全局级落 <code>~/.workbuddy/skills/{id}/</code>（统一目录，无国内/国际分叉），项目级优先于全局级',
   ],
 }
 
@@ -311,6 +332,10 @@ watch(activePlatform, () => {
         <img class="seg-icon" :src="platformIcons.qoder" alt="" aria-hidden="true" />
         Qoder
       </button>
+      <button :class="['seg-btn', { active: activePlatform === 'workbuddy' }]" @click="activePlatform = 'workbuddy'">
+        <img class="seg-icon" :src="platformIcons.workbuddy" alt="" aria-hidden="true" />
+        WorkBuddy
+      </button>
     </nav>
 
     <!-- Overview: field matrix -->
@@ -340,12 +365,14 @@ watch(activePlatform, () => {
               <th>Kiro</th>
               <th>Trae</th>
               <th>Qoder</th>
+              <th>WorkBuddy</th>
               <th>说明</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="f in commonFields" :key="f.key">
               <td class="field-name">{{ f.label }}</td>
+              <td class="support yes">✓</td>
               <td class="support yes">✓</td>
               <td class="support yes">✓</td>
               <td class="support yes">✓</td>
@@ -385,6 +412,7 @@ watch(activePlatform, () => {
               <th>Kiro</th>
               <th>Trae</th>
               <th>Qoder</th>
+              <th>WorkBuddy</th>
               <th>构建映射</th>
             </tr>
           </thead>
@@ -392,6 +420,7 @@ watch(activePlatform, () => {
             <tr>
               <td class="field-name">ui.display_name</td>
               <td class="support yes">✓</td>
+              <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
@@ -409,11 +438,13 @@ watch(activePlatform, () => {
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
+              <td class="support no">✗</td>
               <td class="field-note">→ openai.yaml interface.short_description</td>
             </tr>
             <tr>
               <td class="field-name">ui.brand_color</td>
               <td class="support yes">✓</td>
+              <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
@@ -431,11 +462,13 @@ watch(activePlatform, () => {
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
+              <td class="support no">✗</td>
               <td class="field-note">→ openai.yaml interface.default_prompt</td>
             </tr>
             <tr>
               <td class="field-name">ui.icon_small / icon_large</td>
               <td class="support yes">✓</td>
+              <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
@@ -453,12 +486,14 @@ watch(activePlatform, () => {
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
+              <td class="support no">✗</td>
               <td class="field-note">→ openai.yaml dependencies.tools</td>
             </tr>
             <tr>
               <td class="field-name">metadata.surfaces</td>
               <td class="support no">✗</td>
               <td class="support yes">✓</td>
+              <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
@@ -475,6 +510,7 @@ watch(activePlatform, () => {
               <td class="support yes">✓</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
+              <td class="support no">✗</td>
               <td class="field-note">Codex → LICENSE.txt；Claude / Kiro → frontmatter license</td>
             </tr>
             <tr>
@@ -486,6 +522,7 @@ watch(activePlatform, () => {
               <td class="support yes">✓</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
+              <td class="support no">✗</td>
               <td class="field-note">→ SKILL.md frontmatter compatibility / metadata</td>
             </tr>
             <tr>
@@ -494,6 +531,7 @@ watch(activePlatform, () => {
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support yes">✓</td>
+              <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
@@ -508,6 +546,7 @@ watch(activePlatform, () => {
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
+              <td class="support no">✗</td>
               <td class="field-note">→ frontmatter model / effort</td>
             </tr>
             <tr>
@@ -516,6 +555,7 @@ watch(activePlatform, () => {
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support yes">✓</td>
+              <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
@@ -530,6 +570,7 @@ watch(activePlatform, () => {
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
+              <td class="support no">✗</td>
               <td class="field-note">→ frontmatter user-invocable (仅 false) / argument-hint</td>
             </tr>
             <tr>
@@ -541,7 +582,44 @@ watch(activePlatform, () => {
               <td class="support no">✗</td>
               <td class="support no">✗</td>
               <td class="support no">✗</td>
+              <td class="support no">✗</td>
               <td class="field-note">→ frontmatter when_to_use / hooks</td>
+            </tr>
+            <tr>
+              <td class="field-name">workbuddy.displayName / displayNameEn</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support yes">✓</td>
+              <td class="field-note">→ frontmatter display_name / display_name_en（缺省回退 name）</td>
+            </tr>
+            <tr>
+              <td class="field-name">workbuddy.descriptionZh / descriptionEn</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support yes">✓</td>
+              <td class="field-note">→ frontmatter description_zh / description_en（zh 缺省回退 description）</td>
+            </tr>
+            <tr>
+              <td class="field-name">workbuddy.visibility</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support no">✗</td>
+              <td class="support yes">✓</td>
+              <td class="field-note">→ frontmatter visibility（缺省回退 public）</td>
             </tr>
           </tbody>
         </table>

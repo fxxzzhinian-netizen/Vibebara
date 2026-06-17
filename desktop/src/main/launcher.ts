@@ -33,6 +33,7 @@ const SUPPORTED_TOOLS: LauncherToolId[] = [
   "kiro",
   "trae",
   "qoder",
+  "workbuddy",
 ];
 
 const TOOL_LABELS: Record<LauncherToolId, string> = {
@@ -45,6 +46,7 @@ const TOOL_LABELS: Record<LauncherToolId, string> = {
   kiro: "Kiro",
   trae: "Trae",
   qoder: "Qoder",
+  workbuddy: "WorkBuddy",
 };
 
 /** 交互式 CLI 工具（新终端窗口启动）；其余按 GUI 应用后台启动。 */
@@ -63,6 +65,7 @@ const WORKSPACE_TOOLS: ReadonlySet<LauncherToolId> = new Set([
   "kiro",
   "trae",
   "qoder",
+  "workbuddy",
 ]);
 
 /** resolveCommand 结果：cmd 为启动命令数组；viaAppx 表示经 explorer + AppsFolder 协议激活（无法附带任何路径参数）。 */
@@ -231,6 +234,20 @@ function resolveCommand(tool: LauncherToolId): ResolvedCommand {
     throw new Error("qoder 命令未找到，请确认 Qoder 已安装且在 PATH 中");
   }
 
+  if (tool === "workbuddy") {
+    if (IS_WINDOWS) {
+      const exe = which("workbuddy.cmd", "workbuddy", "WorkBuddy.exe");
+      if (exe) return exeCmd(exe);
+      // WorkBuddy（腾讯 CodeBuddy 生态）开始菜单注册名形态多样，用通配匹配
+      const appx = findAppxApp("*WorkBuddy*");
+      if (appx) return appxCmd(appx);
+    } else {
+      const exe = which("workbuddy", "WorkBuddy");
+      if (exe) return exeCmd(exe);
+    }
+    throw new Error("workbuddy 命令未找到，请确认 WorkBuddy 已安装且在 PATH 中");
+  }
+
   throw new Error(`不支持的工具: ${tool}`);
 }
 
@@ -344,6 +361,9 @@ export function listTools(): { tools: LauncherToolInfo[] } {
     } else if (id === "qoder") {
       mode = "app";
       description = "启动 Qoder IDE";
+    } else if (id === "workbuddy") {
+      mode = "app";
+      description = "启动 WorkBuddy IDE";
     } else {
       mode = "app";
       description = "启动 Cursor IDE";

@@ -9,7 +9,7 @@ withDefaults(defineProps<{ textOnly?: boolean; prefix?: string }>(), {
 })
 
 // 当前已兼容的 Vibe Coding 工具（与 Onboarding 的 PLATFORM_TOOLS 一致）
-const TOOLS = ['Cursor', 'Codex', 'Windsurf', 'Claude Code', 'Kiro', 'Trae', 'Qoder']
+const TOOLS = ['Cursor', 'Codex', 'Windsurf', 'Claude Code', 'Kiro', 'Trae', 'Qoder', 'WorkBuddy']
 // 末尾重复首项，循环回绕时无缝衔接
 const cycleWords = [...TOOLS, TOOLS[0]]
 </script>

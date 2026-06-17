@@ -70,7 +70,8 @@ export type LauncherToolId =
   | "claude-app"
   | "kiro"
   | "trae"
-  | "qoder";
+  | "qoder"
+  | "workbuddy";
 
 export interface LauncherToolInfo {
   id: LauncherToolId;

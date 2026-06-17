@@ -8,7 +8,15 @@ import AppToast from '@/components/AppToast.vue'
 
 <template>
   <div id="app-layout">
-    <RouterView />
+    <!-- 路由切页过渡：内容交叉淡入淡出。
+         离场页绝对定位与入场页重叠，而顶栏在每个页面中位置/外观一致，
+         因此视觉上顶栏保持稳定（白色胶囊仍由 useSlideIndicator 记忆位置平滑滑动），
+         只有正文做淡入淡出，消除整页的硬切换。 -->
+    <RouterView v-slot="{ Component }">
+      <transition name="page">
+        <component :is="Component" />
+      </transition>
+    </RouterView>
     <InputDialog />
     <ConfirmDialog />
     <ChoiceDialog />
@@ -106,5 +114,27 @@ body {
 
 #app-layout {
   min-height: 100vh;
+  /* 作为切页过渡中「离场页」绝对定位的包含块 */
+  position: relative;
+}
+
+/* ===== 路由切页过渡（交叉淡入淡出） ===== */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.24s ease;
+}
+
+/* 离场页脱离文档流并铺满，与入场页重叠，避免上下错位跳动；
+   不设 bottom，保留页面自然高度，防止长页面被裁切。 */
+.page-leave-active {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+.page-enter-from,
+.page-leave-to {
+  opacity: 0;
 }
 </style>

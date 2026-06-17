@@ -73,6 +73,16 @@ def qoder_skills_dir() -> Path:
     return Path.home() / ".qoder" / "skills"
 
 
+def workbuddy_skills_dir() -> Path:
+    """WorkBuddy（腾讯 CodeBuddy 生态）全局 skill 目录（docs/design/skill-forge.md §9.6）。
+
+    WorkBuddy 全局目录统一为 ~/.workbuddy/skills，**无国内/国际分叉，无须探测**
+    （与 Qoder 同）。项目级目录为 .workbuddy/skills/，同名时项目级优先于全局。
+    与 skill-forge resolveWorkbuddySkillsDir / local-agent workbuddySkillsDir 口径一致。
+    """
+    return Path.home() / ".workbuddy" / "skills"
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -208,6 +218,12 @@ def _detect_origin(src: Path, frontmatter: Dict[str, Any]) -> str:
     # 仅靠 .qoder/skills/ 路径主信号识别（全局/项目统一，无国内/国际分叉）。
     if "/.qoder/skills/" in src_str:
         return "qoder"
+    # WorkBuddy（腾讯 CodeBuddy 生态）.workbuddy/skills/ 路径主信号识别
+    # （全局/项目统一，无国内/国际分叉）；市场安装态边文件 _skillhub_meta.json 为辅信号。
+    if "/.workbuddy/skills/" in src_str:
+        return "workbuddy"
+    if (src / "_skillhub_meta.json").exists():
+        return "workbuddy"
     if (src / "agents" / "openai.yaml").exists():
         return "codex"
 
@@ -635,6 +651,9 @@ class NativeSkillStore:
                 row.deployed_qoder = (
                     qoder_skills_dir() / skill_id / "SKILL.md"
                 ).exists()
+                row.deployed_workbuddy = (
+                    workbuddy_skills_dir() / skill_id / "SKILL.md"
+                ).exists()
             else:
                 if row.deployed_cursor is None:
                     row.deployed_cursor = False
@@ -650,6 +669,8 @@ class NativeSkillStore:
                     row.deployed_trae = False
                 if row.deployed_qoder is None:
                     row.deployed_qoder = False
+                if row.deployed_workbuddy is None:
+                    row.deployed_workbuddy = False
 
             await session.commit()
             await session.refresh(row)
@@ -1645,6 +1666,8 @@ class NativeSkillStore:
                     dest_root = project_root / ".trae" / "skills"
                 elif out_target == "qoder":
                     dest_root = project_root / ".qoder" / "skills"
+                elif out_target == "workbuddy":
+                    dest_root = project_root / ".workbuddy" / "skills"
                 else:
                     dest_root = project_root / ".codex" / "skills"
             elif out_target == "cursor":
@@ -1659,6 +1682,8 @@ class NativeSkillStore:
                 dest_root = trae_skills_dir()
             elif out_target == "qoder":
                 dest_root = qoder_skills_dir()
+            elif out_target == "workbuddy":
+                dest_root = workbuddy_skills_dir()
             else:
                 dest_root = CODEX_SKILLS_DIR
 
@@ -1742,6 +1767,7 @@ class NativeSkillStore:
             "deployed_kiro": row.deployed_kiro,
             "deployed_trae": row.deployed_trae,
             "deployed_qoder": row.deployed_qoder,
+            "deployed_workbuddy": row.deployed_workbuddy,
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
         }

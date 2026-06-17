@@ -11,6 +11,7 @@ export type ToolId =
   | 'kiro'
   | 'trae'
   | 'qoder'
+  | 'workbuddy'
 
 export interface LaunchRequest {
   tool: ToolId

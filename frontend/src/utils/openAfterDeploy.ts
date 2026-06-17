@@ -20,6 +20,7 @@ const SIMPLE_DEPLOY_TOOL_TO_LAUNCHER: Partial<Record<DeployTool, ToolId>> = {
   kiro: 'kiro',
   trae: 'trae',
   qoder: 'qoder',
+  workbuddy: 'workbuddy',
 }
 
 /** CLI / 桌面端两种打开形态的描述。 */

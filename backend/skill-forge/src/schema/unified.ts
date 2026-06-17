@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 
 const namePattern = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -39,6 +39,20 @@ export const UnifiedSkillSchema = z.object({
         .regex(/^#[0-9a-fA-F]{6}$/)
         .optional(),
       defaultPrompt: z.string().optional(),
+    })
+    .default({}),
+
+  // WorkBuddy（腾讯 CodeBuddy 生态）marketplace 风格 frontmatter 字段。
+  // 构建到 WorkBuddy 时输出为 display_name / display_name_en / description_zh /
+  // description_en / visibility；构建到其它平台时整体丢弃。缺省值由适配器回退
+  // （display_name←displayName/name、description_zh←description、visibility←public）。
+  workbuddy: z
+    .object({
+      displayName: z.string().optional(),
+      displayNameEn: z.string().optional(),
+      descriptionZh: z.string().optional(),
+      descriptionEn: z.string().optional(),
+      visibility: z.enum(["public", "private"]).optional(),
     })
     .default({}),
 
@@ -93,6 +107,7 @@ export const UnifiedSkillSchema = z.object({
       kiro: z.record(z.unknown()).optional(),
       trae: z.record(z.unknown()).optional(),
       qoder: z.record(z.unknown()).optional(),
+      workbuddy: z.record(z.unknown()).optional(),
     })
     .default({}),
 });
@@ -112,6 +127,7 @@ export const NativeSkillMetaSchema = z.object({
       "kiro",
       "trae",
       "qoder",
+      "workbuddy",
       "manual",
     ])
     .optional(),

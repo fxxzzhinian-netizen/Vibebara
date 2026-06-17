@@ -21,6 +21,7 @@ export type DesktopToolId =
   | 'kiro'
   | 'trae'
   | 'qoder'
+  | 'workbuddy'
 
 export interface DesktopToolInfo {
   id: DesktopToolId

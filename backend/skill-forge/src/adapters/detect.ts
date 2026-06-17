@@ -10,6 +10,7 @@ export type SkillOrigin =
   | "kiro"
   | "trae"
   | "qoder"
+  | "workbuddy"
   | "unknown";
 export type Confidence = "high" | "medium" | "low";
 
@@ -39,6 +40,7 @@ export async function detectOrigin(skillDir: string): Promise<DetectResult> {
     kiro: 0,
     trae: 0,
     qoder: 0,
+    workbuddy: 0,
   };
 
   // ---- 路径主信号（+5）----
@@ -80,8 +82,23 @@ export async function detectOrigin(skillDir: string): Promise<DetectResult> {
     score.qoder += 5;
     signals.push("source path under .qoder/skills/");
   }
+  // WorkBuddy（腾讯 CodeBuddy 生态）.workbuddy/skills/ 全局/项目统一（无国内/国际
+  // 分叉）。来源路径为主信号，市场安装态边文件 _skillhub_meta.json 为辅信号（见下）。
+  if (/(^|\/)\.workbuddy\/skills(\/|$)/.test(norm)) {
+    score.workbuddy += 5;
+    signals.push("source path under .workbuddy/skills/");
+  }
 
   // ---- 文件结构 / frontmatter 辅信号 ----
+  // WorkBuddy 市场安装态边文件：_skillhub_meta.json（SkillHub 安装产物，强指向 WorkBuddy）。
+  const hasSkillhubMeta = await exists(
+    path.join(skillDir, "_skillhub_meta.json"),
+  );
+  if (hasSkillhubMeta) {
+    signals.push("_skillhub_meta.json present");
+    score.workbuddy += 3;
+  }
+
   const hasAgentsYaml = await exists(
     path.join(skillDir, "agents", "openai.yaml"),
   );

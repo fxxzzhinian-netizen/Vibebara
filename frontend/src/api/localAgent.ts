@@ -73,6 +73,7 @@ export interface HealthResponse extends LocalAgentSuccessBase {
     kiro: string
     trae: string
     qoder: string
+    workbuddy: string
   }
 }
 
@@ -108,6 +109,7 @@ export interface InstalledAtStatus {
   kiro: boolean
   trae: boolean
   qoder: boolean
+  workbuddy: boolean
 }
 
 export interface UnifiedSkillPackage {

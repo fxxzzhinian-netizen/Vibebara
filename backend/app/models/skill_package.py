@@ -38,6 +38,7 @@ class _SkillColumnsMixin:
     deployed_kiro: Mapped[bool] = mapped_column(Boolean, default=False)
     deployed_trae: Mapped[bool] = mapped_column(Boolean, default=False)
     deployed_qoder: Mapped[bool] = mapped_column(Boolean, default=False)
+    deployed_workbuddy: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()

@@ -1,7 +1,7 @@
 # Skill Forge — 抽象 Skill 包 & 多平台构建设计
 
 > 版本：v0.6 (Confirmed)  
-> 目标平台：Cursor、Codex CLI、Claude Code、Windsurf Cascade、Kiro、Trae、Qoder
+> 目标平台：Cursor、Codex CLI、Claude Code、Windsurf Cascade、Kiro、Trae、Qoder、WorkBuddy
 
 ---
 
@@ -16,8 +16,9 @@
 7. **Kiro 按 Agent Skills 标准核心字段构建/导入**——支持 `name`/`description` + 标准可选字段 `license`/`compatibility`/`metadata`(author/version)，不写 Codex 的 `ui.*`、Cursor 的 `disable-model-invocation`/`metadata.surfaces` 与 Claude 的运行时扩展字段
 8. **Trae 按与 Windsurf 同源的最小 Agent Skills 规范构建/导入**——官方仅文档化 `name`+`description`，构建产物严格只输出这两个字段；全局目录在 `~/.trae/skills`（国际版 trae.ai）与 `~/.trae-cn/skills`（国内版 trae.cn）间自动探测，项目级统一落 `.trae/skills/`
 9. **Qoder 按与 Windsurf/Trae 同源的最小 Agent Skills 规范构建/导入**——官方（IDE 与 CLI 一致）仅文档化 `name`+`description`，构建产物严格只输出这两个字段；全局目录统一为 `~/.qoder/skills`（无国内/国际分叉），项目级落 `.qoder/skills/`，同名时项目级优先
+10. **WorkBuddy（腾讯 CodeBuddy 生态）按开放 Agent Skills 标准 + marketplace 风格 frontmatter 构建/导入**——在 `name`+`description` 之外输出 `version`/`display_name`/`display_name_en`/`description_zh`/`description_en`/`visibility`（均带回退），市场安装态边文件 `_skillhub_meta.json`/`_icon.svg` 为发布/安装产物（部署时**不生成**）；全局目录统一为 `~/.workbuddy/skills`（无国内/国际分叉），项目级落 `.workbuddy/skills/`
 
-### 七平台概览
+### 平台概览
 
 | 平台 | 全局 skill 目录 | 项目 skill 目录 | frontmatter 复杂度 | 平台特有产物 |
 |------|----------------|----------------|--------------------|--------------|
@@ -28,6 +29,7 @@
 | Kiro | `~/.kiro/skills/` | `{ws}/.kiro/skills/` | 中（name/description + 标准可选 license/compatibility/metadata） | — |
 | Trae | `~/.trae/skills/`（自动探测 `~/.trae-cn/skills/`） | `{ws}/.trae/skills/` | 低（官方仅 name/description） | — |
 | Qoder | `~/.qoder/skills/` | `{ws}/.qoder/skills/` | 低（官方仅 name/description） | — |
+| WorkBuddy | `~/.workbuddy/skills/` | `{ws}/.workbuddy/skills/` | 中（name/description + marketplace：display_name/双语/visibility） | 安装态 `_skillhub_meta.json`、`_icon.svg`（部署不生成） |
 
 ---
 
@@ -806,6 +808,66 @@ description: "{description}"
 
 ---
 
+## 九-bis、WorkBuddy 构建规则
+
+> WorkBuddy 属**腾讯 CodeBuddy 生态**（图标 CDN `codebuddy.cn`、`.codebuddy-plugin`），其 skill 遵循开放的 **Agent Skills 标准**：技能是含 `SKILL.md` 的一级子目录，加载时只读 frontmatter，匹配请求或显式调用时才加载全文与附带文件（渐进式披露）。
+>
+> 与 Windsurf/Trae/Qoder 不同，WorkBuddy 的 **marketplace 安装态** skill 携带更丰富的 frontmatter（基于真机 `~/.workbuddy/skills/` 样本与 WorkBuddy 自带 `skill-creator` 规范）：在 `name`+`description` 之外有 `version` / `display_name` / `display_name_en` / `description_zh` / `description_en` / `visibility`。
+
+### 9b.1 构建产物结构
+
+```
+{name}/
+├── SKILL.md          # frontmatter: name + description + version
+│                      #   + display_name + display_name_en
+│                      #   + description_zh + description_en + visibility
+├── scripts/          # 可选，原样复制
+├── references/       # 可选，原样复制
+└── assets/           # 可选，原样复制
+```
+
+> 目录名（`{name}`）即 WorkBuddy 的技能标识，必须与 frontmatter `name` 一致。
+
+### 9b.2 字段映射
+
+WorkBuddy frontmatter 输出 marketplace 风格字段，值取自抽象包的 `workbuddy` 块并**带回退**：
+
+| frontmatter 字段 | 来源（抽象包） | 回退 |
+|------------------|----------------|------|
+| `name` | `name` | — |
+| `description` | `description` | — |
+| `version` | `version` | `1.0.0` |
+| `display_name` | `workbuddy.displayName` | `displayName` → `name` |
+| `display_name_en` | `workbuddy.displayNameEn` | 缺省时**省略** |
+| `description_zh` | `workbuddy.descriptionZh` | `description` |
+| `description_en` | `workbuddy.descriptionEn` | 缺省时**省略** |
+| `visibility` | `workbuddy.visibility` | `public` |
+
+> `ui.*` / `claude.*` / `policy.*` / 标准 `metadata.*`（license/surfaces/...）在构建 WorkBuddy 时**全部丢弃**。
+
+### 9b.3 绝对不能存在（部署态）
+
+构建 WorkBuddy 产物时，以下市场发布/安装态边文件**绝对不生成**：
+
+| 禁止项 | 原因 |
+|--------|------|
+| `_skillhub_meta.json` | SkillHub 市场安装产物，含无法本地伪造的 `skillId` / `source` |
+| `_icon.svg` | 市场图标（来自 CodeBuddy 图标 CDN），非加载必需 |
+| `agents/openai.yaml` / `LICENSE.txt` | 属 Codex 产物，与 WorkBuddy 无关 |
+
+> WorkBuddy 加载只读 SKILL.md frontmatter，边文件非必需；故部署链路只输出 `SKILL.md` + 附带资源，保持产物干净。
+
+### 9b.4 部署目标
+
+| 范围 | 目标路径 | 说明 |
+|------|----------|------|
+| 用户全局 | `~/.workbuddy/skills/{name}/` | 统一目录，无国内/国际分叉 |
+| 项目级 | `{workspace}/.workbuddy/skills/{name}/` | 随仓库提交；同名时项目级优先于全局 |
+
+> **检测**：以 `.workbuddy/skills/` 路径为主信号（+5）；存在 `_skillhub_meta.json` 时作为辅信号（+3）。脱离路径上下文（纯目录扫描）且无边文件时，最小技能与 Cursor/Windsurf/Claude/Kiro/Trae/Qoder 不可区分，回退 `unknown`。
+
+---
+
 ## 十、构建流程
 
 ### 10.1 正向构建（Build）
@@ -930,9 +992,11 @@ flowchart TD
     pathCheck -->|".kiro/skills/"| kiro[判定 Kiro]
     pathCheck -->|".trae/skills/"| trae[判定 Trae]
     pathCheck -->|".qoder/skills/"| qoder[判定 Qoder]
+    pathCheck -->|".workbuddy/skills/"| workbuddy[判定 WorkBuddy]
     pathCheck -->|未知| fm{frontmatter 专有字段?}
     fm -->|"allowed-tools/model/context/hooks/user-invocable 等"| claude
     fm -->|"openai.yaml 存在 / metadata.short-description"| codex
+    fm -->|"_skillhub_meta.json 存在"| workbuddy
     fm -->|"metadata.surfaces"| cursor
     fm -->|"仅 disable-model-invocation"| amb1["Cursor 或 Claude（打分裁决）"]
     fm -->|"仅 name+description"| unknownNode["unknown（按通用处理）"]
@@ -949,7 +1013,9 @@ flowchart TD
 | 来源路径含 `.kiro/skills/` | Kiro +5 |
 | 来源路径含 `.trae/skills/` | Trae +5 |
 | 来源路径含 `.qoder/skills/` | Qoder +5 |
+| 来源路径含 `.workbuddy/skills/` | WorkBuddy +5 |
 | 存在 `agents/openai.yaml` | Codex +3 |
+| 存在 `_skillhub_meta.json`（WorkBuddy 市场安装态边文件） | WorkBuddy +3 |
 | frontmatter 含 `allowed-tools` / `disallowed-tools` / `user-invocable` / `argument-hint` / `model` / `effort` / `context` / `agent` / `hooks` / `when_to_use` | Claude +3（任一） |
 | frontmatter 含 `metadata.short-description` | Codex +1 |
 | 正文含 `$skill-name` 引用 | Codex +2 |
@@ -964,6 +1030,8 @@ flowchart TD
 > **Trae 检测说明**：Trae 的 frontmatter 仅 `name`+`description`，**无任何独占辅信号**（与 Windsurf 同），故 Trae 仅靠来源路径 `.trae/skills/` 主信号识别；脱离路径上下文（如纯目录扫描）时 Trae 最小技能与 Cursor/Windsurf/Claude/Kiro 不可区分，回退为 `unknown`。
 
 > **Qoder 检测说明**：Qoder 的 frontmatter 仅 `name`+`description`，**无任何独占辅信号**（与 Windsurf/Trae 同），故 Qoder 仅靠来源路径 `.qoder/skills/` 主信号识别；脱离路径上下文（如纯目录扫描）时 Qoder 最小技能与 Cursor/Windsurf/Claude/Kiro/Trae 不可区分，回退为 `unknown`。
+
+> **WorkBuddy 检测说明**：WorkBuddy 以来源路径 `.workbuddy/skills/` 为主信号（+5）；市场安装态边文件 `_skillhub_meta.json` 为辅信号（+3，安装态 skill 才有，部署态不生成）。脱离路径上下文且无边文件时，最小技能与 Cursor/Windsurf/Claude/Kiro/Trae/Qoder 不可区分，回退为 `unknown`。
 
 > **实现建议**：`detectOrigin(skillDir)` 当前不接收来源路径上下文，仅看目录内文件。为支持路径主信号，需把「用户选择的来源根 + skill 相对路径」一并传入 `detect.ts`，详见第十五章。
 
@@ -1088,6 +1156,25 @@ flowchart TD
 
 > Qoder 与 Windsurf/Trae 一样是信息最稀疏的来源；导入后若要部署到 Codex/Claude，`incomplete_fields` 会包含 `ui.*` / `claude.*` 等，待部署时由 LLM 补齐。
 
+### 11.10-bis WorkBuddy → 抽象包 映射
+
+| WorkBuddy 文件/字段 | 抽象包映射 |
+|--------------------|-----------|
+| SKILL.md frontmatter `name` | `name` |
+| SKILL.md frontmatter `description` | `description` |
+| SKILL.md frontmatter `version` | `version`（缺省 `1.0.0`） |
+| SKILL.md frontmatter `display_name` | `workbuddy.displayName` |
+| SKILL.md frontmatter `display_name_en` | `workbuddy.displayNameEn` |
+| SKILL.md frontmatter `description_zh` | `workbuddy.descriptionZh` |
+| SKILL.md frontmatter `description_en` | `workbuddy.descriptionEn` |
+| SKILL.md frontmatter `visibility` | `workbuddy.visibility` |
+| SKILL.md body（frontmatter 之后） | `SKILL.md` |
+| `scripts/` / `references/` / `assets/` 目录 | `resources.*` + 复制文件 |
+| `_skillhub_meta.json` / `_icon.svg` | **忽略**（市场安装态产物，不入抽象包） |
+| `ui.*` / `claude.*` / `policy.*` / 标准 `metadata.*` | **全部留空**（WorkBuddy 无这些概念） |
+
+> WorkBuddy 的 marketplace 字段还原到 `workbuddy` 块；market 边文件忽略。导入后若要部署到 Codex/Claude，`incomplete_fields` 会包含 `ui.*` / `claude.*` 等，待部署时由 LLM 补齐。
+
 ### 11.11 导入后的信息损失标记与来源语义
 
 导入时**不补齐缺失字段**，仅标记哪些字段缺失：
@@ -1145,7 +1232,7 @@ _import_meta:
 
 只有用户在项目 Skill 列表中点击**部署**时，才需要选择部署参数：
 
-- Vibe Coding 工具：`cursor`、`codex`、`claude`、`windsurf`、`kiro`、`trae` 或 `qoder`
+- Vibe Coding 工具：`cursor`、`codex`、`claude`、`windsurf`、`kiro`、`trae`、`qoder` 或 `workbuddy`
 - 本地项目路径或部署根路径
 - 是否覆盖已存在同名 Skill
 
@@ -1160,6 +1247,7 @@ _import_meta:
 | Kiro | `{deploy_path}/.kiro/skills/{name}/` |
 | Trae | `{deploy_path}/.trae/skills/{name}/` |
 | Qoder | `{deploy_path}/.qoder/skills/{name}/` |
+| WorkBuddy | `{deploy_path}/.workbuddy/skills/{name}/` |
 
 部署流程：
 
@@ -1202,6 +1290,7 @@ _import_meta:
 .kiro/skills/
 .trae/skills/
 .qoder/skills/
+.workbuddy/skills/
 ```
 
 写入规则：
@@ -1743,3 +1832,28 @@ Use this skill to confirm that a local skill loads correctly...
 | 后端 | `backend/app/schemas/skill_forge.py`、`backend/app/services/skill_forge_service.py`、`backend/app/api/skill_forge.py` | InstalledAtStatus/deployed_qoder/installed_at 归一化/migrate 校验加 qoder |
 | 前端 | `frontend/src/api/localAgent.ts`、`orchestration.ts`、`skillStore.ts`、`skillForge.ts` | ToolType/InstalledAtStatus/deployed_qoder |
 | 前端 | `frontend/src/views/{SkillForge,ProjectSkills,PlatformStructure,Dashboard}.vue` | 部署下拉、平台字段、迁移目标/安装态加 qoder |
+
+### 15.4 WorkBuddy 适配落地触点（本轮实施）
+
+> 本轮按第「九-bis」章「WorkBuddy 构建规则」实施 WorkBuddy（腾讯 CodeBuddy 生态）的 Skill 全链路（构建/导入/部署 + 桌面/后端启动器）。与 Qoder 同口径（统一全局目录 `~/.workbuddy/skills`，无国内/国际分叉），但适配器输出 **marketplace 风格 frontmatter**（display_name / 双语 / visibility，取自抽象包新增 `workbuddy` 块，带回退），且**不生成** `_skillhub_meta.json` / `_icon.svg` 安装态边文件。
+
+| 层 | 文件 | 改动 |
+|----|------|------|
+| skill-forge | `backend/skill-forge/src/adapters/workbuddy.ts`（新建） | `WorkBuddyAdapter`：`build()` 输出 name/description/version + display_name/display_name_en/description_zh/description_en/visibility（带回退，`_en` 缺省省略），复制 scripts/references/assets，不生成边文件；`getDeployDir()` = `~/.workbuddy/skills` |
+| skill-forge | `backend/skill-forge/src/adapters/base.ts` | `AdapterTarget` 加 `"workbuddy"` |
+| skill-forge | `backend/skill-forge/src/adapters/detect.ts` | `SkillOrigin`/score 加 `workbuddy`；路径信号 `/.workbuddy/skills/` +5；`_skillhub_meta.json` 辅信号 +3 |
+| skill-forge | `backend/skill-forge/src/schema/unified.ts` | 新增 `workbuddy` 平台块（displayName/displayNameEn/descriptionZh/descriptionEn/visibility）；`targets.workbuddy`；`importedFrom` enum 加 `workbuddy` |
+| skill-forge | `backend/skill-forge/src/commands/{build,deploy,migrate,package,import}.ts` | Target/adapter/installedAt/import 加 workbuddy（`importFromWorkbuddy` 解析双语/visibility → `workbuddy` 块） |
+| skill-forge | `backend/skill-forge/src/index.ts`、`cli.ts` | export `WorkBuddyAdapter`/`resolveWorkbuddySkillsDir`；CLI help 文案补 workbuddy |
+| skill-forge | `backend/skill-forge/tests/adapters/workbuddy.test.ts`（新建） | marketplace 字段与回退、不生成边文件、deploy dir、target overrides、资源复制断言 |
+| local-agent | `local-agent/src/platform.ts` | `workbuddySkillsDir()` → `~/.workbuddy/skills`；`platformSkillsDir()` 加 workbuddy |
+| local-agent | `local-agent/src/types.ts` | `ToolType`/`InstalledAtStatus`/`platformSkillDirs` 加 workbuddy |
+| local-agent | `local-agent/src/handlers/{writeSkill,health}.ts`、`scan/scan.ts`、`context.ts` | tool 白名单、health 路径、installedAt 探测、可写根加 workbuddy |
+| local-agent | `local-agent/src/gitignore.ts` | 忽略块加 `.workbuddy/skills/` |
+| 启动器 | `desktop/src/main/launcher.ts`、`backend/app/api/launcher.py` | `SUPPORTED_TOOLS`/`TOOL_LABELS`/`WORKSPACE_TOOLS` 加 workbuddy；启动解析（`workbuddy.cmd`/`WorkBuddy.exe` 或 AppX `*WorkBuddy*`），workspace 工具，app 模式「启动 WorkBuddy IDE」 |
+| 后端 | `backend/app/services/project_service.py` | `SUPPORTED_TOOLS`/`GITIGNORE_BLOCK`/`_install_root`/错误文案 加 workbuddy |
+| 后端 | `backend/app/services/native_skill_store.py` | `workbuddy_skills_dir()`、deploy 分支、`_detect_origin`（路径 + `_skillhub_meta.json`）、`_upsert_db` deployed_workbuddy、返回 dict |
+| 后端 | `backend/app/models/skill_package.py` + `backend/app/core/database.py` | `deployed_workbuddy` 列 + `_migrate_add_columns` 幂等补列（personal_skills + team_skills） |
+| 后端 | `backend/app/schemas/skill_forge.py`、`skill_forge_service.py`、`skill_url_import.py`、`backend/app/api/skill_forge.py` | InstalledAtStatus/NativeSkillItem.deployed_workbuddy/installed_at/migrate 校验加 workbuddy |
+| 前端 | `frontend/src/constants/platforms.ts`、`api/{launcher,localAgent,orchestration,skillForge,skillStore}.ts`、`stores/skillStore.ts`、`utils/openAfterDeploy.ts`、`runtime/{devMock,desktopBridge}.ts` | TOOL_TYPES/TOOL_LABELS/ToolId/InstalledAtStatus/platformSkillDirs/deployed_workbuddy/启动映射加 workbuddy |
+| 前端 | `frontend/src/views/{Dashboard,Onboarding,TeamWorkspace,ProjectSkills,SkillForge}.vue`、`components/{AddSkillModal,AppLoader,PlatformStructurePanel}.vue` | 图标与选项、部署下拉、WorkBuddy 平台字段表单（display_name/双语/visibility）、对比表列、构建说明加 workbuddy |

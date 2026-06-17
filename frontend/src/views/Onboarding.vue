@@ -17,6 +17,7 @@ import claudeIcon from '@/img/icon/claudecode.svg'
 import kiroIcon from '@/img/icon/kiro.svg'
 import traeIcon from '@/img/icon/trae.svg'
 import qoderIcon from '@/img/icon/qoder.svg'
+import workbuddyIcon from '@/img/icon/workbuddy.svg'
 
 type Phase = 'scene' | 'tools'
 type DevMode = 'solo' | 'team'
@@ -28,6 +29,7 @@ type PlatformKey =
   | 'kiro'
   | 'trae'
   | 'qoder'
+  | 'workbuddy'
 
 interface PlatformTool {
   key: PlatformKey
@@ -54,6 +56,7 @@ const PLATFORM_TOOLS: PlatformTool[] = [
   { key: 'kiro', label: 'Kiro', icon: kiroIcon },
   { key: 'trae', label: 'Trae', icon: traeIcon },
   { key: 'qoder', label: 'Qoder', icon: qoderIcon },
+  { key: 'workbuddy', label: 'WorkBuddy', icon: workbuddyIcon },
 ]
 
 // 启动器工具 id → 平台 key（codex-cli/app→codex，claude-code/app→claude，其余同名）
@@ -75,6 +78,8 @@ function mapToPlatformKey(id: ToolId): PlatformKey | null {
       return 'trae'
     case 'qoder':
       return 'qoder'
+    case 'workbuddy':
+      return 'workbuddy'
     default:
       return null
   }

@@ -36,7 +36,7 @@ let pollTimer: ReturnType<typeof setInterval> | undefined
 const showAddSkill = ref(false)
 const showDeployModal = ref(false)
 const deploySkillId = ref('')
-const deployTool = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'>('cursor')
+const deployTool = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder' | 'workbuddy'>('cursor')
 const TOOL_OPTIONS = [
   { value: 'cursor', label: 'Cursor' },
   { value: 'codex', label: 'Codex' },
@@ -45,6 +45,7 @@ const TOOL_OPTIONS = [
   { value: 'kiro', label: 'Kiro' },
   { value: 'trae', label: 'Trae' },
   { value: 'qoder', label: 'Qoder' },
+  { value: 'workbuddy', label: 'WorkBuddy' },
 ]
 const deployPath = ref('')
 const deployOverwrite = ref(false)
@@ -434,7 +435,7 @@ function findDeploymentById(deploymentId: string): UserSkillDeploymentInfo | nul
 async function maybePullToGlobal(deploymentId: string) {
   const dep = findDeploymentById(deploymentId)
   if (!dep) return
-  const tool = dep.tool_type as 'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'
+  const tool = dep.tool_type as 'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder' | 'workbuddy'
   let isGlobal = false
   try {
     const installed = await getPlatformInstalledStatus()

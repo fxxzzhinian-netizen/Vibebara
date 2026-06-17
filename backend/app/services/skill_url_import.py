@@ -452,7 +452,7 @@ def _build_package(skill_dir: Path, root: Path, repo_name: str) -> Dict[str, Any
         "has_assets": bool(resources.get("assets")),
         "installed_at": {
             "cursor": False, "codex": False, "windsurf": False, "claude": False,
-            "kiro": False, "trae": False, "qoder": False,
+            "kiro": False, "trae": False, "qoder": False, "workbuddy": False,
         },
     }
 

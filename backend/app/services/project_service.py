@@ -31,7 +31,7 @@ from app.services.team_sync_service import TeamSyncService
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_TOOLS = {"cursor", "codex", "windsurf", "claude", "kiro", "trae", "qoder"}
+SUPPORTED_TOOLS = {"cursor", "codex", "windsurf", "claude", "kiro", "trae", "qoder", "workbuddy"}
 GITIGNORE_BLOCK = [
     "# Vibebara local skill deployments",
     ".cursor/skills/",
@@ -41,6 +41,7 @@ GITIGNORE_BLOCK = [
     ".kiro/skills/",
     ".trae/skills/",
     ".qoder/skills/",
+    ".workbuddy/skills/",
 ]
 
 
@@ -120,7 +121,9 @@ def _install_root(deploy_path: str, tool_type: str) -> Path:
         return root / ".trae" / "skills"
     if tool_type == "qoder":
         return root / ".qoder" / "skills"
-    raise ValueError("tool_type must be cursor, codex, windsurf, claude, kiro, trae or qoder")
+    if tool_type == "workbuddy":
+        return root / ".workbuddy" / "skills"
+    raise ValueError("tool_type must be cursor, codex, windsurf, claude, kiro, trae, qoder or workbuddy")
 
 
 def _ensure_gitignore(project_root: str) -> None:
@@ -556,7 +559,7 @@ async def deploy_project_skill(
 ) -> Dict[str, Any]:
     tool_type = tool_type.lower()
     if tool_type not in SUPPORTED_TOOLS:
-        return {"success": False, "error": "tool_type must be cursor, codex, windsurf, claude, kiro, trae or qoder"}
+        return {"success": False, "error": "tool_type must be cursor, codex, windsurf, claude, kiro, trae, qoder or workbuddy"}
 
     # 全局部署：落本机平台目录 ~/.{tool}/skills/{skill_id}，一次性安装、不登记跟踪。
     # 仍校验项目存在与 Skill 关联关系，保持与项目级部署一致的访问约束。
@@ -1540,7 +1543,7 @@ async def _build_artifact_payload(
     """
     tool = (tool or "").lower()
     if tool not in SUPPORTED_TOOLS:
-        return {"success": False, "error": "tool must be cursor, codex, windsurf, claude, kiro, trae or qoder"}
+        return {"success": False, "error": "tool must be cursor, codex, windsurf, claude, kiro, trae, qoder or workbuddy"}
 
     # store_path（= 对象键前缀）以对象存储为权威来源，与 _assert_skill_accessible
     # (NativeSkillStore.get_by_id) 及 NativeSkillStore.build 的 _resolve_prefix 同口径。
@@ -1666,7 +1669,7 @@ async def register_deployment(
     """
     tool = (tool or "").lower()
     if tool not in SUPPORTED_TOOLS:
-        return {"success": False, "error": "tool must be cursor, codex, windsurf, claude, kiro, trae or qoder"}
+        return {"success": False, "error": "tool must be cursor, codex, windsurf, claude, kiro, trae, qoder or workbuddy"}
     if not deploy_path:
         return {"success": False, "error": "deploy_path is required"}
     if not install_path:

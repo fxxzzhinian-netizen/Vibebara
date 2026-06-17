@@ -27,7 +27,7 @@ const authStore = useAuthStore()
 const showCreateModal = ref(false)
 const publishingMarket = ref(false)
 
-const deployTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'>('cursor')
+const deployTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder' | 'workbuddy'>('cursor')
 // 部署始终落项目目录（需选目录）；勾选后「同时」再额外落一份到全局 ~/.{tool}/skills。
 const deployToGlobal = ref(false)
 const deploying = ref(false)
@@ -35,10 +35,10 @@ const deploying = ref(false)
 // 部署目标目录：统一用全局路径选择组件 FolderPicker（与团队项目部署弹窗一致）。
 const projectDeployPath = ref('')
 
-const previewTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'>('cursor')
+const previewTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder' | 'workbuddy'>('cursor')
 
 /** 工具展示名（用于部署提示文案）。 */
-const TOOL_LABELS: Record<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder', string> = {
+const TOOL_LABELS: Record<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder' | 'workbuddy', string> = {
   cursor: 'Cursor',
   codex: 'Codex',
   windsurf: 'Windsurf',
@@ -46,6 +46,7 @@ const TOOL_LABELS: Record<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 
   kiro: 'Kiro',
   trae: 'Trae',
   qoder: 'Qoder',
+  workbuddy: 'WorkBuddy',
 }
 /** 平台下拉选项（供 BaseSelect 复用）。 */
 const TOOL_OPTIONS = (Object.keys(TOOL_LABELS) as (keyof typeof TOOL_LABELS)[]).map((k) => ({
@@ -167,7 +168,7 @@ async function handleDelete() {
   }
 }
 
-function getPlatformSpecificMissing(target: 'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'): string[] {
+function getPlatformSpecificMissing(target: 'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder' | 'workbuddy'): string[] {
   if (!cfg.value) return []
   const missing: string[] = []
   if (target === 'codex') {
@@ -186,6 +187,9 @@ function getPlatformSpecificMissing(target: 'cursor' | 'codex' | 'windsurf' | 'c
     // Trae 与 Windsurf 同源（SKILL.md: name+description），无平台特有必填项
   } else if (target === 'qoder') {
     // Qoder 与 Windsurf/Trae 同源（SKILL.md: name+description），无平台特有必填项
+  } else if (target === 'workbuddy') {
+    // WorkBuddy（CodeBuddy 生态）marketplace 字段（display_name/双语/visibility）均带
+    // 回退，无平台特有必填项；详见 docs/design/skill-forge.md §9.6。
   }
   return missing
 }
@@ -846,6 +850,7 @@ onMounted(() => {
 .deploy-dot.kiro.on { background: #7c3aed; }
 .deploy-dot.trae.on { background: #ec4899; }
 .deploy-dot.qoder.on { background: #f59e0b; }
+.deploy-dot.workbuddy.on { background: #1e6fff; }
 
 /* ===== Editor main ===== */
 .editor-main {

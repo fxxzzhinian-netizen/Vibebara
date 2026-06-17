@@ -30,8 +30,8 @@ const spaceMenuOpen = ref(false)
 const searchQuery = ref('')
 
 // 中间导航项随当前空间动态变化：
-//   个人空间 → SKILL 仓库 / 项目管理（预留）/ SKILL 市场（预留）
-//   团队空间 → 团队 SKILL / 团队项目 / SKILL 市场（预留）
+//   个人空间 → SKILL 仓库 / SKILL 市场
+//   团队空间 → 团队 SKILL / 团队项目 / 团队管理 / SKILL 市场
 type NavIcon = 'repo' | 'market' | 'skill' | 'project'
 type NavLink = { label: string; to?: string; reserved?: boolean; icon: NavIcon }
 const navLinks = computed<NavLink[]>(() => {
@@ -45,7 +45,6 @@ const navLinks = computed<NavLink[]>(() => {
   }
   return [
     { label: 'SKILL 仓库', to: '/', icon: 'repo' },
-    { label: '项目管理', reserved: true, icon: 'project' },
     { label: 'SKILL 市场', to: '/market', icon: 'market' },
   ]
 })
@@ -58,6 +57,9 @@ const { style: navSliderStyle, ready: navSliderReady } = useSlideIndicator({
   activeSelector: '.nav-item.active',
   axis: 'x',
   trigger: () => [route.path, workspace.spaceType],
+  // 顶栏内嵌于每个页面、随路由整页重挂载；记忆上次位置，使跨页切换时白色胶囊
+  // 从上一处平滑滑到当前项（如点击「SKILL 市场」）。
+  memoryKey: 'top-nav',
 })
 
 function isLinkActive(link: NavLink) {

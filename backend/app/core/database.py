@@ -71,6 +71,10 @@ async def _migrate_add_columns() -> None:
     # 两张物理表，新表由 create_all 直接建出完整列，无需在此增量补列。
     migrations = [
         ("teams", "auto_skill_hot_update", "TINYINT(1) NOT NULL DEFAULT 0"),
+        # WorkBuddy 部署态列：存量 personal_skills / team_skills 表升级补列
+        # （新表由 create_all 直接含完整 deployed_* 列）。
+        ("personal_skills", "deployed_workbuddy", "TINYINT(1) NOT NULL DEFAULT 0"),
+        ("team_skills", "deployed_workbuddy", "TINYINT(1) NOT NULL DEFAULT 0"),
         ("skill_change_log", "team_id", "VARCHAR(36) NULL"),
         ("skill_change_log", "deployment_id", "VARCHAR(36) NULL"),
         ("skill_change_log", "source", "VARCHAR(32) NOT NULL DEFAULT 'team_repo'"),

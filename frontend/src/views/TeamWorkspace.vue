@@ -28,6 +28,7 @@ import claudeIcon from '@/img/icon/claudecode.svg'
 import kiroIcon from '@/img/icon/kiro.svg'
 import traeIcon from '@/img/icon/trae.svg'
 import qoderIcon from '@/img/icon/qoder.svg'
+import workbuddyIcon from '@/img/icon/workbuddy.svg'
 import teamEmptyImg from '@/img/status/team_empty.png'
 
 // 团队工作台：与全局 AppTopNav 共用外壳。
@@ -51,6 +52,7 @@ const platforms = [
   { key: 'kiro', label: 'Kiro', icon: kiroIcon },
   { key: 'trae', label: 'Trae', icon: traeIcon },
   { key: 'qoder', label: 'Qoder', icon: qoderIcon },
+  { key: 'workbuddy', label: 'WorkBuddy', icon: workbuddyIcon },
 ] as const
 
 function deployedOn(skill: NativeSkillItem): Record<string, boolean> {

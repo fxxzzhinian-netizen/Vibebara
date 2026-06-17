@@ -9,7 +9,8 @@ export type ImportSource =
   | "windsurf"
   | "kiro"
   | "trae"
-  | "qoder";
+  | "qoder"
+  | "workbuddy";
 
 export interface ImportOptions {
   from: ImportSource;
@@ -42,6 +43,8 @@ export async function importSkill(options: ImportOptions) {
     config = importFromTrae(frontmatter, body);
   } else if (from === "qoder") {
     config = importFromQoder(frontmatter, body);
+  } else if (from === "workbuddy") {
+    config = importFromWorkbuddy(frontmatter, body);
   } else {
     config = await importFromCodex(frontmatter, body, sourcePath);
   }
@@ -119,6 +122,40 @@ function importFromQoder(
     version: "1.0.0",
     instructions: body,
   };
+}
+
+/**
+ * WorkBuddy（腾讯 CodeBuddy 生态）原生 skill：遵循开放 Agent Skills 标准，但
+ * marketplace 安装态在 name + description 之外携带 version + display_name /
+ * display_name_en / description_zh / description_en / visibility。还原到抽象包的
+ * `workbuddy` 块；market 边文件（_skillhub_meta.json / _icon.svg）忽略
+ * （docs/design/skill-forge.md §11.11）。
+ */
+function importFromWorkbuddy(
+  frontmatter: Record<string, unknown>,
+  body: string
+): Record<string, unknown> {
+  const config: Record<string, unknown> = {
+    name: frontmatter["name"],
+    description: frontmatter["description"],
+    version: (frontmatter["version"] as string | undefined) ?? "1.0.0",
+    instructions: body,
+  };
+
+  const workbuddy: Record<string, unknown> = {};
+  if (frontmatter["display_name"])
+    workbuddy.displayName = frontmatter["display_name"];
+  if (frontmatter["display_name_en"])
+    workbuddy.displayNameEn = frontmatter["display_name_en"];
+  if (frontmatter["description_zh"])
+    workbuddy.descriptionZh = frontmatter["description_zh"];
+  if (frontmatter["description_en"])
+    workbuddy.descriptionEn = frontmatter["description_en"];
+  if (frontmatter["visibility"])
+    workbuddy.visibility = frontmatter["visibility"];
+  if (Object.keys(workbuddy).length > 0) config.workbuddy = workbuddy;
+
+  return config;
 }
 
 /**

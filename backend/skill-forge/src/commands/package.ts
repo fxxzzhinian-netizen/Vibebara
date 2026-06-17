@@ -27,6 +27,7 @@ export interface PackageResult {
     kiro: boolean;
     trae: boolean;
     qoder: boolean;
+    workbuddy: boolean;
   };
 }
 
@@ -106,6 +107,14 @@ function getQoderSkillsDir(): string {
   return path.join(home, ".qoder", "skills");
 }
 
+// WorkBuddy 全局目录统一为 ~/.workbuddy/skills（无国内/国际分叉，无须探测）。
+// 与 adapters/workbuddy.ts 的 resolveWorkbuddySkillsDir 口径一致。
+function getWorkbuddySkillsDir(): string {
+  const home =
+    process.env["HOME"] || process.env["USERPROFILE"] || "";
+  return path.join(home, ".workbuddy", "skills");
+}
+
 export async function packageSkill(
   skillDir: string,
 ): Promise<PackageResult> {
@@ -138,6 +147,7 @@ export async function packageSkill(
   const kiroDir = getKiroSkillsDir();
   const traeDir = getTraeSkillsDir();
   const qoderDir = getQoderSkillsDir();
+  const workbuddyDir = getWorkbuddySkillsDir();
 
   const installedAt = {
     cursor: await exists(path.join(cursorDir, id, "SKILL.md")),
@@ -147,6 +157,7 @@ export async function packageSkill(
     kiro: await exists(path.join(kiroDir, id, "SKILL.md")),
     trae: await exists(path.join(traeDir, id, "SKILL.md")),
     qoder: await exists(path.join(qoderDir, id, "SKILL.md")),
+    workbuddy: await exists(path.join(workbuddyDir, id, "SKILL.md")),
   };
 
   return {

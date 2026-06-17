@@ -12,6 +12,7 @@ import { existsSync } from "node:fs";
  *   KIRO_SKILLS_DIR     = ~/.kiro/skills
  *   TRAE_SKILLS_DIR     = ~/.trae/skills（自动探测，国内版回退 ~/.trae-cn/skills）
  *   QODER_SKILLS_DIR    = ~/.qoder/skills（统一目录，无国内/国际分叉）
+ *   WORKBUDDY_SKILLS_DIR = ~/.workbuddy/skills（统一目录，无国内/国际分叉）
  *
  * 注：skill-forge 的 package.ts 用 HOME||USERPROFILE 解析 home，
  * os.homedir() 在 Windows 上返回 USERPROFILE，二者口径一致。
@@ -68,6 +69,15 @@ export function qoderSkillsDir(): string {
   return path.join(os.homedir(), ".qoder", "skills");
 }
 
+/**
+ * WorkBuddy（腾讯 CodeBuddy 生态）全局 skill 目录（docs/design/skill-forge.md §9.6）：
+ * 统一为 ~/.workbuddy/skills，**无国内/国际分叉，无须探测**（与 Qoder 同）。
+ * 与 skill-forge 的 resolveWorkbuddySkillsDir / 后端 workbuddy_skills_dir 口径一致。
+ */
+export function workbuddySkillsDir(): string {
+  return path.join(os.homedir(), ".workbuddy", "skills");
+}
+
 export function platformSkillsDir(tool: ToolType): string {
   if (tool === "cursor") return cursorSkillsDir();
   if (tool === "windsurf") return windsurfSkillsDir();
@@ -75,5 +85,6 @@ export function platformSkillsDir(tool: ToolType): string {
   if (tool === "kiro") return kiroSkillsDir();
   if (tool === "trae") return traeSkillsDir();
   if (tool === "qoder") return qoderSkillsDir();
+  if (tool === "workbuddy") return workbuddySkillsDir();
   return codexSkillsDir();
 }

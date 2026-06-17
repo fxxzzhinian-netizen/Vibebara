@@ -9,6 +9,7 @@ import { ClaudeAdapter } from "../adapters/claude.js";
 import { KiroAdapter } from "../adapters/kiro.js";
 import { TraeAdapter } from "../adapters/trae.js";
 import { QoderAdapter } from "../adapters/qoder.js";
+import { WorkBuddyAdapter } from "../adapters/workbuddy.js";
 import { UnifiedSkillSchema } from "../schema/unified.js";
 import { ensureDir, copyDir, writeFile } from "../utils/fs.js";
 import { dumpYaml } from "../utils/yaml.js";
@@ -20,7 +21,8 @@ export type MigrateTarget =
   | "claude"
   | "kiro"
   | "trae"
-  | "qoder";
+  | "qoder"
+  | "workbuddy";
 
 function adapterFor(target: MigrateTarget): Adapter {
   if (target === "codex") return new CodexAdapter();
@@ -29,6 +31,7 @@ function adapterFor(target: MigrateTarget): Adapter {
   if (target === "kiro") return new KiroAdapter();
   if (target === "trae") return new TraeAdapter();
   if (target === "qoder") return new QoderAdapter();
+  if (target === "workbuddy") return new WorkBuddyAdapter();
   return new CursorAdapter();
 }
 

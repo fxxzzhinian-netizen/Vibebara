@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { cursorSkillsDir, codexSkillsDir, windsurfSkillsDir, claudeSkillsDir, kiroSkillsDir, traeSkillsDir, qoderSkillsDir } from "../platform";
+import { cursorSkillsDir, codexSkillsDir, windsurfSkillsDir, claudeSkillsDir, kiroSkillsDir, traeSkillsDir, qoderSkillsDir, workbuddySkillsDir } from "../platform";
 import type { UnifiedSkillPackage } from "../types";
 import { detectOrigin } from "./detect";
 import { parseFrontmatter, parseYaml } from "./frontmatter";
@@ -130,6 +130,7 @@ export function packageSkill(skillDir: string): UnifiedSkillPackage {
     kiro: existsSync(path.join(kiroSkillsDir(), id, "SKILL.md")),
     trae: existsSync(path.join(traeSkillsDir(), id, "SKILL.md")),
     qoder: existsSync(path.join(qoderSkillsDir(), id, "SKILL.md")),
+    workbuddy: existsSync(path.join(workbuddySkillsDir(), id, "SKILL.md")),
   };
 
   return {
