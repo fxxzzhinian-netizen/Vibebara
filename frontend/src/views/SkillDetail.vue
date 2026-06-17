@@ -22,7 +22,6 @@ import { isMockForced, mockVersions, mockVersionDetail, mockResourceFile } from 
 import { useTeamStore } from '@/stores/teamStore'
 import { useSkillStore } from '@/stores/skillStore'
 import { useAuthStore } from '@/stores/authStore'
-import { publishSkillToMarket } from '@/api/market'
 import { promptInput } from '@/composables/useInputDialog'
 import { confirmDialog } from '@/composables/useConfirmDialog'
 import { toast } from '@/composables/useToast'
@@ -35,6 +34,7 @@ import PlatformStructurePanel from '@/components/PlatformStructurePanel.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import MarkdownView from '@/components/MarkdownView.vue'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
+import PublishToMarketModal from '@/components/PublishToMarketModal.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -42,7 +42,7 @@ const teamStore = useTeamStore()
 const skillStore = useSkillStore()
 const authStore = useAuthStore()
 
-const publishingMarket = ref(false)
+const showPublishModal = ref(false)
 
 const skillId = computed(() => route.params.id as string)
 const detail = ref<NativeSkillDetail | null>(null)
@@ -102,25 +102,10 @@ function cancelEdit() {
   draft.value = null
 }
 
-async function handlePublishToMarket() {
+function handlePublishToMarket() {
   if (!skillId.value) return
-  publishingMarket.value = true
-  try {
-    const res = await publishSkillToMarket(skillId.value)
-    if (res.success) {
-      toast.success(
-        authStore.user?.is_seed_user
-          ? '已发布到市场'
-          : '已提交审核，等待管理员通过',
-      )
-    } else {
-      toast.error(res.error || '发布失败')
-    }
-  } catch (e: any) {
-    toast.error(e?.response?.data?.detail || e?.message || '发布失败')
-  } finally {
-    publishingMarket.value = false
-  }
+  // 改为先弹「介绍页信息」表单（支持 AI 辅助生成），提交时再发布。
+  showPublishModal.value = true
 }
 
 function setDraft(key: string, val: unknown) {
@@ -622,10 +607,9 @@ function timeAgo(ts: string | null | undefined): string {
               <button
                 v-if="isTeamSkill && isTeamMember && cfg && !editing"
                 class="btn tool-btn publish"
-                :disabled="publishingMarket"
                 title="发布到 SKILL 市场"
                 @click="handlePublishToMarket"
-              >{{ publishingMarket ? '发布中...' : '发布到市场' }}</button>
+              >发布到市场</button>
               <template v-if="canEdit && cfg">
                 <template v-if="!editing">
                   <button class="btn tool-btn delete" @click="askDeleteSkill">删除</button>
@@ -1189,6 +1173,15 @@ function timeAgo(ts: string | null | undefined): string {
         </button>
       </template>
     </BaseModal>
+
+    <!-- 发布到市场：先填写介绍页信息（支持 AI 辅助生成），提交后再发布 -->
+    <PublishToMarketModal
+      v-model="showPublishModal"
+      :skill-id="skillId"
+      :display-name="cfg?.name || skillId"
+      :publisher-name="authStore.user?.display_name || authStore.user?.username || ''"
+      :default-short-description="cfg?.ui?.short_description || db?.short_description || ''"
+    />
   </div>
 </template>
 

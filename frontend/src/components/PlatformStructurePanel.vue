@@ -14,7 +14,13 @@ import qoderIcon from '@/img/icon/qoder.svg'
 import workbuddyIcon from '@/img/icon/workbuddy.svg'
 
 // 平台结构内容面板：可内嵌于 SkillForge 标签页，也可被 PlatformStructure 路由页包裹复用。
-// 直接读写 skillStore.currentConfig（updateLocalConfig 会置 dirty，由外层工具栏统一保存）。
+// 默认直接读写 skillStore.currentConfig（updateLocalConfig 会置 dirty，由外层工具栏统一保存）；
+// 传入 configSource + readonly 时改为只读渲染该 config（如市场快照），不写 store。
+const props = defineProps<{
+  configSource?: Record<string, any> | null
+  readonly?: boolean
+}>()
+
 const store = useSkillStore()
 
 const platformIcons: Record<string, string> = {
@@ -32,9 +38,12 @@ const activePlatform = ref<
   'overview' | 'codex' | 'cursor' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder' | 'workbuddy'
 >('overview')
 
-const cfg = computed(() => store.currentConfig as Record<string, any> | null)
+const cfg = computed(
+  () => (props.configSource ?? store.currentConfig) as Record<string, any> | null,
+)
 
 function setNestedField(parent: string, key: string, val: unknown) {
+  if (props.readonly) return
   if (!cfg.value) return
   const current = (cfg.value[parent] as Record<string, unknown>) ?? {}
   store.updateLocalConfig({ [parent]: { ...current, [key]: val } })

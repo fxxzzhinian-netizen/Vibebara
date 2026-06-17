@@ -60,6 +60,12 @@ const router = createRouter({
       name: 'skill-market',
       component: () => import('@/views/SkillMarket.vue'),
     },
+    {
+      // 市场条目只读「SKILL 介绍」详情页。
+      path: '/market/:id',
+      name: 'market-skill-detail',
+      component: () => import('@/views/MarketSkillDetail.vue'),
+    },
   ],
 })
 

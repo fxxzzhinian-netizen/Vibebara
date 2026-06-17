@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import AppTopNav from '@/components/AppTopNav.vue'
 import { toast } from '@/composables/useToast'
@@ -27,9 +28,15 @@ import emptyImg from '@/img/status/empty.png'
 // 分页：市场（全体）/ 我的发布 / 审核（审核员）/ 管理员（种子用户）。
 
 const authStore = useAuthStore()
+const router = useRouter()
 
 type Tab = 'market' | 'mine' | 'review' | 'admins'
 const activeTab = ref<Tab>('market')
+
+// 点击卡片进入只读「SKILL 介绍」详情页。
+function openDetail(s: MarketSkillItem) {
+  router.push(`/market/${s.id}`)
+}
 
 const isReviewer = computed(() => !!authStore.user?.is_reviewer)
 const canManageAdmins = computed(() => !!authStore.user?.can_manage_admins)
@@ -328,7 +335,15 @@ onMounted(() => {
           <!-- 市场（全体可见，已通过） -->
           <template v-else-if="activeTab === 'market'">
             <div v-if="marketSkills.length" class="skill-grid">
-          <div v-for="s in marketSkills" :key="s.id" class="skill-card">
+          <div
+            v-for="s in marketSkills"
+            :key="s.id"
+            class="skill-card clickable"
+            role="button"
+            tabindex="0"
+            @click="openDetail(s)"
+            @keydown.enter="openDetail(s)"
+          >
             <div class="card-head">
               <span class="card-name">{{ s.display_name || s.source_skill_id }}</span>
               <span class="card-version">v{{ s.version }}</span>
@@ -347,12 +362,13 @@ onMounted(() => {
                 v-if="s.publisher_id === currentUserId"
                 class="btn-mini ghost"
                 disabled
+                @click.stop
               >我发布的</button>
               <button
                 v-else
                 class="btn-mini primary"
                 :disabled="acquiredIds.has(s.id)"
-                @click="acquire(s)"
+                @click.stop="acquire(s)"
               >{{ acquiredIds.has(s.id) ? '已获取' : '获取' }}</button>
             </div>
           </div>
@@ -367,7 +383,15 @@ onMounted(() => {
       <!-- 我的发布 -->
       <template v-else-if="activeTab === 'mine'">
         <div v-if="mineSkills.length" class="skill-grid">
-          <div v-for="s in mineSkills" :key="s.id" class="skill-card">
+          <div
+            v-for="s in mineSkills"
+            :key="s.id"
+            class="skill-card clickable"
+            role="button"
+            tabindex="0"
+            @click="openDetail(s)"
+            @keydown.enter="openDetail(s)"
+          >
             <div class="card-head">
               <span class="card-name">{{ s.display_name || s.source_skill_id }}</span>
               <span :class="['status-tag', statusMeta[s.status]?.cls]">{{ statusMeta[s.status]?.label || s.status }}</span>
@@ -379,7 +403,7 @@ onMounted(() => {
                 <span :class="['src-tag', s.source_scope]">{{ s.source_scope === 'team' ? '团队' : '个人' }}</span>
                 <span class="publisher">v{{ s.version }}</span>
               </div>
-              <button class="btn-mini danger" @click="removeMine(s)">撤回</button>
+              <button class="btn-mini danger" @click.stop="removeMine(s)">撤回</button>
             </div>
           </div>
         </div>
@@ -393,7 +417,15 @@ onMounted(() => {
       <!-- 审核（审核员） -->
       <template v-else-if="activeTab === 'review'">
         <div v-if="pendingSkills.length" class="skill-grid">
-          <div v-for="s in pendingSkills" :key="s.id" class="skill-card">
+          <div
+            v-for="s in pendingSkills"
+            :key="s.id"
+            class="skill-card clickable"
+            role="button"
+            tabindex="0"
+            @click="openDetail(s)"
+            @keydown.enter="openDetail(s)"
+          >
             <div class="card-head">
               <span class="card-name">{{ s.display_name || s.source_skill_id }}</span>
               <span class="card-version">v{{ s.version }}</span>
@@ -408,8 +440,8 @@ onMounted(() => {
                 <span class="publisher">{{ s.publisher_name }}</span>
               </div>
               <div class="foot-actions">
-                <button class="btn-mini ghost" @click="reject(s)">拒绝</button>
-                <button class="btn-mini approve" @click="approve(s)">通过</button>
+                <button class="btn-mini ghost" @click.stop="reject(s)">拒绝</button>
+                <button class="btn-mini approve" @click.stop="approve(s)">通过</button>
               </div>
             </div>
           </div>
@@ -648,6 +680,15 @@ onMounted(() => {
   border-color: #d1d5db;
   box-shadow: 0 8px 24px rgba(21, 23, 23, 0.07);
   transform: translateY(-2px);
+}
+
+.skill-card.clickable {
+  cursor: pointer;
+}
+
+.skill-card.clickable:focus-visible {
+  outline: 2px solid #151717;
+  outline-offset: 2px;
 }
 
 .card-head {

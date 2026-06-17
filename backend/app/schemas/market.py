@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from app.schemas.skill_forge import NativeSkillItem
 
@@ -12,6 +12,11 @@ class MarketSkillItem(BaseModel):
     version: str = "1.0.0"
     tags: List[str] = []
     content_hash: str = ""
+    # 介绍页信息（发布时填写，可 AI 辅助生成）
+    intro_title: str = ""
+    intro_author: str = ""
+    intro_category: str = ""
+    intro_md: str = ""
     source_scope: str = "personal"  # personal | team
     source_skill_id: str = ""
     source_team_id: Optional[str] = None
@@ -33,11 +38,55 @@ class MarketListResponse(BaseModel):
 
 class PublishRequest(BaseModel):
     skill_id: str
+    # 发布表单填写的介绍页信息
+    intro_title: str = ""
+    intro_author: str = ""
+    intro_category: str = ""
+    intro_md: str = ""
+    short_description: str = ""
+    description: str = ""
 
 
 class PublishResponse(BaseModel):
     success: bool
     skill: Optional[MarketSkillItem] = None
+    error: Optional[str] = None
+
+
+class IntroDraftRequest(BaseModel):
+    skill_id: str
+
+
+class IntroDraft(BaseModel):
+    title: str = ""
+    category: str = ""
+    short_description: str = ""
+    intro_md: str = ""
+
+
+class IntroDraftResponse(BaseModel):
+    success: bool
+    draft: Optional[IntroDraft] = None
+    error: Optional[str] = None
+
+
+class MarketDetailResponse(BaseModel):
+    success: bool
+    id: str = ""
+    config: Dict[str, Any] = {}
+    vibeh_content: str = ""
+    store_path: str = ""
+    listing: Optional[MarketSkillItem] = None
+    error: Optional[str] = None
+
+
+class MarketResourceFileResponse(BaseModel):
+    success: bool
+    path: str = ""
+    encoding: str = "utf8"
+    content: str = ""
+    size: int = 0
+    is_binary: bool = False
     error: Optional[str] = None
 
 

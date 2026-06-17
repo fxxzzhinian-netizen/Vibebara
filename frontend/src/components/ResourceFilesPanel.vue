@@ -12,10 +12,22 @@ interface ResEntry {
   description?: string
 }
 
+/** 单文件读取结果（与 @/api/skillStore.readResourceFile 形状一致）。 */
+interface FileLoadResult {
+  success: boolean
+  encoding: 'utf8' | 'base64'
+  content: string
+  is_binary: boolean
+  size: number
+  error?: string
+}
+
 const props = defineProps<{
   skillId: string
   resources: { scripts?: ResEntry[]; references?: ResEntry[]; assets?: ResEntry[] } | null | undefined
   readonly?: boolean
+  // 可选：自定义文件读取器（如市场快照），不传则走默认的个人/团队 Skill 接口。
+  fileLoader?: (path: string) => Promise<FileLoadResult>
 }>()
 
 const CATS = [
@@ -116,7 +128,9 @@ async function openFile(path: string) {
   isBinary.value = false
   curSize.value = 0
   try {
-    const res = await readResourceFile(props.skillId, path)
+    const res = props.fileLoader
+      ? await props.fileLoader(path)
+      : await readResourceFile(props.skillId, path)
     if (!res.success) {
       errorMsg.value = res.error || '读取失败'
       return

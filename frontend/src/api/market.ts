@@ -12,6 +12,11 @@ export interface MarketSkillItem {
   version: string
   tags: string[]
   content_hash: string
+  // 介绍页信息（发布时填写，可 AI 辅助生成）
+  intro_title?: string
+  intro_author?: string
+  intro_category?: string
+  intro_md?: string
   source_scope: 'personal' | 'team'
   source_skill_id: string
   source_team_id: string | null
@@ -23,6 +28,51 @@ export interface MarketSkillItem {
   review_note: string | null
   created_at: string | null
   updated_at: string | null
+}
+
+/** 发布表单填写的介绍页信息（提交发布时携带）。 */
+export interface MarketIntroPayload {
+  intro_title?: string
+  intro_author?: string
+  intro_category?: string
+  intro_md?: string
+  short_description?: string
+  description?: string
+}
+
+/** AI 辅助生成的介绍页草稿。 */
+export interface MarketIntroDraft {
+  title: string
+  category: string
+  short_description: string
+  intro_md: string
+}
+
+export interface IntroDraftResponse {
+  success: boolean
+  draft?: MarketIntroDraft
+  error?: string
+}
+
+/** 市场条目完整详情（只读「SKILL 介绍」页）。 */
+export interface MarketSkillDetail {
+  success: boolean
+  id: string
+  config: Record<string, any>
+  vibeh_content: string
+  store_path: string
+  listing: MarketSkillItem | null
+  error?: string
+}
+
+export interface MarketResourceFileResponse {
+  success: boolean
+  path: string
+  encoding: 'utf8' | 'base64'
+  content: string
+  size: number
+  is_binary: boolean
+  error?: string
 }
 
 export interface MarketListResponse {
@@ -77,12 +127,46 @@ export async function listPending(): Promise<MarketListResponse> {
   return data
 }
 
-/** 把个人 / 团队 Skill 发布为市场快照。 */
-export async function publishSkillToMarket(skillId: string): Promise<PublishResponse> {
+/** 把个人 / 团队 Skill 发布为市场快照，携带发布表单填写的介绍页信息。 */
+export async function publishSkillToMarket(
+  skillId: string,
+  intro: MarketIntroPayload = {},
+): Promise<PublishResponse> {
   if (DEV_SKIP_AUTH) return { success: true }
   const { data } = await apiClient.post<PublishResponse>('/market/publish', {
     skill_id: skillId,
+    ...intro,
   })
+  return data
+}
+
+/** 发布表单「AI 辅助生成」：根据源 Skill 内容生成介绍页草稿（不落库）。 */
+export async function generateMarketIntroDraft(
+  skillId: string,
+): Promise<IntroDraftResponse> {
+  const { data } = await apiClient.post<IntroDraftResponse>('/market/intro/generate', {
+    skill_id: skillId,
+  })
+  return data
+}
+
+/** 获取市场条目完整详情（只读「SKILL 介绍」页）。 */
+export async function getMarketSkillDetail(
+  marketId: string,
+): Promise<MarketSkillDetail> {
+  const { data } = await apiClient.get<MarketSkillDetail>(`/market/${marketId}`)
+  return data
+}
+
+/** 读取市场快照中的单个资源文件内容。 */
+export async function readMarketResourceFile(
+  marketId: string,
+  path: string,
+): Promise<MarketResourceFileResponse> {
+  const { data } = await apiClient.get<MarketResourceFileResponse>(
+    `/market/${marketId}/resource-file`,
+    { params: { path } },
+  )
   return data
 }
 

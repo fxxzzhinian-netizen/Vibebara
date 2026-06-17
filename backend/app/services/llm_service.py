@@ -152,6 +152,89 @@ async def classify_skill_tags(
         return []
 
 
+# ----------------------------------------------------------------------------
+# Skill 市场「介绍页」草稿生成（发布表单的 AI 辅助）
+# ----------------------------------------------------------------------------
+
+INTRO_SYSTEM_PROMPT = """\
+你是一个 AI Coding Skill 的内容编辑。用户会给你一个 skill 的核心信息
+（name、description、tags、正文摘要）。请为它撰写一份吸引人的「市场介绍页」草稿，
+用于在 Skill 市场展示，帮助读者快速理解这个 skill 能做什么、适合谁、怎么用。
+
+请输出严格 JSON（不要附加任何解释或 markdown 代码围栏），结构如下：
+{
+  "title": "一个有吸引力的中文标题（<= 30 字），可带副标题",
+  "category": "一个简短的中文分类词（<= 6 字），如 \\"代码审查\\"、\\"AI人格\\"、\\"前端\\"",
+  "short_description": "25-64 字的一句话简介，概括核心能力",
+  "intro_md": "一篇 markdown 正文介绍，3-6 段，可含小标题与要点列表，语气专业且生动，突出适用场景与价值"
+}
+
+规则：
+- 全部使用简体中文；intro_md 必须是合法 markdown。
+- 只描述给定信息能支撑的内容，不要编造不存在的功能。
+- 不要在 JSON 之外输出任何字符。
+"""
+
+
+async def generate_skill_intro(
+    name: str,
+    description: str,
+    body_preview: str,
+    tags: Optional[List[str]] = None,
+) -> Dict[str, str]:
+    """为发布到市场的 skill 生成「介绍页」草稿（标题/分类/简介/正文）。
+
+    best-effort：未配置 API Key / 调用失败 / 输出非法，一律返回 {}，绝不抛错，
+    由调用方（发布表单）决定回退到手填。
+    """
+    provider = get_provider()
+    if not provider.is_configured():
+        logger.warning("[LLM] API Key 未配置，跳过介绍页生成")
+        return {}
+
+    user_message = json.dumps(
+        {
+            "name": name or "",
+            "description": description or "",
+            "tags": list(tags or []),
+            "body_preview": (body_preview or "")[:1500],
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+    try:
+        result = await provider.chat(
+            [
+                ChatMessage(role="system", content=INTRO_SYSTEM_PROMPT),
+                ChatMessage(role="user", content=user_message),
+            ],
+            temperature=0.6,
+            max_tokens=1200,
+        )
+        content = (result.content or "").strip()
+        # 容错：去掉可能的 ```json 代码围栏
+        if content.startswith("```"):
+            content = content.strip("`")
+            if content.lower().startswith("json"):
+                content = content[4:]
+            content = content.strip()
+        parsed = json.loads(content)
+        if not isinstance(parsed, dict):
+            return {}
+        out = {
+            "title": str(parsed.get("title", "") or "").strip(),
+            "category": str(parsed.get("category", "") or "").strip(),
+            "short_description": str(parsed.get("short_description", "") or "").strip(),
+            "intro_md": str(parsed.get("intro_md", "") or "").strip(),
+        }
+        logger.info(f"[LLM] 生成介绍页草稿: name={name!r} title={out['title']!r}")
+        return out
+    except Exception as e:
+        logger.error(f"[LLM] 介绍页生成失败: {e}")
+        return {}
+
+
 async def test_connection() -> Dict[str, Any]:
     """测试 LLM API 连通性"""
     provider = get_provider()
