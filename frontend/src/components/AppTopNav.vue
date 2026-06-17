@@ -40,13 +40,13 @@ const navLinks = computed<NavLink[]>(() => {
       { label: '团队 SKILL', to: '/team/skills', icon: 'skill' },
       { label: '团队项目', to: '/team/projects', icon: 'project' },
       { label: '团队管理', to: '/team/manage', icon: 'project' },
-      { label: 'SKILL 市场', reserved: true, icon: 'market' },
+      { label: 'SKILL 市场', to: '/market', icon: 'market' },
     ]
   }
   return [
     { label: 'SKILL 仓库', to: '/', icon: 'repo' },
     { label: '项目管理', reserved: true, icon: 'project' },
-    { label: 'SKILL 市场', reserved: true, icon: 'market' },
+    { label: 'SKILL 市场', to: '/market', icon: 'market' },
   ]
 })
 

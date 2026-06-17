@@ -10,6 +10,8 @@ from app.core.config import settings
 from app.api.launcher import api_router as launcher_router
 from app.api.skill_forge import api_router as skill_forge_router
 from app.api.skill_store import api_router as skill_store_router
+from app.api.market import api_router as market_router
+from app.api.admin import api_router as admin_router
 from app.api.auth import api_router as auth_router
 from app.api.invites import api_router as invites_router
 from app.api.teams import api_router as teams_router
@@ -139,6 +141,8 @@ def create_app() -> FastAPI:
     # 始终挂载的 REST 路由（local/cloud 共用）
     app.include_router(skill_forge_router, prefix="/api/v1")
     app.include_router(skill_store_router, prefix="/api/v1")
+    app.include_router(market_router, prefix="/api/v1")
+    app.include_router(admin_router, prefix="/api/v1")
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(invites_router, prefix="/api/v1")
     app.include_router(teams_router, prefix="/api/v1")

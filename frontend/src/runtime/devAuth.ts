@@ -38,4 +38,9 @@ export const DEV_FAKE_USER: UserInfo = {
   onboarded: false,
   dev_mode: null,
   favorite_tool: null,
+  // dev 预览：放开市场审核 / 管理员入口，便于本地联调市场各分页
+  is_platform_admin: true,
+  is_seed_user: true,
+  is_reviewer: true,
+  can_manage_admins: true,
 }

@@ -2,7 +2,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSkillStore } from '@/stores/skillStore'
+import { useAuthStore } from '@/stores/authStore'
 import { type NativeSkillItem } from '@/api/skillStore'
+import { publishSkillToMarket } from '@/api/market'
 import { promptOpenAfterDeploy } from '@/utils/openAfterDeploy'
 import AppTopNav from '@/components/AppTopNav.vue'
 import FolderPicker from '@/components/FolderPicker.vue'
@@ -20,8 +22,10 @@ import { useDirectionalTransition } from '@/composables/useDirectionalTransition
 
 const router = useRouter()
 const store = useSkillStore()
+const authStore = useAuthStore()
 
 const showCreateModal = ref(false)
+const publishingMarket = ref(false)
 
 const deployTarget = ref<'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'>('cursor')
 // 部署始终落项目目录（需选目录）；勾选后「同时」再额外落一份到全局 ~/.{tool}/skills。
@@ -117,17 +121,50 @@ async function handleSave() {
   await store.saveCurrentSkill()
 }
 
+async function handlePublishToMarket() {
+  if (!store.currentId) return
+  if (store.dirty) {
+    toast.error('请先保存后再发布到市场')
+    return
+  }
+  publishingMarket.value = true
+  try {
+    const res = await publishSkillToMarket(store.currentId)
+    if (res.success) {
+      toast.success(
+        authStore.user?.is_seed_user
+          ? '已发布到市场'
+          : '已提交审核，等待管理员通过',
+      )
+    } else {
+      toast.error(res.error || '发布失败')
+    }
+  } catch (e: any) {
+    toast.error(e?.response?.data?.detail || e?.message || '发布失败')
+  } finally {
+    publishingMarket.value = false
+  }
+}
+
 async function handleDelete() {
   if (!store.currentId) return
   if (isTeamSkill.value) return
+  const name = store.currentId
   const ok = await confirmDialog({
     title: '删除 Skill',
-    message: `确认删除 "${store.currentId}"？此操作不可恢复。`,
+    message: `确认删除 "${name}"？此操作不可恢复。`,
     confirmText: '删除',
     danger: true,
   })
   if (!ok) return
-  await store.removeSkill(store.currentId)
+  try {
+    await store.removeSkill(name)
+    toast.success(`已删除 Skill「${name}」`)
+    // 删除后直接回到 SKILL 仓库，避免停留在「未选择 Skill」空状态白屏
+    router.push('/')
+  } catch (e: any) {
+    toast.error(e?.response?.data?.detail || e?.message || '删除失败')
+  }
 }
 
 function getPlatformSpecificMissing(target: 'cursor' | 'codex' | 'windsurf' | 'claude' | 'kiro' | 'trae' | 'qoder'): string[] {
@@ -353,6 +390,18 @@ onMounted(() => {
                 <path fill="currentColor" d="M418.36544 607.40096a29.45024 29.45024 0 0 0-41.6768 0l-188.74368 188.73856a29.4912 29.4912 0 0 0-0.00512 41.69216 29.48608 29.48608 0 0 0 41.68704 0l188.73856-188.73856a29.65504 29.65504 0 0 0 0-41.69216z" />
               </svg>
               部署
+            </button>
+            <button
+              class="btn tool-btn publish"
+              :disabled="isTeamSkill || !store.currentId || store.dirty || publishingMarket"
+              :title="store.dirty ? '请先保存后再发布' : '发布到 SKILL 市场'"
+              @click="handlePublishToMarket"
+            >
+              <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path fill="currentColor" d="M512 64a448 448 0 1 0 0 896 448 448 0 0 0 0-896z m0 832a384 384 0 1 1 0-768 384 384 0 0 1 0 768z" />
+                <path fill="currentColor" d="M544 480h160a32 32 0 0 1 0 64H544v160a32 32 0 0 1-64 0V544H320a32 32 0 0 1 0-64h160V320a32 32 0 0 1 64 0v160z" />
+              </svg>
+              {{ publishingMarket ? '发布中...' : '发布到市场' }}
             </button>
           </div>
         </div>
@@ -1033,6 +1082,18 @@ onMounted(() => {
   border-color: #15803d;
   color: #ffffff;
   box-shadow: 0 6px 14px rgba(22, 163, 74, 0.2);
+}
+
+.tool-btn.publish {
+  background: #4f46e5;
+  color: #ffffff;
+  border-color: #4f46e5;
+}
+.tool-btn.publish:hover:not(:disabled) {
+  background: #4338ca;
+  border-color: #4338ca;
+  color: #ffffff;
+  box-shadow: 0 6px 14px rgba(79, 70, 229, 0.2);
 }
 
 .tool-btn.danger {

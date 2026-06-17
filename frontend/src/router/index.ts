@@ -54,6 +54,12 @@ const router = createRouter({
       name: 'skill-forge',
       component: () => import('@/views/SkillForge.vue'),
     },
+    {
+      // SKILL 市场：全局页（个人/团队空间共用），所有登录用户可见。
+      path: '/market',
+      name: 'skill-market',
+      component: () => import('@/views/SkillMarket.vue'),
+    },
   ],
 })
 

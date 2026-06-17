@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     # 环境变量注入用 JSON 形式：ADMIN_USERNAMES=["DAIL"]
     ADMIN_USERNAMES: List[str] = ["DAIL"]
 
+    # SKILL 市场种子审核员（始终具备审核 + 创建平台管理员权限，自己发布免审核）。
+    # 与预设种子用户保持一致（DAIL/DAIL2）。环境变量注入：MARKET_SEED_REVIEWERS=["DAIL","DAIL2"]
+    MARKET_SEED_REVIEWERS: List[str] = ["DAIL", "DAIL2"]
+
     # ------------------------------------------------------------------
     # 预设种子用户（启动时幂等创建 DAIL/DAIL2）
     # ------------------------------------------------------------------

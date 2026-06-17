@@ -18,6 +18,11 @@ export interface UserInfo {
   onboarded: boolean
   dev_mode: string | null
   favorite_tool: string | null
+  // SKILL 市场权限标记（后端 /auth/me 下发；前端据此显示审核 / 管理员入口）
+  is_platform_admin?: boolean
+  is_seed_user?: boolean
+  is_reviewer?: boolean
+  can_manage_admins?: boolean
 }
 
 export interface OnboardingResponse {

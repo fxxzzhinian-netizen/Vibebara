@@ -117,6 +117,10 @@ async def get_me(user_id: str = Depends(get_current_user_id)):
             onboarded=bool(user.onboarded),
             dev_mode=user.dev_mode,
             favorite_tool=user.favorite_tool,
+            is_platform_admin=bool(getattr(user, "is_platform_admin", False)),
+            is_seed_user=auth_service.is_seed_user(user),
+            is_reviewer=auth_service.is_reviewer(user),
+            can_manage_admins=auth_service.can_manage_admins(user),
         ),
     }
 

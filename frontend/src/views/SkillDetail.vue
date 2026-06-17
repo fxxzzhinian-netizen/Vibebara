@@ -21,6 +21,8 @@ import type { DiffRow, DiffRowType, InlinePair, SegOp } from '@/utils/diffView'
 import { isMockForced, mockVersions, mockVersionDetail, mockResourceFile } from '@/utils/devMockVersions'
 import { useTeamStore } from '@/stores/teamStore'
 import { useSkillStore } from '@/stores/skillStore'
+import { useAuthStore } from '@/stores/authStore'
+import { publishSkillToMarket } from '@/api/market'
 import { promptInput } from '@/composables/useInputDialog'
 import { confirmDialog } from '@/composables/useConfirmDialog'
 import { toast } from '@/composables/useToast'
@@ -38,6 +40,9 @@ const route = useRoute()
 const router = useRouter()
 const teamStore = useTeamStore()
 const skillStore = useSkillStore()
+const authStore = useAuthStore()
+
+const publishingMarket = ref(false)
 
 const skillId = computed(() => route.params.id as string)
 const detail = ref<NativeSkillDetail | null>(null)
@@ -95,6 +100,27 @@ function startEdit() {
 function cancelEdit() {
   editing.value = false
   draft.value = null
+}
+
+async function handlePublishToMarket() {
+  if (!skillId.value) return
+  publishingMarket.value = true
+  try {
+    const res = await publishSkillToMarket(skillId.value)
+    if (res.success) {
+      toast.success(
+        authStore.user?.is_seed_user
+          ? '已发布到市场'
+          : '已提交审核，等待管理员通过',
+      )
+    } else {
+      toast.error(res.error || '发布失败')
+    }
+  } catch (e: any) {
+    toast.error(e?.response?.data?.detail || e?.message || '发布失败')
+  } finally {
+    publishingMarket.value = false
+  }
 }
 
 function setDraft(key: string, val: unknown) {
@@ -504,7 +530,8 @@ async function confirmDeleteSkill() {
     if (res.success) {
       showDeleteSkill.value = false
       toast.success('已删除该 Skill')
-      goBack()
+      // 删除后直接回到对应仓库页，避免 router.back() 落到已删除的详情页/空状态白屏
+      router.push(isTeamSkill.value ? '/team/skills' : '/')
     } else {
       toast.error('删除失败')
     }
@@ -592,6 +619,13 @@ function timeAgo(ts: string | null | undefined): string {
               <span v-else-if="!isTeamSkill && db" class="personal-badge">个人 Skill</span>
             </div>
             <div class="toolbar-right">
+              <button
+                v-if="isTeamSkill && isTeamMember && cfg && !editing"
+                class="btn tool-btn publish"
+                :disabled="publishingMarket"
+                title="发布到 SKILL 市场"
+                @click="handlePublishToMarket"
+              >{{ publishingMarket ? '发布中...' : '发布到市场' }}</button>
               <template v-if="canEdit && cfg">
                 <template v-if="!editing">
                   <button class="btn tool-btn delete" @click="askDeleteSkill">删除</button>
@@ -858,7 +892,15 @@ function timeAgo(ts: string | null | undefined): string {
                       <span v-if="v.resource_count" class="ver-res-chip">{{ v.resource_count }} 个资源文件</span>
                       <span class="ver-meta">{{ v.created_by_name || v.created_by || '—' }} · {{ timeAgo(v.created_at) }}</span>
                       <span class="ver-actions">
-                        <button class="btn-xs" :disabled="viewLoading" @click="viewVersion(v)">查看</button>
+                        <button
+                          v-if="v.change_items && v.change_items.length"
+                          type="button"
+                          class="ver-changes-btn"
+                          @click="openChanges(v)"
+                        >
+                          改动明细（{{ v.change_items.length }}）
+                        </button>
+                        <button class="btn-xs" :disabled="viewLoading" @click="viewVersion(v)">查看版本</button>
                         <button
                           v-if="canEdit || devMock"
                           class="btn-xs danger"
@@ -870,14 +912,6 @@ function timeAgo(ts: string | null | undefined): string {
                       </span>
                     </div>
                     <div v-if="v.change_summary" class="ver-summary">{{ v.change_summary }}</div>
-                    <button
-                      v-if="v.change_items && v.change_items.length"
-                      type="button"
-                      class="ver-changes-btn"
-                      @click="openChanges(v)"
-                    >
-                      改动明细（{{ v.change_items.length }}）
-                    </button>
                   </li>
                 </ul>
               </section>
@@ -1353,6 +1387,8 @@ function timeAgo(ts: string | null | undefined): string {
 .tool-btn.save:hover:not(:disabled) { background: #0369a1; border-color: #0369a1; color: #ffffff; box-shadow: 0 6px 14px rgba(2, 132, 199, 0.18); }
 .tool-btn.delete { background: #dc2626; border-color: #dc2626; color: #ffffff; }
 .tool-btn.delete:hover:not(:disabled) { background: #b91c1c; border-color: #b91c1c; color: #ffffff; }
+.tool-btn.publish { background: #4f46e5; border-color: #4f46e5; color: #ffffff; }
+.tool-btn.publish:hover:not(:disabled) { background: #4338ca; border-color: #4338ca; color: #ffffff; box-shadow: 0 6px 14px rgba(79, 70, 229, 0.2); }
 
 .deploy-msg {
   margin-top: 0.75rem;
@@ -1735,7 +1771,7 @@ function timeAgo(ts: string | null | undefined): string {
   font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   padding: 2px 0;
 }
-.ver-actions { margin-left: auto; display: flex; gap: 6px; }
+.ver-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 /* 卡片右上角操作按钮：统一为纯色按钮（边框与底色同色，遵循 solid-color-buttons 规范）。
    查看=实底浅灰次级，回滚=实底危险红，与项目页 .btn-soft / .btn-danger 口径一致。 */
 .btn-xs {
@@ -1779,9 +1815,9 @@ function timeAgo(ts: string | null | undefined): string {
 .ver-refresh-btn:hover:not(:disabled) svg,
 .ver-refresh-btn.spinning svg { transform: rotate(60deg); }
 .ver-summary { margin-top: 8px; font-size: 13px; color: #374151; }
-/* 改动明细触发按钮：纯色浅紫文字按钮，点击打开弹窗（替代原下拉展开）。 */
+/* 改动明细触发按钮：纯色浅紫文字按钮，点击打开弹窗（替代原下拉展开）。
+   现位于版本行右侧操作区（查看版本左侧），与 .btn-xs 同高对齐。 */
 .ver-changes-btn {
-  margin-top: 8px;
   display: inline-flex;
   align-items: center;
   gap: 4px;

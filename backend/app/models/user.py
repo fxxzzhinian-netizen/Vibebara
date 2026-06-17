@@ -33,6 +33,8 @@ class User(Base):
     dev_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # 引导问题：最常用的 Vibe Coding 工具（平台适配 key，如 cursor/codex/...）
     favorite_tool: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # 平台管理员：可审核 SKILL 市场发布。由种子用户动态授予（种子用户始终视为管理员）。
+    is_platform_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

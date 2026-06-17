@@ -87,6 +87,8 @@ async def _migrate_add_columns() -> None:
         ("users", "onboarded", "TINYINT(1) NOT NULL DEFAULT 0"),
         ("users", "dev_mode", "VARCHAR(16) NULL"),
         ("users", "favorite_tool", "VARCHAR(32) NULL"),
+        # 平台管理员标记：可审核 SKILL 市场发布（种子用户除外，按用户名判定）。
+        ("users", "is_platform_admin", "TINYINT(1) NOT NULL DEFAULT 0"),
     ]
     async with engine.begin() as conn:
         for table, column, col_def in migrations:

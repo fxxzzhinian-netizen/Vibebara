@@ -39,6 +39,11 @@ class UserInfo(BaseModel):
     onboarded: bool = False
     dev_mode: Optional[str] = None
     favorite_tool: Optional[str] = None
+    # SKILL 市场权限标记（前端据此显示审核 / 管理员入口）
+    is_platform_admin: bool = False
+    is_seed_user: bool = False
+    is_reviewer: bool = False
+    can_manage_admins: bool = False
 
 
 class UserResponse(BaseModel):

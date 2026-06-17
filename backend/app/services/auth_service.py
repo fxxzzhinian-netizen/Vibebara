@@ -225,3 +225,80 @@ async def get_user_by_api_key(api_key: str) -> Optional[User]:
             select(User).where(User.api_key_hash == hashed)
         )
         return result.scalar_one_or_none()
+
+
+# =========================================================================
+# SKILL 市场：角色与权限判定
+# =========================================================================
+
+
+def is_seed_user(user: Optional[User]) -> bool:
+    """种子用户（DAIL/DAIL2）：始终具备审核 + 创建平台管理员权限，自己发布免审核。"""
+    return bool(user and user.username in settings.MARKET_SEED_REVIEWERS)
+
+
+def is_reviewer(user: Optional[User]) -> bool:
+    """可审核 SKILL 市场发布 = 种子用户 或 平台管理员。"""
+    return bool(user and (is_seed_user(user) or getattr(user, "is_platform_admin", False)))
+
+
+def can_manage_admins(user: Optional[User]) -> bool:
+    """可创建/移除平台管理员 = 仅种子用户。"""
+    return is_seed_user(user)
+
+
+async def list_platform_admins() -> list[dict]:
+    """返回全部平台管理员（含种子用户标记），供管理界面展示。"""
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(User)
+            .where(User.is_platform_admin.is_(True))
+            .order_by(User.created_at)
+        )
+        admins = list(result.scalars().all())
+    return [
+        {
+            "id": u.id,
+            "username": u.username,
+            "display_name": u.display_name,
+            "is_seed_user": is_seed_user(u),
+        }
+        for u in admins
+    ]
+
+
+async def grant_platform_admin(username: str) -> dict:
+    """按用户名授予平台管理员。"""
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(User).where(User.username == username)
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            return {"success": False, "error": "用户不存在"}
+        if user.is_platform_admin:
+            return {"success": False, "error": "该用户已是平台管理员"}
+        user.is_platform_admin = True
+        await session.commit()
+        return {
+            "success": True,
+            "admin": {
+                "id": user.id,
+                "username": user.username,
+                "display_name": user.display_name,
+                "is_seed_user": is_seed_user(user),
+            },
+        }
+
+
+async def revoke_platform_admin(user_id: str) -> dict:
+    """移除某用户的平台管理员（种子用户不可移除）。"""
+    async with async_session_factory() as session:
+        user = await session.get(User, user_id)
+        if not user:
+            return {"success": False, "error": "用户不存在"}
+        if is_seed_user(user):
+            return {"success": False, "error": "种子用户为内置管理员，不可移除"}
+        user.is_platform_admin = False
+        await session.commit()
+        return {"success": True}
