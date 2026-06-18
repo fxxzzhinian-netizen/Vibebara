@@ -107,6 +107,9 @@ export function handleBrowse(
       }
     }
     if (!isDir) continue;
+    // 过滤规则（对齐 docstring 与 backend browse_directory）：跳过 "." 开头的隐藏目录
+    // 与固定噪声目录（node_modules/dist/build 等）。
+    if (entry.name.startsWith(".")) continue;
     if (HIDDEN_DIRS.has(entry.name)) continue;
     const abs = path.join(p, entry.name);
     dirs.push({ name: entry.name, absPath: abs, isDrive: false });

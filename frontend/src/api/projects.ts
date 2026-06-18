@@ -227,18 +227,6 @@ export async function getProject(
   return data
 }
 
-export async function updateProject(
-  projectId: string,
-  name?: string,
-  description?: string,
-): Promise<ProjectResponse> {
-  const { data } = await apiClient.put<ProjectResponse>(
-    `/projects/${projectId}`,
-    { name: name ?? null, description: description ?? null },
-  )
-  return data
-}
-
 export async function deleteProject(
   projectId: string,
 ): Promise<{ success: boolean; error?: string }> {

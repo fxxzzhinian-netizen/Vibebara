@@ -200,8 +200,3 @@ export function cloudWsUrl(path: string): string {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${protocol}//${window.location.host}${path}`
 }
-
-/** 仅测试用：重置内部缓存（生产代码不应调用）。 */
-export function __resetRuntimeConfigCacheForTest(): void {
-  cached = null
-}

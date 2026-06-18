@@ -178,14 +178,6 @@ async def login(username: str, password: str) -> dict:
         }
 
 
-async def get_current_user(token: str) -> Optional[User]:
-    user_id = verify_token(token)
-    if not user_id:
-        return None
-    async with async_session_factory() as session:
-        return await session.get(User, user_id)
-
-
 async def get_user_by_id(user_id: str) -> Optional[User]:
     async with async_session_factory() as session:
         return await session.get(User, user_id)
@@ -216,15 +208,6 @@ async def generate_api_key(user_id: str) -> dict:
         user.api_key_hash = hashed
         await session.commit()
     return {"success": True, "api_key": raw_key}
-
-
-async def get_user_by_api_key(api_key: str) -> Optional[User]:
-    hashed = _hash_api_key(api_key)
-    async with async_session_factory() as session:
-        result = await session.execute(
-            select(User).where(User.api_key_hash == hashed)
-        )
-        return result.scalar_one_or_none()
 
 
 # =========================================================================

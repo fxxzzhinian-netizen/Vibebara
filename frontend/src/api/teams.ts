@@ -123,13 +123,6 @@ export async function deleteTeam(
   return data
 }
 
-export async function regenerateInvite(
-  teamId: string,
-): Promise<{ success: boolean; invite_code: string }> {
-  const { data } = await apiClient.post(`/teams/${teamId}/invite`)
-  return data as { success: boolean; invite_code: string }
-}
-
 export async function joinTeam(
   inviteCode: string,
 ): Promise<TeamResponse> {
@@ -157,16 +150,6 @@ export async function updateMemberRole(
   const { data } = await apiClient.put(`/teams/${teamId}/members/${userId}`, {
     role,
   })
-  return data as { success: boolean }
-}
-
-export async function removeMember(
-  teamId: string,
-  userId: string,
-): Promise<{ success: boolean }> {
-  const { data } = await apiClient.delete(
-    `/teams/${teamId}/members/${userId}`,
-  )
   return data as { success: boolean }
 }
 

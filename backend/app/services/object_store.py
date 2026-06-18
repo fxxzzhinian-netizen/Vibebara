@@ -318,9 +318,3 @@ def get_object_store() -> ObjectStore:
         _store = LocalObjectStore(root)
         logger.info(f"[ObjectStore] 使用本地文件系统后端 root={root}")
     return _store
-
-
-def reset_object_store() -> None:
-    """测试用：清空单例（切换 backend 后重建）。"""
-    global _store
-    _store = None

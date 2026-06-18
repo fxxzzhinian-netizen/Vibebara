@@ -42,19 +42,6 @@ export interface DeviceRegisterResponse {
   error?: string
 }
 
-export interface DeviceListResponse {
-  success: boolean
-  devices: DeviceInfo[]
-  error?: string
-}
-
-export interface DeviceRevokeResponse {
-  success: boolean
-  deviceId: string
-  status: 'revoked'
-  error?: string
-}
-
 // ===================== 端点调用 =====================
 
 /** POST /devices/register —— 注册/刷新设备（幂等：(user, clientUuid)）。 */
@@ -64,22 +51,6 @@ export async function registerDevice(
   const { data } = await cloudClient.post<DeviceRegisterResponse>(
     '/devices/register',
     body,
-  )
-  return data
-}
-
-/** GET /devices —— 列举「我的」设备。 */
-export async function listDevices(): Promise<DeviceListResponse> {
-  const { data } = await cloudClient.get<DeviceListResponse>('/devices')
-  return data
-}
-
-/** DELETE /devices/{deviceId} —— 撤销设备（status=revoked）。 */
-export async function revokeDevice(
-  deviceId: string,
-): Promise<DeviceRevokeResponse> {
-  const { data } = await cloudClient.delete<DeviceRevokeResponse>(
-    `/devices/${deviceId}`,
   )
   return data
 }

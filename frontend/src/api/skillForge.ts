@@ -89,16 +89,6 @@ export interface ScanStatusResponse {
   error: string | null
 }
 
-export interface MigrateResponse {
-  success: boolean
-  id: string
-  origin: string
-  adapted: boolean
-  target_platform: string
-  dest_path: string
-  error?: string
-}
-
 /** 本地代理 scan 包（camelCase）→ 旧 UnifiedSkillPackage（snake_case）归一。 */
 export function normalizeScanPackage(
   p: localAgent.UnifiedSkillPackage,
@@ -118,16 +108,6 @@ export function normalizeScanPackage(
     has_assets: p.hasAssets,
     installed_at: p.installedAt,
   }
-}
-
-export async function getPackages(): Promise<ScanStatusResponse> {
-  // 编排模式下本地代理 scan 是无状态的（云端不再缓存扫描结果），无目录可拉，
-  // 返回空 ready；调用方（project store.refreshFromBackend）仅在非空时更新，故安全。
-  if (isOrchestrationEnabled()) {
-    return { status: 'ready', packages: [], scan_dir: '', last_scan: null, error: null }
-  }
-  const { data } = await apiClient.get<ScanStatusResponse>('/skill-forge/packages')
-  return data
 }
 
 export async function rescanSkills(scanDir?: string): Promise<ScanStatusResponse> {

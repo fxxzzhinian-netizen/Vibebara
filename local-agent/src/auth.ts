@@ -39,8 +39,3 @@ export function verifyPairingToken(
   }
   return constantTimeCompare(provided, expected);
 }
-
-/** 生成高熵、URL 安全的配对令牌（bearer 风格），对齐 generate_pairing_token。 */
-export function generatePairingToken(nbytes = 32): string {
-  return crypto.randomBytes(nbytes).toString("base64url");
-}

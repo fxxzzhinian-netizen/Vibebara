@@ -34,7 +34,7 @@ import type {
   DeployResponse,
   MutationResponse,
 } from './skillStore'
-import type { MigrateResponse, InstalledAtStatus } from './skillForge'
+import type { InstalledAtStatus } from './skillForge'
 
 // ===================== 云端协作端点 DTO（契约 §9）=====================
 
@@ -491,68 +491,6 @@ export async function deployNativeSkillOrchestrated(
     return { success: true, deployed: [{ target, path: write.installPath }] }
   } catch (e) {
     return { success: false, deployed: [], error: errMsg(e) }
-  }
-}
-
-// ===================== 编排：跨平台迁移（M0 §3.1 变体 / 决定②）=====================
-
-/**
- * 跨平台迁移（migrate）—— 决定②：复用「云端 build-artifact（目标平台产物）→
- * 本地代理 write-skill 落盘」，**不新增云端端点**。
- *
- * 与 deploy 变体一致：迁移产物由云端按目标平台构建（store 级 build-artifact），
- * 落到本机平台 skill 目录（scope=platform → ~/.{target}/skills/{skillId}），不登记 deployment。
- *
- * ⚠️ 语义说明：薄代理下「云端够不着本地代理」，迁移产物只能由云端构建。因此编排路径以
- * **云端 Store 中的同 id Skill** 为产物来源（cloud 形态下 Store 即权威）。若目标 Skill
- * 尚未入库（仅存在于本机文件夹），build-artifact 会失败——此时仍可走 web 灰度的旧
- * 一次性 /skill-forge/migrate（node 直接读本机文件夹适配）。详见 M4-收尾与联调记录。
- */
-export async function migrateSkillOrchestrated(
-  skillId: string,
-  targetPlatform: string,
-): Promise<MigrateResponse> {
-  const tool = asTool(targetPlatform)
-  try {
-    const artifact = await buildArtifactForStoreSkill(skillId, tool)
-    if (!artifact.success) {
-      return {
-        success: false,
-        id: skillId,
-        origin: '',
-        adapted: false,
-        target_platform: targetPlatform,
-        dest_path: '',
-        error: artifact.error || '云端构建迁移产物失败',
-      }
-    }
-    const write = await localAgent.writeSkill({
-      scope: 'platform',
-      tool,
-      skillId: artifact.skillId || skillId,
-      contents: artifact.contents,
-      resources: toWriteResources(artifact.resources),
-      overwrite: true,
-      ensureGitignore: false,
-    })
-    return {
-      success: true,
-      id: artifact.skillId || skillId,
-      origin: '',
-      adapted: true,
-      target_platform: targetPlatform,
-      dest_path: write.installPath,
-    }
-  } catch (e) {
-    return {
-      success: false,
-      id: skillId,
-      origin: '',
-      adapted: false,
-      target_platform: targetPlatform,
-      dest_path: '',
-      error: errMsg(e),
-    }
   }
 }
 

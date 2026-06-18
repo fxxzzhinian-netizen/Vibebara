@@ -105,6 +105,9 @@ async def browse_directory(path_str: str) -> Dict[str, Any]:
             for child in sorted(p.iterdir()):
                 if not child.is_dir():
                     continue
+                # 跳过 "." 开头的隐藏目录与固定噪声目录（与 local-agent browse 对齐）。
+                if child.name.startswith("."):
+                    continue
                 if child.name in hidden:
                     continue
                 dirs.append({

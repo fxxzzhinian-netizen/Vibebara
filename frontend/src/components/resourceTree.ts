@@ -41,7 +41,7 @@ const fileSvg = (label: string, main: string, type: GlyphType = 'code') => {
 </svg>`
 }
 
-export const FILE_ICON_SVG_MAP: Record<string, string> = {
+const FILE_ICON_SVG_MAP: Record<string, string> = {
   // 代码 / 编程语言
   py: fileSvg('PY', '#3776AB', 'code'),
   ipynb: fileSvg('NB', '#F37626', 'code'),
@@ -127,7 +127,7 @@ export const FILE_ICON_SVG_MAP: Record<string, string> = {
   rar: fileSvg('RAR', '#A16207', 'archive'),
 }
 
-export const DEFAULT_FILE_ICON_SVG = fileSvg('FILE', '#64748B', 'doc')
+const DEFAULT_FILE_ICON_SVG = fileSvg('FILE', '#64748B', 'doc')
 
 // 特殊文件名（无扩展名或固定命名）的图标。
 const SPECIAL_FILE_ICON_SVG: Record<string, string> = {
@@ -137,7 +137,7 @@ const SPECIAL_FILE_ICON_SVG: Record<string, string> = {
 }
 
 /** 由文件名（含扩展名）返回类型图标的 SVG 字符串。 */
-export function fileIconSvg(name: string): string {
+function fileIconSvg(name: string): string {
   const lower = (name || '').toLowerCase()
   if (lower === 'dockerfile' || lower.endsWith('.dockerfile')) return SPECIAL_FILE_ICON_SVG.dockerfile
   if (lower === 'license' || lower === 'license.txt') return SPECIAL_FILE_ICON_SVG.license

@@ -13,14 +13,9 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from app.services.llm import ChatMessage, get_provider, reset_provider
+from app.services.llm import ChatMessage, get_provider
 
 logger = logging.getLogger(__name__)
-
-
-def reset_client() -> None:
-    """重置底层 Provider（配置变更后调用）。"""
-    reset_provider()
 
 
 COMPLETE_SYSTEM_PROMPT = """\

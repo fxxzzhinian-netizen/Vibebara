@@ -46,11 +46,6 @@ class Base(DeclarativeBase):
     pass
 
 
-async def get_session() -> AsyncSession:  # type: ignore[misc]
-    async with async_session_factory() as session:
-        yield session
-
-
 async def init_db() -> None:
     """开发兜底：自动建表 + 增量补列。
 

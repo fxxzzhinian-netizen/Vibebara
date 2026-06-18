@@ -40,7 +40,7 @@ const DEFAULT_TITLES: Record<ToastType, string> = {
  * 推入一条提示，返回其 id；duration<=0 表示不自动消失。
  * 第四个参数 title 可覆盖默认主标题。
  */
-export function showToast(
+function showToast(
   message: string,
   type: ToastType = 'info',
   duration = DEFAULT_DURATION,

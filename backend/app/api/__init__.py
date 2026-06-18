@@ -1,13 +1,5 @@
-from app.api.launcher import api_router as launcher_router
-from app.api.skill_forge import api_router as skill_forge_router
-from app.api.skill_store import api_router as skill_store_router
-from app.api.market import api_router as market_router
-from app.api.admin import api_router as admin_router
+"""API 路由包。
 
-__all__ = [
-    "launcher_router",
-    "skill_forge_router",
-    "skill_store_router",
-    "market_router",
-    "admin_router",
-]
+各 router 由 ``app.main`` 直接按模块挂载（``from app.api.<mod> import api_router``），
+此处不再做聚合 re-export，避免与 ``main.py`` 的挂载清单出现不一致。
+"""
