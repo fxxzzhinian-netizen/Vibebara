@@ -92,7 +92,10 @@ const sortedTools = computed<PlatformTool[]>(() => {
   return [...found, ...rest]
 })
 
-// 轮播（coverflow）：选中项居中、向两侧逐级缩小，7 个工具同时可见
+// 轮播（coverflow）：选中项居中放大、向两侧逐级缩小，固定展示 7 个图标
+// （中心 + 左右各 3，对称），窗口外的图标淡出隐藏，左右切换时循环露出其余图标。
+const VISIBLE_LEFT = 3
+const VISIBLE_RIGHT = 3
 const currentIndex = ref(0)
 const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280)
 
@@ -115,20 +118,34 @@ function cumulativeGap(dist: number): number {
 // 居中项与相邻项的水平间距：随页面宽度自适应，并设上下限
 const spacing = computed(() => {
   const usable = Math.max(420, viewportWidth.value - 240)
-  return Math.min(220, usable / (2 * cumulativeGap(3)))
+  return Math.min(200, usable / (2 * cumulativeGap(VISIBLE_RIGHT)))
 })
 
-// 最外侧（第 3 级）图标距中心的像素偏移
-const edgeOffset = computed(() => cumulativeGap(3) * spacing.value)
+// 某一级图标的缩放（与 itemStyle 保持一致）
+function scaleAt(dist: number): number {
+  return Math.max(0.5, 1.18 - dist * 0.26)
+}
 
-// 箭头放在最外侧图标之外，并随间距联动
+// 箭头贴在该侧最外卡片外侧：卡片中心偏移 + 该卡片半宽 + 间隙
+function edgeArrowOffset(dist: number): number {
+  const ICON_WRAP = 128
+  const half = (ICON_WRAP * scaleAt(dist)) / 2
+  return cumulativeGap(dist) * spacing.value + half + 36
+}
+
 const leftArrowStyle = computed(() => ({
-  left: `calc(50% - ${edgeOffset.value + 68}px)`,
+  left: `calc(50% - ${edgeArrowOffset(VISIBLE_LEFT)}px)`,
 }))
 const rightArrowStyle = computed(() => ({
-  left: `calc(50% + ${edgeOffset.value + 68}px)`,
+  left: `calc(50% + ${edgeArrowOffset(VISIBLE_RIGHT)}px)`,
 }))
 
+// 工具数量超过可见槽位（6 个）时，才需要左右切换
+const canScroll = computed(
+  () => sortedTools.value.length > VISIBLE_LEFT + VISIBLE_RIGHT + 1,
+)
+
+// 选中项始终为居中项
 watch(
   [currentIndex, sortedTools],
   () => {
@@ -138,7 +155,7 @@ watch(
   { immediate: true },
 )
 
-// 以选中项为中心的环形偏移：7 项 → 取值 -3..3，左右各 3 个对称
+// 以居中项为基准的环形偏移：归一化到最近的环向距离
 function circularOffset(i: number): number {
   const n = sortedTools.value.length
   const half = Math.floor(n / 2)
@@ -149,19 +166,22 @@ function circularOffset(i: number): number {
 }
 
 function itemStyle(i: number) {
-  const p = circularOffset(i)
-  const dist = Math.abs(p)
-  // 中心最大，向两侧更明显地递减，强化视觉中心
-  const scale = Math.max(0.44, 1.3 - dist * 0.3)
-  const opacity = Math.max(0.3, 1 - dist * 0.26)
-  const tx = Math.sign(p) * cumulativeGap(dist) * spacing.value
+  const d = circularOffset(i)
+  const dist = Math.abs(d)
+  // 仅窗口内（中心 + 左右各 3）可见，其余淡出隐藏，避免环形绕回造成重叠错乱
+  const inWindow = d >= -VISIBLE_LEFT && d <= VISIBLE_RIGHT
+  const scale = Math.max(0.5, 1.18 - dist * 0.26)
+  const opacity = inWindow ? Math.max(0.32, 1 - dist * 0.24) : 0
+  const tx = Math.sign(d) * cumulativeGap(dist) * spacing.value
   return {
     transform: `translateX(calc(-50% + ${tx}px)) scale(${scale})`,
     opacity: String(opacity),
     zIndex: String(100 - dist),
+    pointerEvents: (inWindow ? 'auto' : 'none') as 'auto' | 'none',
   }
 }
 
+// 点击非中心项：滑动使其居中（即选中）
 function centerIndex(i: number) {
   if (i < 0 || i >= sortedTools.value.length) return
   currentIndex.value = i
@@ -169,11 +189,13 @@ function centerIndex(i: number) {
 
 function prevTool() {
   const n = sortedTools.value.length
+  if (n === 0) return
   currentIndex.value = (currentIndex.value - 1 + n) % n
 }
 
 function nextTool() {
   const n = sortedTools.value.length
+  if (n === 0) return
   currentIndex.value = (currentIndex.value + 1) % n
 }
 
@@ -290,6 +312,7 @@ async function finish() {
           </transition>
           <div class="tools-carousel">
           <button
+            v-show="canScroll"
             type="button"
             class="carousel-arrow"
             :style="leftArrowStyle"
@@ -325,6 +348,7 @@ async function finish() {
           </div>
 
           <button
+            v-show="canScroll"
             type="button"
             class="carousel-arrow"
             :style="rightArrowStyle"
@@ -499,22 +523,24 @@ async function finish() {
   border-radius: 16px;
 }
 
-/* 工具轮播（coverflow）：选中项居中最大、两侧递减；箭头绝对定位贴边缘图标 */
+/* 工具轮播（coverflow）：选中项居中最大、两侧逐级缩小；固定可见 7 个（左右各 3），箭头贴边 */
 .tools-carousel {
   position: relative;
   width: 100%;
   margin-top: 32px;
+  padding: 0 56px;
+  box-sizing: border-box;
 }
 
 .carousel-stage {
   position: relative;
   width: 100%;
-  height: 234px;
+  height: 220px;
 }
 
 .carousel-arrow {
   position: absolute;
-  top: 90px;
+  top: 80px;
   transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
@@ -536,9 +562,9 @@ async function finish() {
 
 .carousel-item {
   position: absolute;
-  top: 20px;
+  top: 18px;
   left: 50%;
-  width: 160px;
+  width: 150px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -548,7 +574,7 @@ async function finish() {
   background: transparent;
   color: #151717;
   cursor: pointer;
-  transform-origin: center 70px;
+  transform-origin: center 64px;
   transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1),
     opacity 0.5s ease;
 }
@@ -558,9 +584,9 @@ async function finish() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 140px;
-  height: 140px;
-  border-radius: 32px;
+  width: 128px;
+  height: 128px;
+  border-radius: 30px;
   background: #f6f7f8;
   transition: background 0.4s ease, box-shadow 0.4s ease;
 }
@@ -571,8 +597,8 @@ async function finish() {
 }
 
 .tool-icon {
-  width: 78px;
-  height: 78px;
+  width: 70px;
+  height: 70px;
   object-fit: contain;
 }
 
