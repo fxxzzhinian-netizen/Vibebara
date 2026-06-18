@@ -4,11 +4,11 @@ import { useRouter } from 'vue-router'
 import { useSkillStore } from '@/stores/skillStore'
 import { useAuthStore } from '@/stores/authStore'
 import { type NativeSkillItem } from '@/api/skillStore'
-import { publishSkillToMarket } from '@/api/market'
 import { promptOpenAfterDeploy } from '@/utils/openAfterDeploy'
 import AppTopNav from '@/components/AppTopNav.vue'
 import FolderPicker from '@/components/FolderPicker.vue'
 import AddSkillModal from '@/components/AddSkillModal.vue'
+import SkillIntroPanel from '@/components/SkillIntroPanel.vue'
 import PlatformStructurePanel from '@/components/PlatformStructurePanel.vue'
 import ResourceFilesPanel from '@/components/ResourceFilesPanel.vue'
 import HelpTip from '@/components/HelpTip.vue'
@@ -19,6 +19,7 @@ import { toast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirmDialog'
 import { useSlideIndicator } from '@/composables/useSlideIndicator'
 import { useDirectionalTransition } from '@/composables/useDirectionalTransition'
+import { publishSkillToMarket } from '@/api/market'
 
 const router = useRouter()
 const store = useSkillStore()
@@ -58,7 +59,7 @@ const showPreview = ref(false)
 const previewLoading = ref(false)
 const showDeployModal = ref(false)
 
-const activeTab = ref<'basic' | 'instructions' | 'resources' | 'metadata' | 'platform'>('basic')
+const activeTab = ref<'basic' | 'intro' | 'instructions' | 'resources' | 'metadata' | 'platform'>('basic')
 
 // 左侧标签栏黑色滑块：随选中标签纵向平滑滑动到对应位置。
 const tabSideRef = ref<HTMLElement | null>(null)
@@ -76,7 +77,7 @@ const {
   end: paneTransitionEnd,
 } = useDirectionalTransition({
   value: () => activeTab.value,
-  order: ['basic', 'instructions', 'resources', 'metadata', 'platform'],
+  order: ['basic', 'intro', 'instructions', 'resources', 'metadata', 'platform'],
   names: { forward: 'pane-down', backward: 'pane-up' },
 })
 
@@ -123,20 +124,24 @@ async function handleSave() {
 }
 
 async function handlePublishToMarket() {
-  if (!store.currentId) return
+  if (!store.currentId || publishingMarket.value) return
   if (store.dirty) {
     toast.error('请先保存后再发布到市场')
     return
   }
+  // 介绍页信息已随 Skill 保存在 config.intro，直接发布即可（无需补写弹窗）。
   publishingMarket.value = true
   try {
     const res = await publishSkillToMarket(store.currentId)
     if (res.success) {
-      toast.success(
-        authStore.user?.is_seed_user
-          ? '已发布到市场'
-          : '已提交审核，等待管理员通过',
-      )
+      const seed = authStore.user?.is_seed_user
+      let msg: string
+      if (res.replaced) {
+        msg = seed ? '已更新发布，上一版已存为历史版本' : '已提交更新，等待管理员重新审核'
+      } else {
+        msg = seed ? '已发布到市场' : '已提交审核，等待管理员通过'
+      }
+      toast.success(msg)
     } else {
       toast.error(res.error || '发布失败')
     }
@@ -405,7 +410,7 @@ onMounted(() => {
                 <path fill="currentColor" d="M512 64a448 448 0 1 0 0 896 448 448 0 0 0 0-896z m0 832a384 384 0 1 1 0-768 384 384 0 0 1 0 768z" />
                 <path fill="currentColor" d="M544 480h160a32 32 0 0 1 0 64H544v160a32 32 0 0 1-64 0V544H320a32 32 0 0 1 0-64h160V320a32 32 0 0 1 64 0v160z" />
               </svg>
-              {{ publishingMarket ? '发布中...' : '发布到市场' }}
+              {{ publishingMarket ? '发布中…' : '发布到市场' }}
             </button>
           </div>
         </div>
@@ -415,6 +420,7 @@ onMounted(() => {
           <aside ref="tabSideRef" class="tab-side">
             <span class="tab-slider" :class="{ ready: tabSliderReady }" :style="tabSliderStyle"></span>
             <button class="tab-side-item" :class="{ active: activeTab === 'basic' }" @click="activeTab = 'basic'">基本信息</button>
+            <button class="tab-side-item" :class="{ active: activeTab === 'intro' }" @click="activeTab = 'intro'">介绍</button>
             <button class="tab-side-item" :class="{ active: activeTab === 'instructions' }" @click="activeTab = 'instructions'">SKILL 指令</button>
             <button class="tab-side-item" :class="{ active: activeTab === 'resources' }" @click="activeTab = 'resources'">资源</button>
             <button class="tab-side-item" :class="{ active: activeTab === 'metadata' }" @click="activeTab = 'metadata'">元数据</button>
@@ -465,6 +471,20 @@ onMounted(() => {
                 </span>
               </div>
             </div>
+          </section>
+
+          <!-- 介绍（存于 config.intro，随 Skill 流转；可手填或 AI 辅助生成） -->
+          <section v-if="activeTab === 'intro'" key="intro" class="form-section full-width">
+            <SkillIntroPanel
+              :title="cfg.intro?.title"
+              :author="cfg.intro?.author"
+              :category="cfg.intro?.category"
+              :md="cfg.intro?.md"
+              :editing="!isTeamSkill"
+              :skill-id="store.currentId || ''"
+              :fallback-title="cfg.name"
+              @update="(f, v) => setNestedField('intro', f, v)"
+            />
           </section>
 
           <!-- SKILL Instructions（含策略与依赖） -->

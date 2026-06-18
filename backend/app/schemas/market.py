@@ -12,7 +12,7 @@ class MarketSkillItem(BaseModel):
     version: str = "1.0.0"
     tags: List[str] = []
     content_hash: str = ""
-    # 介绍页信息（发布时填写，可 AI 辅助生成）
+    # 介绍页信息（取自 Skill config.intro，发布时随快照带入）
     intro_title: str = ""
     intro_author: str = ""
     intro_category: str = ""
@@ -38,35 +38,13 @@ class MarketListResponse(BaseModel):
 
 class PublishRequest(BaseModel):
     skill_id: str
-    # 发布表单填写的介绍页信息
-    intro_title: str = ""
-    intro_author: str = ""
-    intro_category: str = ""
-    intro_md: str = ""
-    short_description: str = ""
-    description: str = ""
 
 
 class PublishResponse(BaseModel):
     success: bool
     skill: Optional[MarketSkillItem] = None
-    error: Optional[str] = None
-
-
-class IntroDraftRequest(BaseModel):
-    skill_id: str
-
-
-class IntroDraft(BaseModel):
-    title: str = ""
-    category: str = ""
-    short_description: str = ""
-    intro_md: str = ""
-
-
-class IntroDraftResponse(BaseModel):
-    success: bool
-    draft: Optional[IntroDraft] = None
+    # 本次是否为覆盖更新（再次推送已有条目）；False 表示首次发布。
+    replaced: bool = False
     error: Optional[str] = None
 
 
@@ -87,6 +65,47 @@ class MarketResourceFileResponse(BaseModel):
     content: str = ""
     size: int = 0
     is_binary: bool = False
+    error: Optional[str] = None
+
+
+# =========================================================================
+# 历史版本（前一代版本）
+# =========================================================================
+
+
+class MarketVersionItem(BaseModel):
+    id: str
+    listing_id: str = ""
+    seq: int = 0
+    display_name: str = ""
+    description: str = ""
+    short_description: str = ""
+    version: str = "1.0.0"
+    tags: List[str] = []
+    content_hash: str = ""
+    intro_title: str = ""
+    intro_author: str = ""
+    intro_category: str = ""
+    intro_md: str = ""
+    status: str = "approved"
+    published_by: Optional[str] = None
+    published_at: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class MarketVersionListResponse(BaseModel):
+    success: bool
+    versions: List[MarketVersionItem] = []
+    error: Optional[str] = None
+
+
+class MarketVersionDetailResponse(BaseModel):
+    success: bool
+    id: str = ""
+    config: Dict[str, Any] = {}
+    vibeh_content: str = ""
+    store_path: str = ""
+    listing: Optional[MarketSkillItem] = None
     error: Optional[str] = None
 
 

@@ -12,7 +12,7 @@ export interface MarketSkillItem {
   version: string
   tags: string[]
   content_hash: string
-  // 介绍页信息（发布时填写，可 AI 辅助生成）
+  // 介绍页信息（取自 Skill config.intro，发布时随快照带入）
   intro_title?: string
   intro_author?: string
   intro_category?: string
@@ -28,30 +28,6 @@ export interface MarketSkillItem {
   review_note: string | null
   created_at: string | null
   updated_at: string | null
-}
-
-/** 发布表单填写的介绍页信息（提交发布时携带）。 */
-export interface MarketIntroPayload {
-  intro_title?: string
-  intro_author?: string
-  intro_category?: string
-  intro_md?: string
-  short_description?: string
-  description?: string
-}
-
-/** AI 辅助生成的介绍页草稿。 */
-export interface MarketIntroDraft {
-  title: string
-  category: string
-  short_description: string
-  intro_md: string
-}
-
-export interface IntroDraftResponse {
-  success: boolean
-  draft?: MarketIntroDraft
-  error?: string
 }
 
 /** 市场条目完整详情（只读「SKILL 介绍」页）。 */
@@ -84,6 +60,46 @@ export interface MarketListResponse {
 export interface PublishResponse {
   success: boolean
   skill?: MarketSkillItem
+  // 本次是否为覆盖更新（再次推送已有条目）；false 表示首次发布。
+  replaced?: boolean
+  error?: string
+}
+
+/** 市场条目的「前一代版本」元数据。 */
+export interface MarketVersionItem {
+  id: string
+  listing_id: string
+  seq: number
+  display_name: string
+  description: string
+  short_description: string
+  version: string
+  tags: string[]
+  content_hash: string
+  intro_title?: string
+  intro_author?: string
+  intro_category?: string
+  intro_md?: string
+  status: MarketStatus
+  published_by: string | null
+  published_at: string | null
+  created_at: string | null
+}
+
+export interface MarketVersionListResponse {
+  success: boolean
+  versions: MarketVersionItem[]
+  error?: string
+}
+
+/** 前一代版本完整详情（与市场详情同构，便于复用渲染）。 */
+export interface MarketVersionDetail {
+  success: boolean
+  id: string
+  config: Record<string, any>
+  vibeh_content: string
+  store_path: string
+  listing: MarketSkillItem | null
   error?: string
 }
 
@@ -127,24 +143,12 @@ export async function listPending(): Promise<MarketListResponse> {
   return data
 }
 
-/** 把个人 / 团队 Skill 发布为市场快照，携带发布表单填写的介绍页信息。 */
+/** 把个人 / 团队 Skill 发布为市场快照（介绍页信息取自 Skill 自身 config.intro）。 */
 export async function publishSkillToMarket(
   skillId: string,
-  intro: MarketIntroPayload = {},
 ): Promise<PublishResponse> {
   if (DEV_SKIP_AUTH) return { success: true }
   const { data } = await apiClient.post<PublishResponse>('/market/publish', {
-    skill_id: skillId,
-    ...intro,
-  })
-  return data
-}
-
-/** 发布表单「AI 辅助生成」：根据源 Skill 内容生成介绍页草稿（不落库）。 */
-export async function generateMarketIntroDraft(
-  skillId: string,
-): Promise<IntroDraftResponse> {
-  const { data } = await apiClient.post<IntroDraftResponse>('/market/intro/generate', {
     skill_id: skillId,
   })
   return data
@@ -165,6 +169,40 @@ export async function readMarketResourceFile(
 ): Promise<MarketResourceFileResponse> {
   const { data } = await apiClient.get<MarketResourceFileResponse>(
     `/market/${marketId}/resource-file`,
+    { params: { path } },
+  )
+  return data
+}
+
+/** 列出某市场条目的全部「前一代版本」（按 seq 倒序）。 */
+export async function listMarketSkillVersions(
+  marketId: string,
+): Promise<MarketVersionListResponse> {
+  const { data } = await apiClient.get<MarketVersionListResponse>(
+    `/market/${marketId}/versions`,
+  )
+  return data
+}
+
+/** 获取某前一代版本完整详情（归档快照 config / 正文 / 资源 + 版本元数据）。 */
+export async function getMarketSkillVersionDetail(
+  marketId: string,
+  versionId: string,
+): Promise<MarketVersionDetail> {
+  const { data } = await apiClient.get<MarketVersionDetail>(
+    `/market/${marketId}/versions/${versionId}`,
+  )
+  return data
+}
+
+/** 读取某前一代版本归档快照中的单个资源文件内容。 */
+export async function readMarketVersionResourceFile(
+  marketId: string,
+  versionId: string,
+  path: string,
+): Promise<MarketResourceFileResponse> {
+  const { data } = await apiClient.get<MarketResourceFileResponse>(
+    `/market/${marketId}/versions/${versionId}/resource-file`,
     { params: { path } },
   )
   return data

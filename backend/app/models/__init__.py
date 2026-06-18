@@ -4,6 +4,7 @@ from app.models.project import Project, ProjectSkill, UserSkillDeployment
 from app.models.skill_package import PersonalSkill, TeamSkill
 from app.models.skill_change_log import SkillChangeLog
 from app.models.market_listing import MarketListing
+from app.models.market_listing_version import MarketListingVersion
 from app.models.device import Device
 from app.models.invite_code import InviteCode
 
@@ -18,6 +19,7 @@ __all__ = [
     "TeamSkill",
     "SkillChangeLog",
     "MarketListing",
+    "MarketListingVersion",
     "Device",
     "InviteCode",
 ]

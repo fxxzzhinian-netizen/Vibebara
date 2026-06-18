@@ -5,7 +5,11 @@ import {
   getMarketSkillDetail,
   acquireMarketSkill,
   readMarketResourceFile,
+  listMarketSkillVersions,
+  getMarketSkillVersionDetail,
+  readMarketVersionResourceFile,
   type MarketSkillItem,
+  type MarketVersionItem,
 } from '@/api/market'
 import { useAuthStore } from '@/stores/authStore'
 import { toast } from '@/composables/useToast'
@@ -31,8 +35,25 @@ const listing = ref<MarketSkillItem | null>(null)
 const acquiring = ref(false)
 const acquired = ref(false)
 
-type TabKey = 'intro' | 'basic' | 'instructions' | 'resources' | 'metadata' | 'platform'
+type TabKey = 'intro' | 'basic' | 'instructions' | 'resources' | 'metadata' | 'platform' | 'versions'
 const activeTab = ref<TabKey>('intro')
+
+// 历史版本（前一代版本）
+const versions = ref<MarketVersionItem[]>([])
+const versionsLoading = ref(false)
+const versionsError = ref('')
+
+// 就地查看历史版本：置 viewingVersionId 后，面板内容切换为该版本的归档快照。
+const viewingVersionId = ref<string | null>(null)
+const viewingVersionSeq = ref<number | null>(null)
+const versionDetailLoading = ref(false)
+const isViewingVersion = computed(() => !!viewingVersionId.value)
+// 缓存当前版本内容，「返回当前版本」无需重新请求。
+const currentSnapshot = ref<{
+  config: Record<string, any>
+  vibeh: string
+  listing: MarketSkillItem | null
+} | null>(null)
 
 const tabSideRef = ref<HTMLElement | null>(null)
 const { style: tabSliderStyle, ready: tabSliderReady } = useSlideIndicator({
@@ -48,7 +69,7 @@ const {
   end: paneTransitionEnd,
 } = useDirectionalTransition({
   value: () => activeTab.value,
-  order: ['intro', 'basic', 'instructions', 'resources', 'metadata', 'platform'],
+  order: ['intro', 'basic', 'instructions', 'resources', 'metadata', 'platform', 'versions'],
   names: { forward: 'pane-down', backward: 'pane-up' },
 })
 
@@ -82,8 +103,21 @@ const metaTags = computed<string[]>(() => {
 
 const resources = computed(() => cfg.value.resources || null)
 
+// 资源面板的文件读取器：查看历史版本时读归档快照，否则读当前快照。
 function marketFileLoader(path: string) {
+  if (viewingVersionId.value) {
+    return readMarketVersionResourceFile(marketId.value, viewingVersionId.value, path)
+  }
   return readMarketResourceFile(marketId.value, path)
+}
+
+function timeAgoStatusLabel(s: string): string {
+  const meta: Record<string, string> = {
+    pending: '审核中',
+    approved: '已通过',
+    rejected: '已拒绝',
+  }
+  return meta[s] || s
 }
 
 async function load() {
@@ -91,12 +125,19 @@ async function load() {
   loading.value = true
   error.value = ''
   acquired.value = false
+  viewingVersionId.value = null
+  viewingVersionSeq.value = null
   try {
     const res = await getMarketSkillDetail(marketId.value)
     if (res.success) {
       config.value = res.config || {}
       vibehContent.value = res.vibeh_content || ''
       listing.value = res.listing
+      currentSnapshot.value = {
+        config: res.config || {},
+        vibeh: res.vibeh_content || '',
+        listing: res.listing,
+      }
     } else {
       error.value = res.error || '加载失败'
     }
@@ -104,6 +145,56 @@ async function load() {
     error.value = e?.response?.data?.detail || e?.message || '请求异常'
   } finally {
     loading.value = false
+  }
+  loadVersions()
+}
+
+async function loadVersions() {
+  if (!marketId.value) return
+  versionsLoading.value = true
+  versionsError.value = ''
+  try {
+    const res = await listMarketSkillVersions(marketId.value)
+    if (res.success) versions.value = res.versions
+    else versionsError.value = res.error || '加载历史版本失败'
+  } catch (e: any) {
+    versionsError.value = e?.response?.data?.detail || e?.message || '请求异常'
+  } finally {
+    versionsLoading.value = false
+  }
+}
+
+async function viewVersion(v: MarketVersionItem) {
+  if (versionDetailLoading.value || viewingVersionId.value === v.id) return
+  versionDetailLoading.value = true
+  try {
+    const res = await getMarketSkillVersionDetail(marketId.value, v.id)
+    if (res.success) {
+      config.value = res.config || {}
+      vibehContent.value = res.vibeh_content || ''
+      listing.value = res.listing
+      viewingVersionId.value = v.id
+      viewingVersionSeq.value = v.seq
+      activeTab.value = 'intro'
+    } else {
+      toast.error(res.error || '加载历史版本失败')
+    }
+  } catch (e: any) {
+    toast.error(e?.response?.data?.detail || e?.message || '加载历史版本失败')
+  } finally {
+    versionDetailLoading.value = false
+  }
+}
+
+function backToCurrent() {
+  if (currentSnapshot.value) {
+    config.value = currentSnapshot.value.config
+    vibehContent.value = currentSnapshot.value.vibeh
+    listing.value = currentSnapshot.value.listing
+    viewingVersionId.value = null
+    viewingVersionSeq.value = null
+  } else {
+    load()
   }
 }
 
@@ -179,12 +270,20 @@ watch(marketId, () => {
               </button>
               <h2 class="editor-title">{{ displayName }}</h2>
               <span v-if="listing?.version" class="version-chip">v{{ listing.version }}</span>
+              <span v-if="isViewingVersion" class="hist-chip">前一代 · 第 {{ viewingVersionSeq }} 版</span>
               <span v-if="listing" :class="['src-badge', listing.source_scope]">
                 {{ listing.source_scope === 'team' ? '团队' : '个人' }}
               </span>
             </div>
             <div class="toolbar-right">
-              <button v-if="isMine" class="btn tool-btn" disabled>我发布的</button>
+              <button
+                v-if="isViewingVersion"
+                class="btn tool-btn back-current"
+                @click="backToCurrent"
+              >
+                返回当前版本
+              </button>
+              <button v-else-if="isMine" class="btn tool-btn" disabled>我发布的</button>
               <button
                 v-else
                 class="btn tool-btn acquire"
@@ -194,6 +293,14 @@ watch(marketId, () => {
                 {{ acquired ? '已获取' : acquiring ? '获取中…' : '获取到个人仓库' }}
               </button>
             </div>
+          </div>
+
+          <!-- 查看历史版本提示横幅 -->
+          <div v-if="isViewingVersion" class="hist-banner">
+            <span class="hist-banner-text">
+              正在查看前一代版本（第 {{ viewingVersionSeq }} 版），内容为只读历史快照。
+            </span>
+            <button class="hist-banner-btn" @click="backToCurrent">返回当前版本</button>
           </div>
 
           <!-- Body -->
@@ -206,6 +313,9 @@ watch(marketId, () => {
               <button class="tab-side-item" :class="{ active: activeTab === 'resources' }" @click="activeTab = 'resources'">资源</button>
               <button class="tab-side-item" :class="{ active: activeTab === 'metadata' }" @click="activeTab = 'metadata'">元数据</button>
               <button class="tab-side-item" :class="{ active: activeTab === 'platform' }" @click="activeTab = 'platform'">平台结构</button>
+              <button class="tab-side-item" :class="{ active: activeTab === 'versions' }" @click="activeTab = 'versions'">
+                历史版本<span v-if="versions.length" class="tab-badge">{{ versions.length }}</span>
+              </button>
             </aside>
 
             <div class="tab-content">
@@ -316,6 +426,40 @@ watch(marketId, () => {
                   <div class="platform-embed platform-readonly">
                     <PlatformStructurePanel :config-source="cfg" readonly />
                   </div>
+                </section>
+
+                <!-- 历史版本（前一代版本） -->
+                <section v-else-if="activeTab === 'versions'" key="versions" class="form-section full-width">
+                  <h3 class="card-title">历史版本</h3>
+                  <p class="hist-hint">每次重新发布会把上一版内容归档为前一代版本，可点击查看其归档快照。</p>
+
+                  <div v-if="versionsLoading" class="hist-state"><span class="spinner" /> 加载中…</div>
+                  <div v-else-if="versionsError" class="hist-state hist-err">{{ versionsError }}</div>
+                  <div v-else-if="!versions.length" class="hist-empty">暂无历史版本，当前为初版。</div>
+                  <ul v-else class="hist-list">
+                    <li
+                      v-for="v in versions"
+                      :key="v.id"
+                      class="hist-row"
+                      :class="{ active: viewingVersionId === v.id }"
+                    >
+                      <div class="hist-row-main">
+                        <span class="hist-seq">第 {{ v.seq }} 版</span>
+                        <span class="hist-ver">v{{ v.version }}</span>
+                        <span :class="['hist-status', v.status]">{{ timeAgoStatusLabel(v.status) }}</span>
+                      </div>
+                      <div class="hist-row-meta">
+                        <span class="hist-time">归档于 {{ timeAgo(v.created_at) }}</span>
+                      </div>
+                      <button
+                        class="hist-view-btn"
+                        :disabled="versionDetailLoading || viewingVersionId === v.id"
+                        @click="viewVersion(v)"
+                      >
+                        {{ viewingVersionId === v.id ? '查看中' : '查看' }}
+                      </button>
+                    </li>
+                  </ul>
                 </section>
               </transition-group>
             </div>
@@ -438,6 +582,43 @@ watch(marketId, () => {
 .src-badge.personal { color: #15803d; background: #f0fdf4; }
 .src-badge.team { color: #4f46e5; background: #eef2ff; }
 
+.hist-chip {
+  font-size: 12px;
+  font-weight: 600;
+  color: #b45309;
+  background: #fffbeb;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+/* 查看历史版本横幅 */
+.hist-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.75rem 0.5rem 0;
+  padding: 0.6rem 1rem;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  border-radius: 10px;
+}
+.hist-banner-text { font-size: 0.85rem; color: #92400e; }
+.hist-banner-btn {
+  flex-shrink: 0;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #b45309;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.hist-banner-btn:hover { background: #fef3c7; }
+
 .btn {
   padding: 0.42rem 0.85rem;
   border: 1px solid #e5e7eb;
@@ -465,6 +646,8 @@ watch(marketId, () => {
 }
 .tool-btn.acquire { background: #151717; border-color: #151717; color: #ffffff; }
 .tool-btn.acquire:hover:not(:disabled) { background: #2d2f2f; border-color: #2d2f2f; }
+.tool-btn.back-current { background: #ffffff; border-color: #e5e7eb; color: #374151; }
+.tool-btn.back-current:hover:not(:disabled) { border-color: #d1d5db; color: #151717; }
 
 /* Body */
 .editor-body {
@@ -522,6 +705,20 @@ watch(marketId, () => {
 }
 .tab-side-item:hover:not(.active) { background: #f6f7f8; color: #151717; }
 .tab-side-item.active { color: #ffffff; font-weight: 600; }
+.tab-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  min-width: 1.1rem;
+  padding: 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.35rem;
+  text-align: center;
+  color: #6b7280;
+  background: #eef0f2;
+  border-radius: 999px;
+}
+.tab-side-item.active .tab-badge { color: #151717; background: #ffffff; }
 
 .tab-content {
   flex: 1;
@@ -653,6 +850,97 @@ watch(marketId, () => {
 
 /* 平台结构只读 */
 .platform-readonly { pointer-events: none; opacity: 0.92; }
+
+/* —— 历史版本 —— */
+.hist-hint {
+  margin: -0.6rem 0 1.2rem;
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+.hist-state {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem 0;
+  font-size: 0.88rem;
+  color: #6b7280;
+}
+.hist-err { color: #dc2626; }
+.hist-empty {
+  padding: 1.1rem 1.2rem;
+  font-size: 0.88rem;
+  color: #9ca3af;
+  background: #ffffff;
+  border: 1px dashed #e5e7eb;
+  border-radius: 12px;
+}
+.hist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.hist-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid #ebedf0;
+  border-radius: 12px;
+  background: #ffffff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.hist-row:hover { border-color: #d1d5db; }
+.hist-row.active { border-color: #f59e0b; background: #fffbeb; }
+.hist-row-main {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.hist-seq { font-size: 0.92rem; font-weight: 700; color: #151717; }
+.hist-ver {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6b7280;
+  background: #f6f7f8;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+}
+.hist-status {
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+}
+.hist-status.pending { color: #b45309; background: #fffbeb; }
+.hist-status.approved { color: #15803d; background: #f0fdf4; }
+.hist-status.rejected { color: #dc2626; background: #fef2f2; }
+.hist-row-meta { flex: 1; min-width: 0; }
+.hist-time {
+  font-size: 0.78rem;
+  color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hist-view-btn {
+  flex-shrink: 0;
+  padding: 0.4rem 0.95rem;
+  border: 1px solid #151717;
+  border-radius: 8px;
+  background: #151717;
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.hist-view-btn:hover:not(:disabled) { background: #2d2f2f; border-color: #2d2f2f; }
+.hist-view-btn:disabled { opacity: 0.55; cursor: default; }
 
 .state-box { flex: 1; display: flex; align-items: center; justify-content: center; }
 .spinner {

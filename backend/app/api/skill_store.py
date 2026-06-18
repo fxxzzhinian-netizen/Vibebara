@@ -415,6 +415,45 @@ async def generate_skill_tags(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@api_router.post("/{skill_id}/intro/generate")
+async def generate_skill_intro(
+    skill_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """调用 LLM 根据该 Skill 内容生成「介绍页」草稿（不落库），供编辑页 AI 辅助填写。
+
+    返回 {success, draft:{title, category, short_description, intro_md}}；
+    LLM 未配置/失败/无内容时返回 {success:False, error}，由前端回退手填。
+    """
+    from app.services.llm_service import generate_skill_intro as _gen_intro
+
+    try:
+        await _assert_skill_accessible(skill_id, user_id)
+        detail = await NativeSkillStore.get_by_id(skill_id, user_id=user_id)
+        if detail is None:
+            return {"success": False, "error": f"Skill '{skill_id}' not found"}
+        config = detail.get("config") or {}
+        db = detail.get("db") or {}
+        tags = db.get("tags") or config.get("metadata", {}).get("tags", []) or []
+        draft = await _gen_intro(
+            name=config.get("name") or skill_id,
+            description=config.get("description", "") or "",
+            body_preview=detail.get("vibeh_content", "") or "",
+            tags=tags,
+        )
+        if not draft:
+            return {
+                "success": False,
+                "error": "AI 未返回内容（可能未配置模型或调用失败），可手动填写。",
+            }
+        return {"success": True, "draft": draft}
+    except (FileNotFoundError, PermissionError) as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.exception(f"[store/intro] {skill_id} 介绍生成失败")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @api_router.post("/{skill_id}/build")
 async def build_skill(
     skill_id: str, data: NativeSkillBuildRequest,

@@ -1,9 +1,9 @@
 """SKILL 市场服务 — 发布快照 / 审核 / 获取 / 介绍页。
 
 发布即把源 Skill（个人或团队）当时内容逐对象复制到 `skills/market/{id}/`，并在
-`market_listings` 表记录元数据快照 + 溯源 + 「介绍页」信息（发布时手动填写，可由 AI
-辅助生成），**不与源同步**。审核通过后全体可见，用户「获取」时再把市场快照复制一份到
-自己的个人仓库。
+`market_listings` 表记录元数据快照 + 溯源 + 「介绍页」信息（取自 Skill 自身 config.intro，
+在编辑页填写，可由 AI 辅助生成），**不与源同步**。审核通过后全体可见，用户「获取」时再把
+市场快照复制一份到自己的个人仓库。
 
 复用 NativeSkillStore 的对象存储助手（前缀解析 / 读写 config / copy_prefix）。
 """
@@ -13,22 +13,50 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, func, select
 
 from app.core.database import async_session_factory
 from app.models.market_listing import MarketListing
+from app.models.market_listing_version import MarketListingVersion
 from app.models.skill_package import PersonalSkill, TeamSkill
 from app.models.user import User
-from app.services import auth_service, llm_service, team_service
+from app.services import auth_service, team_service
 from app.services.native_skill_store import NativeSkillStore
 
 logger = logging.getLogger(__name__)
 
 MARKET_ROOT = "skills/market"
+MARKET_VERSIONS_ROOT = "skills/market_versions"
 
 
 def _market_prefix(market_id: str) -> str:
     return f"{MARKET_ROOT}/{market_id}"
+
+
+def _market_version_prefix(listing_id: str, version_id: str) -> str:
+    return f"{MARKET_VERSIONS_ROOT}/{listing_id}/{version_id}"
+
+
+def _version_row_to_dict(row: MarketListingVersion) -> Dict[str, Any]:
+    return {
+        "id": row.id,
+        "listing_id": row.listing_id,
+        "seq": row.seq,
+        "display_name": row.display_name,
+        "description": row.description,
+        "short_description": row.short_description,
+        "version": row.version,
+        "tags": list(row.tags or []),
+        "content_hash": row.content_hash,
+        "intro_title": row.intro_title or "",
+        "intro_author": row.intro_author or "",
+        "intro_category": row.intro_category or "",
+        "intro_md": row.intro_md or "",
+        "status": row.status,
+        "published_by": row.published_by,
+        "published_at": row.published_at.isoformat() if row.published_at else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
 
 
 def _row_to_dict(row: MarketListing, publisher_name: str = "") -> Dict[str, Any]:
@@ -91,7 +119,7 @@ async def _resolve_source_skill(
     """解析源 Skill 行 + 作用域 + 对象存储前缀，并校验当前用户发布权限。
 
     返回 (row, scope, prefix, source_team_id, user)。无权限抛 PermissionError，
-    找不到抛 FileNotFoundError。供 publish / generate_intro_draft 共用。
+    找不到抛 FileNotFoundError。
     """
     prefix, scope = NativeSkillStore._resolve_prefix(skill_id)
     if prefix is None:
@@ -120,123 +148,165 @@ async def _resolve_source_skill(
 
 
 # =========================================================================
-# 介绍页 AI 辅助草稿（不落库）
-# =========================================================================
-
-
-async def generate_intro_draft(skill_id: str, user_id: str) -> Dict[str, str]:
-    """读取源 Skill 内容，调用 LLM 生成「介绍页」草稿，返回给前端表单回填（不落库）。
-
-    best-effort：LLM 未配置/失败时返回 {}，由前端回退到手填。
-    """
-    row, _scope, prefix, _team, _user = await _resolve_source_skill(skill_id, user_id)
-    config = NativeSkillStore._read_store_config(prefix)
-    body_preview = NativeSkillStore._read_store_vibeh(prefix) or ""
-    name = config.get("name") or row.display_name or skill_id
-    description = config.get("description") or row.description or ""
-    tags = list(row.tags or []) or list(config.get("metadata", {}).get("tags", []) or [])
-    return await llm_service.generate_skill_intro(
-        name=name,
-        description=description,
-        body_preview=body_preview,
-        tags=tags,
-    )
-
-
-# =========================================================================
 # 发布
 # =========================================================================
 
 
-async def publish(
-    skill_id: str, user_id: str, intro: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+async def publish(skill_id: str, user_id: str) -> Dict[str, Any]:
     """把个人 / 团队 Skill 发布为市场快照。种子用户免审核（直接 approved）。
 
-    `intro` 为发布表单提交的「介绍页」信息：
-    intro_title / intro_author / intro_category / intro_md / short_description / description。
-    其中 short_description / description 会同时合并进市场快照的 config，使「获取」后携带。
+    同一个 skill（按 `source_skill_id` + `publisher_id` 唯一）在市场只对应一个条目：
+      · 首次发布 → 新建市场条目；
+      · 再次发布 → 用新内容**覆盖**当前快照，被覆盖的上一版归档为「前一代版本」记录在该
+        条目下（`market_listing_versions`），`market_id` 保持稳定。非种子用户覆盖已通过
+        条目时条目转回 `pending` 需重新审核。
+
+    「介绍页」信息取自 Skill 自身 config 的 `intro`（在编辑页填写，可 AI 辅助），
+    随快照 copy 一并带入市场条目。返回结果附带 `replaced` 标记本次是否为覆盖更新。
     """
-    intro = intro or {}
     row, scope, prefix, source_team_id, user = await _resolve_source_skill(
         skill_id, user_id
     )
 
     store = NativeSkillStore._store()
-
-    # 去重：覆盖同源同发布者尚在审核中的旧快照（已通过的快照保留为独立条目）。
-    async with async_session_factory() as session:
-        stale = (
-            await session.execute(
-                select(MarketListing).where(
-                    MarketListing.source_skill_id == skill_id,
-                    MarketListing.publisher_id == user_id,
-                    MarketListing.status == "pending",
-                )
-            )
-        ).scalars().all()
-        for ms in stale:
-            if ms.store_path:
-                store.delete_prefix(ms.store_path)
-            await session.delete(ms)
-        await session.commit()
-
-    market_id = str(uuid.uuid4())
-    market_prefix = _market_prefix(market_id)
-    store.copy_prefix(prefix, market_prefix)
-
     publisher_name = user.display_name or user.username
 
-    # 发布表单字段（带回退默认值）
-    intro_title = (intro.get("intro_title") or "").strip() or (row.display_name or skill_id)
-    intro_author = (intro.get("intro_author") or "").strip() or publisher_name
-    intro_category = (intro.get("intro_category") or "").strip()
-    intro_md = (intro.get("intro_md") or "").strip()
-    short_description = (
-        intro.get("short_description") or row.short_description or ""
-    ).strip()
-    description = (intro.get("description") or row.description or "").strip()
-
-    # 把用户填写的描述合并进市场快照 config（best-effort，失败不阻断发布）
+    # 「介绍页」取自源 Skill config 的 intro（best-effort 读取，失败则视为空）
     try:
-        config = NativeSkillStore._read_store_config(market_prefix)
-        if description:
-            config["description"] = description
-        if short_description:
-            config.setdefault("ui", {})["short_description"] = short_description
-        NativeSkillStore._write_store_config(market_prefix, config)
+        src_config = NativeSkillStore._read_store_config(prefix)
+        intro = src_config.get("intro") or {}
     except Exception:
-        logger.exception("[market/publish] 合并描述进快照 config 失败（已忽略）")
+        intro = {}
+    intro_title = (intro.get("title") or "").strip() or (row.display_name or skill_id)
+    intro_author = (intro.get("author") or "").strip() or publisher_name
+    intro_category = (intro.get("category") or "").strip()
+    intro_md = (intro.get("md") or "").strip()
 
     seed = auth_service.is_seed_user(user)
     now = datetime.now(timezone.utc)
 
-    ms = MarketListing(
-        id=market_id,
-        store_path=market_prefix,
-        display_name=row.display_name or skill_id,
-        description=description,
-        short_description=short_description,
-        version=row.version or "1.0.0",
-        tags=list(row.tags or []),
-        content_hash=store.compute_prefix_hash(market_prefix),
-        intro_title=intro_title,
-        intro_author=intro_author,
-        intro_category=intro_category,
-        intro_md=intro_md,
-        source_scope=scope,
-        source_skill_id=skill_id,
-        source_team_id=source_team_id,
-        publisher_id=user_id,
-        status="approved" if seed else "pending",
-        reviewed_by=user_id if seed else None,
-        reviewed_at=now if seed else None,
-    )
+    # 查现有条目（同源同发布者）。存量可能有多条重复，取最近一条作为覆盖目标。
     async with async_session_factory() as session:
-        session.add(ms)
+        existing = (
+            await session.execute(
+                select(MarketListing)
+                .where(
+                    MarketListing.source_skill_id == skill_id,
+                    MarketListing.publisher_id == user_id,
+                )
+                .order_by(MarketListing.created_at.desc())
+            )
+        ).scalars().first()
+
+        if existing is None:
+            # —— 首次发布：新建市场条目 ——
+            market_id = str(uuid.uuid4())
+            market_prefix = _market_prefix(market_id)
+            store.copy_prefix(prefix, market_prefix)
+            ms = MarketListing(
+                id=market_id,
+                store_path=market_prefix,
+                display_name=row.display_name or skill_id,
+                description=row.description or "",
+                short_description=row.short_description or "",
+                version=row.version or "1.0.0",
+                tags=list(row.tags or []),
+                content_hash=store.compute_prefix_hash(market_prefix),
+                intro_title=intro_title,
+                intro_author=intro_author,
+                intro_category=intro_category,
+                intro_md=intro_md,
+                source_scope=scope,
+                source_skill_id=skill_id,
+                source_team_id=source_team_id,
+                publisher_id=user_id,
+                status="approved" if seed else "pending",
+                reviewed_by=user_id if seed else None,
+                reviewed_at=now if seed else None,
+            )
+            session.add(ms)
+            await session.commit()
+            await session.refresh(ms)
+            result = _row_to_dict(ms, publisher_name)
+            result["replaced"] = False
+            return result
+
+        # —— 再次发布：归档上一版 + 覆盖当前快照 ——
+        listing = existing
+        old_prefix = listing.store_path or _market_prefix(listing.id)
+
+        # 1) 归档上一版内容为「前一代版本」。
+        version_id = str(uuid.uuid4())
+        version_prefix = _market_version_prefix(listing.id, version_id)
+        try:
+            store.copy_prefix(old_prefix, version_prefix)
+            archived_hash = store.compute_prefix_hash(version_prefix)
+        except Exception:
+            logger.exception(
+                f"[market/publish] 归档上一版失败 listing={listing.id}"
+            )
+            version_prefix = ""
+            archived_hash = listing.content_hash or ""
+        next_seq = int(
+            await session.scalar(
+                select(func.max(MarketListingVersion.seq)).where(
+                    MarketListingVersion.listing_id == listing.id
+                )
+            )
+            or 0
+        ) + 1
+        session.add(
+            MarketListingVersion(
+                id=version_id,
+                listing_id=listing.id,
+                seq=next_seq,
+                store_path=version_prefix,
+                display_name=listing.display_name or "",
+                description=listing.description or "",
+                short_description=listing.short_description or "",
+                version=listing.version or "1.0.0",
+                tags=list(listing.tags or []),
+                content_hash=archived_hash,
+                intro_title=listing.intro_title or "",
+                intro_author=listing.intro_author or "",
+                intro_category=listing.intro_category or "",
+                intro_md=listing.intro_md or "",
+                status=listing.status or "approved",
+                published_by=listing.publisher_id,
+                published_at=listing.created_at,
+            )
+        )
+
+        # 2) 用新内容覆盖当前快照。
+        if old_prefix:
+            store.delete_prefix(old_prefix)
+        market_prefix = _market_prefix(listing.id)
+        store.copy_prefix(prefix, market_prefix)
+
+        # 3) 更新条目元数据 + 审核态。
+        listing.store_path = market_prefix
+        listing.display_name = row.display_name or skill_id
+        listing.description = row.description or ""
+        listing.short_description = row.short_description or ""
+        listing.version = row.version or "1.0.0"
+        listing.tags = list(row.tags or [])
+        listing.content_hash = store.compute_prefix_hash(market_prefix)
+        listing.intro_title = intro_title
+        listing.intro_author = intro_author
+        listing.intro_category = intro_category
+        listing.intro_md = intro_md
+        listing.source_scope = scope
+        listing.source_team_id = source_team_id
+        listing.status = "approved" if seed else "pending"
+        listing.reviewed_by = user_id if seed else None
+        listing.reviewed_at = now if seed else None
+        listing.review_note = None
+
         await session.commit()
-        await session.refresh(ms)
-        return _row_to_dict(ms, publisher_name)
+        await session.refresh(listing)
+        result = _row_to_dict(listing, publisher_name)
+        result["replaced"] = True
+        return result
 
 
 # =========================================================================
@@ -360,6 +430,117 @@ async def read_resource_file(market_id: str, rel_path: str) -> Dict[str, Any]:
 
 
 # =========================================================================
+# 历史版本（前一代版本：列表 / 详情 / 资源文件）
+# =========================================================================
+
+
+async def list_versions(market_id: str) -> List[Dict[str, Any]]:
+    """列出某市场条目的全部「前一代版本」（按 seq 倒序）。"""
+    async with async_session_factory() as session:
+        ms = await session.get(MarketListing, market_id)
+        if ms is None:
+            raise FileNotFoundError("市场 Skill 不存在")
+        rows = (
+            await session.execute(
+                select(MarketListingVersion)
+                .where(MarketListingVersion.listing_id == market_id)
+                .order_by(MarketListingVersion.seq.desc())
+            )
+        ).scalars().all()
+    return [_version_row_to_dict(r) for r in rows]
+
+
+async def get_version_detail(market_id: str, version_id: str) -> Dict[str, Any]:
+    """读取某前一代版本的完整详情：归档快照 config / 正文 / 资源 + 版本元数据。
+
+    合并父条目的发布者 / 来源信息，便于前端复用市场详情页渲染。
+    """
+    async with async_session_factory() as session:
+        ver = await session.get(MarketListingVersion, version_id)
+        if ver is None or ver.listing_id != market_id:
+            raise FileNotFoundError("历史版本不存在")
+        ms = await session.get(MarketListing, market_id)
+
+    prefix = ver.store_path or _market_version_prefix(market_id, version_id)
+    try:
+        config = NativeSkillStore._read_store_config(prefix)
+    except Exception:
+        config = {}
+    try:
+        vibeh_content = NativeSkillStore._read_store_vibeh(prefix) or ""
+    except Exception:
+        vibeh_content = ""
+    try:
+        resources = NativeSkillStore._scan_store_resources(prefix)
+        if any(resources.values()):
+            config["resources"] = resources
+    except Exception:
+        pass
+
+    names = await _publisher_names([ms]) if ms is not None else {}
+    publisher_name = names.get(ms.publisher_id, "") if ms is not None else ""
+
+    # 版本快照元数据 + 父条目溯源信息 → 拼成 listing 风格对象供前端复用渲染。
+    item = _version_row_to_dict(ver)
+    item.update(
+        {
+            "source_scope": ms.source_scope if ms is not None else "personal",
+            "source_skill_id": ms.source_skill_id if ms is not None else "",
+            "source_team_id": ms.source_team_id if ms is not None else None,
+            "publisher_id": ms.publisher_id if ms is not None else "",
+            "publisher_name": publisher_name,
+            "reviewed_by": None,
+            "reviewed_at": None,
+            "review_note": None,
+            "updated_at": item.get("created_at"),
+        }
+    )
+    return {
+        "id": ver.id,
+        "config": config,
+        "vibeh_content": vibeh_content,
+        "store_path": prefix,
+        "listing": item,
+    }
+
+
+async def read_version_resource_file(
+    market_id: str, version_id: str, rel_path: str
+) -> Dict[str, Any]:
+    """读取某前一代版本归档快照中的单个资源文件内容。"""
+    import base64
+
+    async with async_session_factory() as session:
+        ver = await session.get(MarketListingVersion, version_id)
+    if ver is None or ver.listing_id != market_id:
+        raise FileNotFoundError("历史版本不存在")
+
+    prefix = ver.store_path or _market_version_prefix(market_id, version_id)
+    safe = NativeSkillStore._safe_resource_rel(rel_path)
+    data = NativeSkillStore._store().get_bytes(prefix + "/" + safe)
+    if data is None:
+        raise FileNotFoundError(f"资源文件不存在: {safe}")
+
+    try:
+        text = data.decode("utf-8")
+        return {
+            "path": safe,
+            "encoding": "utf8",
+            "content": text,
+            "size": len(data),
+            "is_binary": False,
+        }
+    except UnicodeDecodeError:
+        return {
+            "path": safe,
+            "encoding": "base64",
+            "content": base64.b64encode(data).decode("ascii"),
+            "size": len(data),
+            "is_binary": True,
+        }
+
+
+# =========================================================================
 # 审核
 # =========================================================================
 
@@ -426,7 +607,11 @@ async def acquire(market_id: str, user_id: str) -> Dict[str, Any]:
 
 
 async def remove(market_id: str, user_id: str) -> Dict[str, Any]:
-    """发布者本人或审核员（种子 / 平台管理员）可删除市场条目。"""
+    """发布者本人或审核员（种子 / 平台管理员）可删除市场条目。
+
+    一并清理该条目的全部「前一代版本」记录与归档快照前缀。
+    """
+    store = NativeSkillStore._store()
     async with async_session_factory() as session:
         ms = await session.get(MarketListing, market_id)
         if ms is None:
@@ -435,7 +620,17 @@ async def remove(market_id: str, user_id: str) -> Dict[str, Any]:
         if ms.publisher_id != user_id and not auth_service.is_reviewer(user):
             raise PermissionError("无权删除该市场条目")
         if ms.store_path:
-            NativeSkillStore._store().delete_prefix(ms.store_path)
+            store.delete_prefix(ms.store_path)
+        # 清理历史版本行（归档前缀统一在 skills/market_versions/{listing_id} 下整体删除）。
+        await session.execute(
+            sa_delete(MarketListingVersion).where(
+                MarketListingVersion.listing_id == market_id
+            )
+        )
         await session.delete(ms)
         await session.commit()
+    try:
+        store.delete_prefix(f"{MARKET_VERSIONS_ROOT}/{market_id}")
+    except Exception:
+        logger.warning(f"[market/remove] 清理归档前缀失败: {market_id}")
     return {"success": True}

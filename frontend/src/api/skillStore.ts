@@ -314,6 +314,30 @@ export async function testLLMConnection(): Promise<LLMTestResponse> {
   return data
 }
 
+/** AI 辅助生成的「介绍页」草稿。 */
+export interface SkillIntroDraft {
+  title: string
+  category: string
+  short_description: string
+  intro_md: string
+}
+
+export interface SkillIntroDraftResponse {
+  success: boolean
+  draft?: SkillIntroDraft
+  error?: string
+}
+
+/** 「介绍」面板「AI 辅助生成」：根据 Skill 内容生成介绍草稿（不落库）。 */
+export async function generateSkillIntroDraft(
+  skillId: string,
+): Promise<SkillIntroDraftResponse> {
+  const { data } = await apiClient.post<SkillIntroDraftResponse>(
+    `/skill-forge/store/${skillId}/intro/generate`,
+  )
+  return data
+}
+
 export async function deleteNativeSkill(id: string): Promise<{ success: boolean }> {
   const { data } = await apiClient.delete<{ success: boolean }>(
     `/skill-forge/store/${id}`,

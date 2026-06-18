@@ -34,7 +34,8 @@ import PlatformStructurePanel from '@/components/PlatformStructurePanel.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import MarkdownView from '@/components/MarkdownView.vue'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
-import PublishToMarketModal from '@/components/PublishToMarketModal.vue'
+import SkillIntroPanel from '@/components/SkillIntroPanel.vue'
+import { publishSkillToMarket } from '@/api/market'
 
 const route = useRoute()
 const router = useRouter()
@@ -42,14 +43,14 @@ const teamStore = useTeamStore()
 const skillStore = useSkillStore()
 const authStore = useAuthStore()
 
-const showPublishModal = ref(false)
+const publishingMarket = ref(false)
 
 const skillId = computed(() => route.params.id as string)
 const detail = ref<NativeSkillDetail | null>(null)
 const loading = ref(false)
 const error = ref('')
 
-type TabKey = 'basic' | 'instructions' | 'resources' | 'metadata' | 'versions' | 'platform'
+type TabKey = 'basic' | 'intro' | 'instructions' | 'resources' | 'metadata' | 'versions' | 'platform'
 const activeTab = ref<TabKey>('basic')
 
 // 左侧标签栏黑色滑块：随选中标签纵向平滑滑动到对应位置。
@@ -68,7 +69,7 @@ const {
   end: paneTransitionEnd,
 } = useDirectionalTransition({
   value: () => activeTab.value,
-  order: ['basic', 'instructions', 'resources', 'metadata', 'versions', 'platform'],
+  order: ['basic', 'intro', 'instructions', 'resources', 'metadata', 'versions', 'platform'],
   names: { forward: 'pane-down', backward: 'pane-up' },
 })
 
@@ -102,10 +103,24 @@ function cancelEdit() {
   draft.value = null
 }
 
-function handlePublishToMarket() {
-  if (!skillId.value) return
-  // 改为先弹「介绍页信息」表单（支持 AI 辅助生成），提交时再发布。
-  showPublishModal.value = true
+async function handlePublishToMarket() {
+  if (!skillId.value || publishingMarket.value) return
+  // 介绍页信息已随 Skill 保存在 config.intro，直接发布即可（无需补写弹窗）。
+  publishingMarket.value = true
+  try {
+    const res = await publishSkillToMarket(skillId.value)
+    if (res.success) {
+      toast.success(
+        authStore.user?.is_seed_user ? '已发布到市场' : '已提交审核，等待管理员通过',
+      )
+    } else {
+      toast.error(res.error || '发布失败')
+    }
+  } catch (e: any) {
+    toast.error(e?.response?.data?.detail || e?.message || '发布失败')
+  } finally {
+    publishingMarket.value = false
+  }
 }
 
 function setDraft(key: string, val: unknown) {
@@ -607,9 +622,10 @@ function timeAgo(ts: string | null | undefined): string {
               <button
                 v-if="isTeamSkill && isTeamMember && cfg && !editing"
                 class="btn tool-btn publish"
+                :disabled="publishingMarket"
                 title="发布到 SKILL 市场"
                 @click="handlePublishToMarket"
-              >发布到市场</button>
+              >{{ publishingMarket ? '发布中…' : '发布到市场' }}</button>
               <template v-if="canEdit && cfg">
                 <template v-if="!editing">
                   <button class="btn tool-btn delete" @click="askDeleteSkill">删除</button>
@@ -630,6 +646,7 @@ function timeAgo(ts: string | null | undefined): string {
             <aside ref="tabSideRef" class="tab-side">
               <span class="tab-slider" :class="{ ready: tabSliderReady }" :style="tabSliderStyle"></span>
               <button class="tab-side-item" :class="{ active: activeTab === 'basic' }" @click="activeTab = 'basic'">基本信息</button>
+              <button class="tab-side-item" :class="{ active: activeTab === 'intro' }" @click="activeTab = 'intro'">介绍</button>
               <button class="tab-side-item" :class="{ active: activeTab === 'instructions' }" @click="activeTab = 'instructions'">SKILL 指令</button>
               <button class="tab-side-item" :class="{ active: activeTab === 'resources' }" @click="activeTab = 'resources'">资源</button>
               <button class="tab-side-item" :class="{ active: activeTab === 'metadata' }" @click="activeTab = 'metadata'">元数据</button>
@@ -687,6 +704,20 @@ function timeAgo(ts: string | null | undefined): string {
                     </span>
                   </div>
                 </div>
+              </section>
+
+              <!-- 介绍（存于 config.intro，随 Skill 流转；团队成员编辑态可改/可 AI 辅助） -->
+              <section v-if="activeTab === 'intro'" key="intro" class="form-section full-width">
+                <SkillIntroPanel
+                  :title="view.intro?.title"
+                  :author="view.intro?.author"
+                  :category="view.intro?.category"
+                  :md="view.intro?.md"
+                  :editing="editing"
+                  :skill-id="skillId"
+                  :fallback-title="cfg.name || skillId"
+                  @update="(f, v) => setDraftNested('intro', f, v)"
+                />
               </section>
 
               <!-- SKILL Instructions（含策略与依赖） -->
@@ -1173,15 +1204,6 @@ function timeAgo(ts: string | null | undefined): string {
         </button>
       </template>
     </BaseModal>
-
-    <!-- 发布到市场：先填写介绍页信息（支持 AI 辅助生成），提交后再发布 -->
-    <PublishToMarketModal
-      v-model="showPublishModal"
-      :skill-id="skillId"
-      :display-name="cfg?.name || skillId"
-      :publisher-name="authStore.user?.display_name || authStore.user?.username || ''"
-      :default-short-description="cfg?.ui?.short_description || db?.short_description || ''"
-    />
   </div>
 </template>
 
