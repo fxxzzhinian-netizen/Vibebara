@@ -602,6 +602,41 @@ async def acquire(market_id: str, user_id: str) -> Dict[str, Any]:
 
 
 # =========================================================================
+# 编辑介绍页
+# =========================================================================
+
+
+async def update_intro(
+    market_id: str,
+    user_id: str,
+    *,
+    intro_title: str,
+    intro_author: str,
+    intro_category: str,
+    intro_md: str,
+) -> Dict[str, Any]:
+    """修改市场条目的「介绍页」信息（审核员或发布者本人可改）。
+
+    仅更新介绍字段，不触碰快照内容 / 审核态 / 溯源。
+    """
+    async with async_session_factory() as session:
+        ms = await session.get(MarketListing, market_id)
+        if ms is None:
+            raise FileNotFoundError("市场 Skill 不存在")
+        user = await session.get(User, user_id)
+        if ms.publisher_id != user_id and not auth_service.is_reviewer(user):
+            raise PermissionError("无权修改该市场条目的介绍")
+        ms.intro_title = (intro_title or "").strip()
+        ms.intro_author = (intro_author or "").strip()
+        ms.intro_category = (intro_category or "").strip()
+        ms.intro_md = (intro_md or "").strip()
+        await session.commit()
+        await session.refresh(ms)
+    names = await _publisher_names([ms])
+    return _row_to_dict(ms, names.get(ms.publisher_id, ""))
+
+
+# =========================================================================
 # 删除 / 撤回
 # =========================================================================
 

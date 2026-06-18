@@ -11,6 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.auth import get_current_user_id
 from app.schemas.market import (
     AcquireResponse,
+    IntroUpdateRequest,
+    IntroUpdateResponse,
     MarketDetailResponse,
     MarketListResponse,
     MarketResourceFileResponse,
@@ -185,6 +187,30 @@ async def reject(
         return {"success": False, "error": str(e)}
     except Exception as e:
         logger.exception(f"[market/reject] 审核拒绝失败: {market_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api_router.put("/{market_id}/intro", response_model=IntroUpdateResponse)
+async def update_intro(
+    market_id: str,
+    data: IntroUpdateRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """修改市场条目「介绍页」（审核员或发布者本人）。"""
+    try:
+        skill = await market_service.update_intro(
+            market_id,
+            user_id,
+            intro_title=data.intro_title,
+            intro_author=data.intro_author,
+            intro_category=data.intro_category,
+            intro_md=data.intro_md,
+        )
+        return {"success": True, "skill": skill}
+    except (FileNotFoundError, PermissionError) as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.exception(f"[market/intro] 修改介绍失败: {market_id}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

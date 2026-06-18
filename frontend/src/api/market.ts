@@ -208,6 +208,31 @@ export async function readMarketVersionResourceFile(
   return data
 }
 
+export interface IntroUpdatePayload {
+  intro_title: string
+  intro_author: string
+  intro_category: string
+  intro_md: string
+}
+
+export interface IntroUpdateResponse {
+  success: boolean
+  skill?: MarketSkillItem
+  error?: string
+}
+
+/** 修改市场条目「介绍页」（审核员或发布者本人）。 */
+export async function updateMarketSkillIntro(
+  marketId: string,
+  payload: IntroUpdatePayload,
+): Promise<IntroUpdateResponse> {
+  const { data } = await apiClient.put<IntroUpdateResponse>(
+    `/market/${marketId}/intro`,
+    payload,
+  )
+  return data
+}
+
 export async function approveMarketSkill(marketId: string): Promise<ReviewResponse> {
   const { data } = await apiClient.post<ReviewResponse>(`/market/${marketId}/approve`)
   return data

@@ -210,6 +210,27 @@ async function reject(item: MarketSkillItem) {
   }
 }
 
+async function removeFromMarket(item: MarketSkillItem) {
+  const ok = await confirmDialog({
+    title: '删除市场 Skill',
+    message: `确认从市场删除「${item.display_name || item.source_skill_id}」？该条目及其历史版本将一并移除，不可恢复。`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
+  try {
+    const res = await removeMarketSkill(item.id)
+    if (res.success) {
+      toast.success('已从市场删除')
+      await refreshMarket()
+    } else {
+      toast.error(res.error || '删除失败')
+    }
+  } catch (e: any) {
+    toast.error(e?.response?.data?.detail || e.message || '删除失败')
+  }
+}
+
 async function removeMine(item: MarketSkillItem) {
   const ok = await confirmDialog({
     title: '撤回发布',
@@ -358,18 +379,25 @@ onMounted(() => {
                 <span :class="['src-tag', s.source_scope]">{{ s.source_scope === 'team' ? '团队' : '个人' }}</span>
                 <span class="publisher">{{ s.publisher_name }}</span>
               </div>
-              <button
-                v-if="s.publisher_id === currentUserId"
-                class="btn-mini ghost"
-                disabled
-                @click.stop
-              >我发布的</button>
-              <button
-                v-else
-                class="btn-mini primary"
-                :disabled="acquiredIds.has(s.id)"
-                @click.stop="acquire(s)"
-              >{{ acquiredIds.has(s.id) ? '已获取' : '获取' }}</button>
+              <div class="foot-actions">
+                <button
+                  v-if="isReviewer"
+                  class="btn-mini danger"
+                  @click.stop="removeFromMarket(s)"
+                >删除</button>
+                <button
+                  v-if="s.publisher_id === currentUserId"
+                  class="btn-mini ghost"
+                  disabled
+                  @click.stop
+                >我发布的</button>
+                <button
+                  v-else
+                  class="btn-mini primary"
+                  :disabled="acquiredIds.has(s.id)"
+                  @click.stop="acquire(s)"
+                >{{ acquiredIds.has(s.id) ? '已获取' : '获取' }}</button>
+              </div>
             </div>
           </div>
         </div>

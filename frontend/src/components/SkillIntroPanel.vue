@@ -7,15 +7,22 @@ import { generateSkillIntroDraft } from '@/api/skillStore'
 
 // 可复用「介绍」面板：查看态为文章样式，编辑态提供标题/分类/作者输入、
 // Markdown 正文编辑与「AI 辅助生成」。介绍内容存于 Skill 自身 config.intro。
-const props = defineProps<{
-  title?: string
-  author?: string
-  category?: string
-  md?: string
-  editing?: boolean
-  skillId?: string
-  fallbackTitle?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    title?: string
+    author?: string
+    category?: string
+    md?: string
+    editing?: boolean
+    skillId?: string
+    fallbackTitle?: string
+    // 是否提供「AI 辅助生成」（市场条目编辑无对应源 Skill，关闭即可）。
+    aiAssist?: boolean
+    // 查看态空正文占位文案。
+    emptyPlaceholder?: string
+  }>(),
+  { aiAssist: true },
+)
 
 const emit = defineEmits<{
   (e: 'update', field: 'title' | 'author' | 'category' | 'md', value: string): void
@@ -55,7 +62,7 @@ async function aiGenerate() {
 <template>
   <!-- 编辑态 -->
   <div v-if="editing" class="intro-edit">
-    <div class="intro-toolbar">
+    <div v-if="aiAssist" class="intro-toolbar">
       <button class="ai-btn" :disabled="generating" @click="aiGenerate">
         <span v-if="generating" class="spinner" />
         {{ generating ? '生成中…' : 'AI 辅助生成' }}
@@ -111,7 +118,7 @@ async function aiGenerate() {
       <span v-if="displayCategory" class="intro-cat">{{ displayCategory }}</span>
     </div>
     <div class="intro-body">
-      <MarkdownView :source="md" placeholder="暂无介绍，点击「编辑」补充。" />
+      <MarkdownView :source="md" :placeholder="emptyPlaceholder || '暂无介绍，点击「编辑」补充。'" />
     </div>
   </article>
 </template>

@@ -8,17 +8,21 @@ import {
   listMarketSkillVersions,
   getMarketSkillVersionDetail,
   readMarketVersionResourceFile,
+  updateMarketSkillIntro,
+  removeMarketSkill,
   type MarketSkillItem,
   type MarketVersionItem,
 } from '@/api/market'
 import { useAuthStore } from '@/stores/authStore'
 import { toast } from '@/composables/useToast'
+import { confirmDialog } from '@/composables/useConfirmDialog'
 import { useSlideIndicator } from '@/composables/useSlideIndicator'
 import { useDirectionalTransition } from '@/composables/useDirectionalTransition'
 import AppTopNav from '@/components/AppTopNav.vue'
 import MarkdownView from '@/components/MarkdownView.vue'
 import ResourceFilesPanel from '@/components/ResourceFilesPanel.vue'
 import PlatformStructurePanel from '@/components/PlatformStructurePanel.vue'
+import SkillIntroPanel from '@/components/SkillIntroPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -88,11 +92,88 @@ const introMd = computed(() => {
   // 回退：无介绍正文时用简短描述 / 描述兜底
   return listing.value?.short_description || listing.value?.description || cfg.value.description || ''
 })
-const introAuthorInitial = computed(() => (introAuthor.value || '?').slice(0, 1).toUpperCase())
 
 const isMine = computed(
   () => !!listing.value && listing.value.publisher_id === authStore.user?.id,
 )
+const isReviewer = computed(() => !!authStore.user?.is_reviewer)
+// 管理员（审核员）或发布者本人可改介绍 / 删除条目；查看历史版本时不可。
+const canManage = computed(() => (isReviewer.value || isMine.value) && !isViewingVersion.value)
+
+// 编辑介绍
+const editingIntro = ref(false)
+const savingIntro = ref(false)
+const removing = ref(false)
+const introDraft = ref({ title: '', author: '', category: '', md: '' })
+
+function startEditIntro() {
+  introDraft.value = {
+    title: listing.value?.intro_title || '',
+    author: listing.value?.intro_author || '',
+    category: listing.value?.intro_category || '',
+    md: listing.value?.intro_md || '',
+  }
+  editingIntro.value = true
+  activeTab.value = 'intro'
+}
+
+function cancelEditIntro() {
+  editingIntro.value = false
+}
+
+function onIntroDraftUpdate(field: 'title' | 'author' | 'category' | 'md', value: string) {
+  introDraft.value = { ...introDraft.value, [field]: value }
+}
+
+async function saveIntro() {
+  if (savingIntro.value || !marketId.value) return
+  savingIntro.value = true
+  try {
+    const res = await updateMarketSkillIntro(marketId.value, {
+      intro_title: introDraft.value.title,
+      intro_author: introDraft.value.author,
+      intro_category: introDraft.value.category,
+      intro_md: introDraft.value.md,
+    })
+    if (res.success && res.skill) {
+      listing.value = res.skill
+      if (currentSnapshot.value) currentSnapshot.value.listing = res.skill
+      editingIntro.value = false
+      toast.success('已更新介绍')
+    } else {
+      toast.error(res.error || '保存失败')
+    }
+  } catch (e: any) {
+    toast.error(e?.response?.data?.detail || e?.message || '保存失败')
+  } finally {
+    savingIntro.value = false
+  }
+}
+
+async function removeSkill() {
+  if (removing.value || !marketId.value) return
+  const ok = await confirmDialog({
+    title: '删除市场 Skill',
+    message: `确认从市场删除「${displayName.value}」？该条目及其历史版本将一并移除，不可恢复。`,
+    confirmText: '删除',
+    danger: true,
+  })
+  if (!ok) return
+  removing.value = true
+  try {
+    const res = await removeMarketSkill(marketId.value)
+    if (res.success) {
+      toast.success('已从市场删除')
+      router.push('/market')
+    } else {
+      toast.error(res.error || '删除失败')
+    }
+  } catch (e: any) {
+    toast.error(e?.response?.data?.detail || e?.message || '删除失败')
+  } finally {
+    removing.value = false
+  }
+}
 
 const metaTags = computed<string[]>(() => {
   const t = listing.value?.tags
@@ -127,6 +208,7 @@ async function load() {
   acquired.value = false
   viewingVersionId.value = null
   viewingVersionSeq.value = null
+  editingIntro.value = false
   try {
     const res = await getMarketSkillDetail(marketId.value)
     if (res.success) {
@@ -175,6 +257,7 @@ async function viewVersion(v: MarketVersionItem) {
       listing.value = res.listing
       viewingVersionId.value = v.id
       viewingVersionSeq.value = v.seq
+      editingIntro.value = false
       activeTab.value = 'intro'
     } else {
       toast.error(res.error || '加载历史版本失败')
@@ -276,22 +359,26 @@ watch(marketId, () => {
               </span>
             </div>
             <div class="toolbar-right">
-              <button
-                v-if="isViewingVersion"
-                class="btn tool-btn back-current"
-                @click="backToCurrent"
-              >
-                返回当前版本
-              </button>
-              <button v-else-if="isMine" class="btn tool-btn" disabled>我发布的</button>
-              <button
-                v-else
-                class="btn tool-btn acquire"
-                :disabled="acquiring || acquired"
-                @click="acquire"
-              >
-                {{ acquired ? '已获取' : acquiring ? '获取中…' : '获取到个人仓库' }}
-              </button>
+              <template v-if="isViewingVersion">
+                <button class="btn tool-btn back-current" @click="backToCurrent">返回当前版本</button>
+              </template>
+              <template v-else>
+                <button
+                  v-if="canManage"
+                  class="btn tool-btn delete"
+                  :disabled="removing"
+                  @click="removeSkill"
+                >{{ removing ? '删除中…' : '删除' }}</button>
+                <button v-if="isMine" class="btn tool-btn" disabled>我发布的</button>
+                <button
+                  v-else
+                  class="btn tool-btn acquire"
+                  :disabled="acquiring || acquired"
+                  @click="acquire"
+                >
+                  {{ acquired ? '已获取' : acquiring ? '获取中…' : '获取到个人仓库' }}
+                </button>
+              </template>
             </div>
           </div>
 
@@ -328,19 +415,38 @@ watch(marketId, () => {
                 @after-leave="paneTransitionEnd"
                 @enter-cancelled="paneTransitionEnd"
               >
-                <!-- Intro（图一文章样式） -->
+                <!-- Intro（文章样式；管理员/发布者可编辑） -->
                 <section v-if="activeTab === 'intro'" key="intro" class="form-section full-width">
-                  <article class="intro-article">
-                    <h1 class="intro-title">{{ introTitle }}</h1>
-                    <div class="intro-byline">
-                      <span class="intro-avatar">{{ introAuthorInitial }}</span>
-                      <span v-if="introAuthor" class="intro-author">{{ introAuthor }}</span>
-                      <span v-if="introCategory" class="intro-cat">{{ introCategory }}</span>
-                    </div>
-                    <div class="intro-body">
-                      <MarkdownView :source="introMd" placeholder="暂无介绍" />
-                    </div>
-                  </article>
+                  <div v-if="canManage" class="intro-actions">
+                    <template v-if="editingIntro">
+                      <button class="intro-act-btn ghost" :disabled="savingIntro" @click="cancelEditIntro">取消</button>
+                      <button class="intro-act-btn save" :disabled="savingIntro" @click="saveIntro">
+                        {{ savingIntro ? '保存中…' : '保存介绍' }}
+                      </button>
+                    </template>
+                    <button v-else class="intro-act-btn edit" @click="startEditIntro">编辑介绍</button>
+                  </div>
+
+                  <SkillIntroPanel
+                    v-if="!editingIntro"
+                    :title="introTitle"
+                    :author="introAuthor"
+                    :category="introCategory"
+                    :md="introMd"
+                    :fallback-title="displayName"
+                    empty-placeholder="暂无介绍"
+                  />
+                  <SkillIntroPanel
+                    v-else
+                    editing
+                    :ai-assist="false"
+                    :title="introDraft.title"
+                    :author="introDraft.author"
+                    :category="introDraft.category"
+                    :md="introDraft.md"
+                    :fallback-title="displayName"
+                    @update="onIntroDraftUpdate"
+                  />
                 </section>
 
                 <!-- Basic -->
@@ -648,6 +754,8 @@ watch(marketId, () => {
 .tool-btn.acquire:hover:not(:disabled) { background: #2d2f2f; border-color: #2d2f2f; }
 .tool-btn.back-current { background: #ffffff; border-color: #e5e7eb; color: #374151; }
 .tool-btn.back-current:hover:not(:disabled) { border-color: #d1d5db; color: #151717; }
+.tool-btn.delete { background: #ffffff; border-color: #e5e7eb; color: #dc2626; }
+.tool-btn.delete:hover:not(:disabled) { border-color: #fca5a5; background: #fef2f2; color: #dc2626; }
 
 /* Body */
 .editor-body {
@@ -847,6 +955,31 @@ watch(marketId, () => {
   line-height: 1.8;
   color: #2c2f33;
 }
+
+/* 介绍编辑操作行 */
+.intro-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.intro-act-btn {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #374151;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.intro-act-btn:disabled { opacity: 0.55; cursor: default; }
+.intro-act-btn.edit:hover:not(:disabled),
+.intro-act-btn.ghost:hover:not(:disabled) { border-color: #d1d5db; color: #151717; }
+.intro-act-btn.save { background: #151717; border-color: #151717; color: #ffffff; }
+.intro-act-btn.save:hover:not(:disabled) { background: #2d2f2f; border-color: #2d2f2f; }
 
 /* 平台结构只读 */
 .platform-readonly { pointer-events: none; opacity: 0.92; }

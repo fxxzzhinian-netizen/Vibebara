@@ -109,6 +109,19 @@ class MarketVersionDetailResponse(BaseModel):
     error: Optional[str] = None
 
 
+class IntroUpdateRequest(BaseModel):
+    intro_title: str = ""
+    intro_author: str = ""
+    intro_category: str = ""
+    intro_md: str = ""
+
+
+class IntroUpdateResponse(BaseModel):
+    success: bool
+    skill: Optional[MarketSkillItem] = None
+    error: Optional[str] = None
+
+
 class ReviewRequest(BaseModel):
     note: str = ""
 
