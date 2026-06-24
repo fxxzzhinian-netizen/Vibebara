@@ -8,8 +8,12 @@ from app.api.auth import get_current_user_id
 from app.schemas.project import (
     BuildArtifactRequest,
     BuildArtifactResponse,
+    CommitMergeRequest,
     CommitPullRequest,
     DeploymentLocalStatusResponse,
+    MergeApplyRequest,
+    MergeApplyResponse,
+    MergePreviewResponse,
     ProjectCreateRequest,
     ProjectDetailResponse,
     ProjectListResponse,
@@ -444,6 +448,70 @@ async def commit_pull(
     """拉取提交（pull 用）：覆盖落盘后登记同步状态、写 change log、广播 skill.pulled，
     **不读后端盘**（installedHash 由本地代理上报）。"""
     return await project_service.commit_pull(
+        deployment_id,
+        user_id,
+        installed_hash=data.installed_hash,
+        repo_hash=data.repo_hash,
+        repo_version=data.repo_version,
+        abstract_snapshot=data.abstract_snapshot,
+    )
+
+
+# ------------------------------------------------------------------
+# AI 辅助合并（冲突一键合并），设计见 docs/design/ai-assisted-merge.md
+# ------------------------------------------------------------------
+
+@api_router.post(
+    "/skill-deployments/{deployment_id}/merge-preview",
+    response_model=MergePreviewResponse,
+)
+async def merge_preview(
+    deployment_id: str,
+    data: PushContentRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """AI 合并预览：上传本地 install 内容，云端取 base/theirs 做三方合并并返回可编辑
+    合并稿（只算不写）。"""
+    return await project_service.merge_preview(
+        deployment_id,
+        user_id,
+        current_hash=data.current_hash,
+        files=[f.model_dump() for f in data.files],
+    )
+
+
+@api_router.post(
+    "/skill-deployments/{deployment_id}/merge-apply",
+    response_model=MergeApplyResponse,
+    response_model_by_alias=True,
+)
+async def merge_apply(
+    deployment_id: str,
+    data: MergeApplyRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """AI 合并提交：乐观锁校验后把合并稿写回团队仓库（version+1），返回 native 构建
+    产物供前端覆盖落盘。"""
+    return await project_service.merge_apply(
+        deployment_id,
+        user_id,
+        files=[f.model_dump() for f in data.files],
+        merged=data.merged.model_dump(),
+        expected_theirs_hash=data.expected_theirs_hash,
+    )
+
+
+@api_router.post(
+    "/skill-deployments/{deployment_id}/commit-merge",
+    response_model=PullUpdateResponse,
+)
+async def commit_merge(
+    deployment_id: str,
+    data: CommitMergeRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """AI 合并提交登记：覆盖落盘后置 synced、写动态(merged)、标记他人 outdated、广播。"""
+    return await project_service.commit_merge(
         deployment_id,
         user_id,
         installed_hash=data.installed_hash,

@@ -133,9 +133,11 @@
 |------|------|------|
 | 推送时团队仓库已被他人推送 | `repo_hash != team.content_hash` | 拦截推送，提示先拉取再推送 |
 | 拉取时本人本地有未推送改动 | `local_dirty=true` | 默认拦截，需 `overwrite` 覆盖 / 查看差异 |
-| 既 outdated 又本地有改动 | 两者叠加 | 标记 `conflict`，由用户选择覆盖/放弃 |
+| 既 outdated 又本地有改动 | 两者叠加 | 标记 `conflict`，由用户选择覆盖 / 放弃 / **AI 合并** |
 
-团队 `auto_skill_hot_update`（默认关闭）：开启且无冲突时，推送后自动提升为团队仓库新版本。第一版不做自动三方合并，只提供覆盖 / 放弃 / 查看差异。
+团队 `auto_skill_hot_update`（默认关闭）：开启且无冲突时，推送后自动提升为团队仓库新版本。
+
+**AI 辅助合并（已实现）**：冲突时除「覆盖 / 放弃」外，新增「AI 合并」——对 base / mine / theirs 三方做 AI 合并（SKILL.md 正文 + 配置字段 + 文本资源），先预览可编辑、再一键提交写回团队仓库并覆盖本地。完整设计见 [ai-assisted-merge.md](ai-assisted-merge.md)。
 
 ---
 
@@ -187,8 +189,8 @@
 
 ## 10. 暂未做 / 后续增强
 
-- 自动三方合并（Markdown / 资源目录）。
-- 细粒度行级合并 UI（当前仅覆盖/放弃/查看差异）。
+- ~~自动三方合并（Markdown / 资源目录）~~ → 已实现「AI 辅助合并」，见 [ai-assisted-merge.md](ai-assisted-merge.md)（资源仍为二方合并、无 diff3 确定性兜底，列入该文档后续增强）。
+- 细粒度行级合并 UI（当前 AI 合并提供整稿预览可编辑 + 覆盖/放弃兜底，尚无逐 hunk 取舍 UI）。
 - 多机器路径同步、跨团队共享同一团队 Skill 实例。
 - 独立通知/未读计数中心（当前复用 status + change_log + WS）。
 - 个人副本与团队副本的版本联动（当前仅 `source_skill_id` 溯源）。

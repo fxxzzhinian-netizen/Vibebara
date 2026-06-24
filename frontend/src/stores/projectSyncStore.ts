@@ -14,6 +14,8 @@ import {
   promoteDeployment,
   pushDeployment,
   pullUpdateDeployment,
+  mergePreviewDeployment,
+  mergeCommitDeployment,
   getDeploymentLocalStatus,
   getSyncStatus,
   getSyncChanges,
@@ -23,6 +25,7 @@ import {
   type SyncStatusItem,
   type ChangeLogItem,
   type UserSkillDeploymentInfo,
+  type MergedContent,
 } from '@/api/projects'
 
 export const useProjectSyncStore = defineStore('project-sync', () => {
@@ -218,6 +221,30 @@ export const useProjectSyncStore = defineStore('project-sync', () => {
     return await getDeploymentLocalStatus(deploymentId, findDeployment(deploymentId))
   }
 
+  /** AI 合并预览（只算不写）。 */
+  async function mergePreview(deploymentId: string) {
+    return await mergePreviewDeployment(deploymentId, findDeployment(deploymentId))
+  }
+
+  /** AI 合并提交（写回团队仓库 + 覆盖本地 + 登记同步）。 */
+  async function mergeCommit(
+    deploymentId: string,
+    merged: MergedContent,
+    expectedTheirsHash: string,
+  ) {
+    const projectId = currentProjectId.value
+    const res = await mergeCommitDeployment(
+      deploymentId,
+      merged,
+      expectedTheirsHash,
+      findDeployment(deploymentId),
+    )
+    if (res.success && projectId) {
+      await selectProject(projectId)
+    }
+    return res
+  }
+
   async function pullUpdate(deploymentId: string, overwrite: boolean = false) {
     const projectId = currentProjectId.value
     const res = await pullUpdateDeployment(
@@ -367,6 +394,8 @@ export const useProjectSyncStore = defineStore('project-sync', () => {
     promote,
     push,
     pullUpdate,
+    mergePreview,
+    mergeCommit,
     checkLocalStatus,
     fetchSyncStatus,
     fetchChanges,

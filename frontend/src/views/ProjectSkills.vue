@@ -14,7 +14,13 @@ import FolderPicker from '@/components/FolderPicker.vue'
 import SyncStatusBadge from '@/components/SyncStatusBadge.vue'
 import BaseModal from '@/components/BaseModal.vue'
 import BaseSelect from '@/components/BaseSelect.vue'
-import type { ChangeItem, UserSkillDeploymentInfo } from '@/api/projects'
+import SkillMergeDialog from '@/components/SkillMergeDialog.vue'
+import type {
+  ChangeItem,
+  UserSkillDeploymentInfo,
+  MergePreviewResponse,
+  MergedContent,
+} from '@/api/projects'
 import { parseUnifiedDiff, inlineSegments } from '@/utils/diffView'
 import type { DiffRow, DiffRowType, InlinePair, SegOp } from '@/utils/diffView'
 import { promptOpenAfterDeploy } from '@/utils/openAfterDeploy'
@@ -53,6 +59,13 @@ const deployToGlobal = ref(false)
 const deployLoading = ref(false)
 const pushingId = ref('')
 const pullingId = ref('')
+// AI 辅助合并（冲突一键合并）
+const mergingId = ref('')
+const showMergeDialog = ref(false)
+const mergePreviewData = ref<MergePreviewResponse | null>(null)
+const mergeSubmitting = ref(false)
+const mergeDeploymentId = ref('')
+const mergeSkillName = ref('')
 
 const localStatusMap = ref<Record<string, boolean>>({})
 // 恢复跟踪时本地目录缺失 → 标记该部署需走「重新部署」（编排模式不打云端，纯前端提示）
@@ -419,6 +432,53 @@ async function pullUpdate(deploymentId: string, status?: string) {
   await refreshLocalStatuses()
 }
 
+function deploymentSkillName(deploymentId: string): string {
+  for (const s of projectStore.projectSkills) {
+    if (s.deployment?.id === deploymentId) return s.display_name || s.skill_id
+  }
+  return ''
+}
+
+/** AI 合并第一步：取三方合并预览并打开预览框。 */
+async function openMerge(deployment: UserSkillDeploymentInfo) {
+  mergingId.value = deployment.id
+  const res = await projectStore.mergePreview(deployment.id)
+  mergingId.value = ''
+  if (!res.success) {
+    toast.error(res.error || 'AI 合并预览失败')
+    return
+  }
+  mergePreviewData.value = res
+  mergeDeploymentId.value = deployment.id
+  mergeSkillName.value = deploymentSkillName(deployment.id)
+  showMergeDialog.value = true
+}
+
+/** AI 合并第二步：把（可能编辑过的）合并稿提交到团队仓库并覆盖本地。 */
+async function onMergeConfirm(merged: MergedContent) {
+  if (!mergePreviewData.value) return
+  mergeSubmitting.value = true
+  const res = await projectStore.mergeCommit(
+    mergeDeploymentId.value,
+    merged,
+    mergePreviewData.value.theirs_hash,
+  )
+  mergeSubmitting.value = false
+  showMergeDialog.value = false
+  if (!res.success) {
+    if (res.conflict) {
+      toast.warning('团队仓库又更新了，请重新点「AI 合并」')
+    } else {
+      toast.error(res.error || '合并提交失败')
+    }
+    await refreshLocalStatuses()
+    return
+  }
+  toast.success('已 AI 合并并提交到团队仓库')
+  await loadMessageHistory()
+  await refreshLocalStatuses()
+}
+
 /** 按部署 id 在当前项目 Skill 列表里查回部署对象（取 skill_id / tool_type）。 */
 function findDeploymentById(deploymentId: string): UserSkillDeploymentInfo | null {
   for (const s of projectStore.projectSkills) {
@@ -567,6 +627,14 @@ function goBack() {
               @click="pushDeploy(skill.deployment.id)"
             >
               {{ pushingId === skill.deployment.id ? '推送中...' : '推送' }}
+            </button>
+            <button
+              v-if="skill.deployment && skill.deployment.status === 'conflict'"
+              class="btn-sm btn-merge"
+              :disabled="mergingId === skill.deployment.id"
+              @click="openMerge(skill.deployment)"
+            >
+              {{ mergingId === skill.deployment.id ? '分析中...' : 'AI 合并' }}
             </button>
             <button
               v-if="skill.deployment && ['outdated', 'conflict'].includes(skill.deployment.status)"
@@ -767,6 +835,14 @@ function goBack() {
 
       </template>
     </BaseModal>
+
+    <SkillMergeDialog
+      v-model="showMergeDialog"
+      :skill-name="mergeSkillName"
+      :preview="mergePreviewData"
+      :submitting="mergeSubmitting"
+      @confirm="onMergeConfirm"
+    />
   </div>
 </template>
 
@@ -1336,6 +1412,19 @@ function goBack() {
 .btn-primary:hover {
   background: #2d2f2f;
   border-color: #2d2f2f;
+  color: #ffffff;
+}
+
+.btn-merge {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.btn-merge:hover:not(:disabled) {
+  background: #4338ca;
+  border-color: #4338ca;
   color: #ffffff;
 }
 

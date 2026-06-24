@@ -29,6 +29,7 @@ import type {
   DeploymentLocalStatusResponse,
   ResumeTrackingResponse,
   UserSkillDeploymentInfo,
+  ChangeItem,
 } from './projects'
 import type {
   DeployResponse,
@@ -393,6 +394,144 @@ export async function pushOrchestrated(
       diff_summary: '',
       error: errMsg(e),
     }
+  }
+}
+
+// ===================== 编排：AI 辅助合并（冲突一键合并，docs/design/ai-assisted-merge.md）=====================
+
+/** 资源处置：apply 以 mine 树为基底应用。 */
+export interface MergeResourceOp {
+  path: string
+  action: 'use_mine' | 'use_theirs' | 'write_text' | 'delete'
+  encoding?: string
+  content?: string
+}
+
+/** 合并稿：preview 产出、apply 回送（预览框编辑后回送）。 */
+export interface MergedContent {
+  body: string
+  config: Record<string, unknown>
+  resource_ops: MergeResourceOp[]
+}
+
+export interface MergeManualConflict {
+  path: string
+  reason: string
+}
+
+/** merge-preview 响应。 */
+export interface MergePreviewResponse {
+  success: boolean
+  error?: string
+  merged?: MergedContent
+  preview_change_items: ChangeItem[]
+  manual_conflicts: MergeManualConflict[]
+  notes: string[]
+  merge_available: boolean
+  theirs_hash: string
+}
+
+/** merge-apply 响应（artifact 为 native 构建产物，供覆盖落盘）。 */
+interface MergeApplyResponse {
+  success: boolean
+  conflict?: boolean
+  error?: string
+  artifact?: BuildArtifactResponse
+}
+
+/** commit-merge / 合并提交整链路结果。 */
+export interface MergeCommitResult {
+  success: boolean
+  conflict?: boolean
+  deployment?: UserSkillDeploymentInfo
+  error?: string
+}
+
+function emptyPreview(error: string): MergePreviewResponse {
+  return {
+    success: false,
+    error,
+    preview_change_items: [],
+    manual_conflicts: [],
+    notes: [],
+    merge_available: false,
+    theirs_hash: '',
+  }
+}
+
+/**
+ * AI 合并预览：本地代理读取 install 内容上传 → 云端取 base/theirs 三方合并 → 返回可编辑合并稿。
+ * 只算不写，不改本地、不改团队仓库。
+ */
+export async function mergePreviewOrchestrated(
+  deploymentId: string,
+  deployment: UserSkillDeploymentInfo,
+): Promise<MergePreviewResponse> {
+  try {
+    const cur = await localAgent.hashOne(deployment.install_path)
+    if (!cur.exists) {
+      return emptyPreview('本地部署目录缺失，无法合并')
+    }
+    const folder = await localAgent.readFolder({
+      path: deployment.install_path,
+      include: 'all',
+    })
+    const { data } = await cloudClient.post<MergePreviewResponse>(
+      `/skill-deployments/${deploymentId}/merge-preview`,
+      { currentHash: cur.hash, files: folder.files },
+    )
+    return data
+  } catch (e) {
+    return emptyPreview(errMsg(e))
+  }
+}
+
+/**
+ * AI 合并提交：再次上传本地内容 + 合并稿 → 云端乐观锁校验并写回团队仓库 → 取产物
+ * 覆盖落盘 → 云端 commit-merge 登记。任一步失败回传 error/conflict。
+ */
+export async function mergeCommitOrchestrated(
+  deploymentId: string,
+  deployment: UserSkillDeploymentInfo,
+  merged: MergedContent,
+  expectedTheirsHash: string,
+): Promise<MergeCommitResult> {
+  const tool = asTool(deployment.tool_type)
+  try {
+    const folder = await localAgent.readFolder({
+      path: deployment.install_path,
+      include: 'all',
+    })
+    const { data: apply } = await cloudClient.post<MergeApplyResponse>(
+      `/skill-deployments/${deploymentId}/merge-apply`,
+      { files: folder.files, merged, expectedTheirsHash },
+    )
+    if (!apply.success || !apply.artifact) {
+      return { success: false, conflict: apply.conflict, error: apply.error || '合并提交失败' }
+    }
+    const artifact = apply.artifact
+    const write = await localAgent.writeSkill({
+      deployPath: deployment.deploy_path,
+      scope: 'project',
+      tool,
+      skillId: artifact.skillId || deployment.team_skill_id,
+      contents: artifact.contents,
+      resources: toWriteResources(artifact.resources),
+      overwrite: true,
+      ensureGitignore: true,
+    })
+    const { data } = await cloudClient.post<MergeCommitResult>(
+      `/skill-deployments/${deploymentId}/commit-merge`,
+      {
+        installedHash: write.installedHash,
+        repoHash: artifact.repoHash,
+        repoVersion: artifact.repoVersion,
+        abstractSnapshot: artifact.abstractSnapshot,
+      },
+    )
+    return data
+  } catch (e) {
+    return { success: false, error: errMsg(e) }
   }
 }
 

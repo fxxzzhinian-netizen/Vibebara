@@ -298,3 +298,64 @@ class ResumeTrackingRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     installed_hash: Optional[str] = Field(default=None, alias="installedHash")
+
+
+# =========================================================================
+# AI 辅助合并（冲突一键合并）DTO，设计见 docs/design/ai-assisted-merge.md
+# =========================================================================
+
+
+class MergedContent(BaseModel):
+    """合并稿：preview 产出、apply 回送（预览框编辑后回送）。
+
+    resource_ops[].action ∈ {use_mine, use_theirs, write_text, delete}；
+    write_text 携带（合并/编辑后的）文本内容。JSON 用 snake_case，前端原样透传。
+    """
+
+    body: str = ""
+    config: Dict[str, Any] = {}
+    resource_ops: List[Dict[str, Any]] = []
+
+
+class MergePreviewResponse(BaseModel):
+    success: bool
+    error: Optional[str] = None
+    merged: Optional[MergedContent] = None
+    # 合并稿相对团队最新（theirs）的改动点（与 push 的 change_items 同结构）
+    preview_change_items: List[Dict[str, Any]] = []
+    # 需手动处理项（二进制双改 / 删改冲突 / 超大文件等）
+    manual_conflicts: List[Dict[str, Any]] = []
+    notes: List[str] = []
+    # LLM 是否就绪且无降级；false 表示部分内容未做 AI 合并，建议人工核对
+    merge_available: bool = True
+    # 乐观锁令牌：apply 时回送，团队仓库若在预览期间再被推送则拦截
+    theirs_hash: str = ""
+
+
+class MergeApplyRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    files: List[FilePayloadIn] = []
+    merged: MergedContent
+    expected_theirs_hash: str = Field(default="", alias="expectedTheirsHash")
+
+
+class MergeApplyResponse(BaseModel):
+    success: bool
+    conflict: bool = False
+    error: Optional[str] = None
+    # 写回团队仓库后的 native 构建产物，供前端覆盖落盘（同 build-artifact 形状）
+    artifact: Optional[BuildArtifactResponse] = None
+
+
+class CommitMergeRequest(BaseModel):
+    """AI 合并提交登记请求：覆盖写后本地代理算 installed_hash，其余取 apply 产物。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    installed_hash: str = Field(alias="installedHash")
+    repo_hash: str = Field(default="", alias="repoHash")
+    repo_version: int = Field(default=1, alias="repoVersion")
+    abstract_snapshot: Dict[str, Any] = Field(
+        default_factory=dict, alias="abstractSnapshot"
+    )

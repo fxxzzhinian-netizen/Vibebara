@@ -9,7 +9,16 @@ import {
   pullUpdateOrchestrated,
   getLocalStatusOrchestrated,
   resumeTrackingOrchestrated,
+  mergePreviewOrchestrated,
+  mergeCommitOrchestrated,
 } from './orchestration'
+import type {
+  MergePreviewResponse,
+  MergedContent,
+  MergeCommitResult,
+} from './orchestration'
+
+export type { MergePreviewResponse, MergedContent, MergeCommitResult, MergeResourceOp, MergeManualConflict } from './orchestration'
 
 export interface ProjectInfo {
   id: string
@@ -393,6 +402,43 @@ export async function pullUpdateDeployment(
     { overwrite },
   )
   return data
+}
+
+/**
+ * AI 合并预览（冲突一键合并第一步）。
+ * @param deployment 必传：编排模式经本地代理读取本地内容上传云端三方合并。
+ */
+export async function mergePreviewDeployment(
+  deploymentId: string,
+  deployment?: UserSkillDeploymentInfo | null,
+): Promise<MergePreviewResponse> {
+  if (isOrchestrationEnabled() && deployment) {
+    return mergePreviewOrchestrated(deploymentId, deployment)
+  }
+  return {
+    success: false,
+    error: 'AI 合并仅桌面客户端支持',
+    preview_change_items: [],
+    manual_conflicts: [],
+    notes: [],
+    merge_available: false,
+    theirs_hash: '',
+  }
+}
+
+/**
+ * AI 合并提交（冲突一键合并第二步）：写回团队仓库 + 覆盖本地 + 登记同步。
+ */
+export async function mergeCommitDeployment(
+  deploymentId: string,
+  merged: MergedContent,
+  expectedTheirsHash: string,
+  deployment?: UserSkillDeploymentInfo | null,
+): Promise<MergeCommitResult> {
+  if (isOrchestrationEnabled() && deployment) {
+    return mergeCommitOrchestrated(deploymentId, deployment, merged, expectedTheirsHash)
+  }
+  return { success: false, error: 'AI 合并仅桌面客户端支持' }
 }
 
 // 同步

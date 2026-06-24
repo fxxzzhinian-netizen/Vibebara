@@ -2070,6 +2070,450 @@ async def push_deployment_content(
 
 
 # ------------------------------------------------------------------
+# AI 辅助合并（冲突一键合并），设计见 docs/design/ai-assisted-merge.md
+# ------------------------------------------------------------------
+
+_RESOURCE_DIRS = ("scripts/", "references/", "assets/")
+
+
+def _deep_merge_dict(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+    """把 overlay 深合并进 base 的副本（dict 递归，其余覆盖）。"""
+    import copy
+
+    out = copy.deepcopy(base) if isinstance(base, dict) else {}
+    for k, v in (overlay or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge_dict(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def _mine_resource_contents(files: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """从上传 files[] 抽出 scripts/references/assets 资源 → {path: {encoding, content}}。"""
+    out: Dict[str, Dict[str, Any]] = {}
+    for f in files or []:
+        path = str(f.get("path", "")).replace("\\", "/").lstrip("/")
+        if path.startswith(_RESOURCE_DIRS):
+            out[path] = {
+                "encoding": f.get("encoding", "utf8") or "utf8",
+                "content": f.get("content", ""),
+            }
+    return out
+
+
+def _apply_merged_config_to_native(src: Path, config: Dict[str, Any], body: str) -> None:
+    """把合并后的正文与白名单配置字段写回 mine 的 native 临时树。
+
+    - 正文 + name/description/metadata 写回 SKILL.md frontmatter；
+    - ui/policy/dependencies 写回 agents/openai.yaml（import_from_external 据此回收为
+      抽象 config，无关 tool 类型；origin 显式传入故不会误判平台）。
+    """
+    import yaml
+
+    from app.services.native_skill_store import _parse_skill_md, _read_yaml
+
+    skill_md = src / "SKILL.md"
+    frontmatter: Dict[str, Any] = {}
+    if skill_md.exists():
+        frontmatter, _old_body = _parse_skill_md(skill_md)
+    if not isinstance(frontmatter, dict):
+        frontmatter = {}
+
+    if "description" in config:
+        frontmatter["description"] = config.get("description")
+
+    md = config.get("metadata") if isinstance(config.get("metadata"), dict) else {}
+    if md.get("license") is not None:
+        frontmatter["license"] = md["license"]
+    if md.get("author") is not None or md.get("version") is not None:
+        fm_meta = frontmatter.get("metadata")
+        fm_meta = fm_meta if isinstance(fm_meta, dict) else {}
+        if md.get("author") is not None:
+            fm_meta["author"] = md["author"]
+        if md.get("version") is not None:
+            fm_meta["version"] = md["version"]
+        frontmatter["metadata"] = fm_meta
+
+    fm_text = (
+        yaml.dump(frontmatter, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        if frontmatter
+        else ""
+    )
+    skill_md.write_bytes(f"---\n{fm_text}---\n{body}".encode("utf-8"))
+
+    ui = config.get("ui") if isinstance(config.get("ui"), dict) else {}
+    pol = config.get("policy") if isinstance(config.get("policy"), dict) else {}
+    deps = config.get("dependencies") if isinstance(config.get("dependencies"), dict) else {}
+    auto_invoke = pol.get("auto_invoke")
+    if ui or auto_invoke is not None or deps.get("tools"):
+        agents_dir = src / "agents"
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        oa_path = agents_dir / "openai.yaml"
+        oa = _read_yaml(oa_path) if oa_path.exists() else {}
+        if not isinstance(oa, dict):
+            oa = {}
+        interface = oa.get("interface") if isinstance(oa.get("interface"), dict) else {}
+        for k, v in (ui or {}).items():
+            if v is not None:
+                interface[k] = v
+        if interface:
+            oa["interface"] = interface
+        if auto_invoke is not None:
+            policy = oa.get("policy") if isinstance(oa.get("policy"), dict) else {}
+            policy["allow_implicit_invocation"] = auto_invoke
+            oa["policy"] = policy
+        if deps.get("tools"):
+            d = oa.get("dependencies") if isinstance(oa.get("dependencies"), dict) else {}
+            d["tools"] = deps["tools"]
+            oa["dependencies"] = d
+        oa_path.write_bytes(
+            yaml.dump(oa, allow_unicode=True, sort_keys=False).encode("utf-8")
+        )
+
+
+def _apply_resource_ops_to_tree(
+    src: Path,
+    resource_ops: List[Dict[str, Any]],
+    theirs_res_map: Dict[str, Dict[str, Any]],
+) -> None:
+    """以 mine 临时树为基底应用资源处置：use_mine 保留 / use_theirs 取团队内容 /
+    write_text 写合并文本 / delete 删除。"""
+    from app.services.content_transfer import _safe_join
+
+    for op in resource_ops or []:
+        path = str(op.get("path", "")).replace("\\", "/").lstrip("/")
+        action = op.get("action", "use_mine")
+        if not path:
+            continue
+        if action == "use_mine":
+            continue
+        if action == "delete":
+            try:
+                target = _safe_join(src, path)
+            except ValueError:
+                continue
+            if target.exists():
+                target.unlink()
+            continue
+        if action == "write_text":
+            write_files(src, [{"path": path, "encoding": "utf8", "content": op.get("content", "")}])
+            continue
+        if action == "use_theirs":
+            r = theirs_res_map.get(path)
+            if not r:
+                continue
+            write_files(
+                src,
+                [{
+                    "path": path,
+                    "encoding": r.get("encoding", "utf8") or "utf8",
+                    "content": r.get("content", ""),
+                }],
+            )
+
+
+async def _load_theirs_for_merge(
+    skill_id: str, tool_type: str, repo_version: int
+) -> Optional[Dict[str, Any]]:
+    """构建 theirs（团队仓库最新）：抽象包 + 资源内容 + repo_hash。失败返回 None。"""
+    artifact = await _build_artifact_payload(skill_id, tool_type, repo_version)
+    if not artifact.get("success"):
+        return None
+    theirs_pkg = artifact.get("abstract_snapshot") or {}
+    res_list = artifact.get("resources") or []
+    theirs_res_contents = {
+        r.get("path"): {"encoding": r.get("encoding", "utf8"), "content": r.get("content", "")}
+        for r in res_list
+        if r.get("path")
+    }
+    return {
+        "pkg": theirs_pkg,
+        "res_contents": theirs_res_contents,
+        "repo_hash": artifact.get("repo_hash", ""),
+    }
+
+
+async def merge_preview(
+    deployment_id: str,
+    user_id: str,
+    current_hash: str,
+    files: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """AI 合并预览：只算不写。返回合并稿（可编辑）+ 相对团队最新的预览 diff。"""
+    import hashlib
+
+    from app.services.skill_merge_service import merge_three_way
+
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        if not deployment:
+            return {"success": False, "error": "Deployment not found"}
+        if deployment.user_id != user_id:
+            return {"success": False, "error": "Cannot merge another user's deployment"}
+        if not deployment.tracking_enabled:
+            return {"success": False, "error": "Deployment tracking is disabled"}
+        skill_id = deployment.team_skill_id
+        tool_type = deployment.tool_type
+        base_snapshot = deployment.abstract_snapshot
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == deployment.project_id,
+                ProjectSkill.skill_id == skill_id,
+            )
+        )
+        repo_version = ref.version if ref else deployment.repo_version
+
+    if not files:
+        return {"success": False, "error": "本地内容缺失，无法合并"}
+
+    base_pkg = None
+    if base_snapshot:
+        try:
+            base_pkg = json.loads(base_snapshot)
+        except Exception:
+            base_pkg = None
+
+    theirs = await _load_theirs_for_merge(skill_id, tool_type, repo_version)
+    if theirs is None:
+        return {"success": False, "error": "团队仓库内容构建失败，无法合并"}
+
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "mine"
+        try:
+            write_files(src, files)
+            mine_pkg = parse_native_skill(str(src), tool_type)
+        except Exception as e:
+            return {"success": False, "error": f"解析本地 Skill 失败: {e}"}
+
+    mine_res_contents = _mine_resource_contents(files)
+
+    merged = await merge_three_way(
+        base_pkg,
+        mine_pkg,
+        theirs["pkg"],
+        mine_res_contents,
+        theirs["res_contents"],
+    )
+
+    # 预览 diff：合并稿相对团队最新（theirs）的改动点
+    theirs_cfg = (theirs["pkg"] or {}).get("config", {}) or {}
+    merged_cfg = _deep_merge_dict(theirs_cfg, merged.get("config", {}))
+    theirs_res = (theirs["pkg"] or {}).get("resources", {}) or {}
+    mine_res = mine_pkg.get("resources", {}) or {}
+    merged_res = dict(theirs_res)
+    for op in merged.get("resource_ops", []):
+        p = op.get("path")
+        a = op.get("action")
+        if not p:
+            continue
+        if a == "delete":
+            merged_res.pop(p, None)
+        elif a == "use_mine":
+            if mine_res.get(p) is not None:
+                merged_res[p] = mine_res[p]
+            else:
+                merged_res.pop(p, None)
+        elif a == "use_theirs":
+            if theirs_res.get(p) is not None:
+                merged_res[p] = theirs_res[p]
+        elif a == "write_text":
+            merged_res[p] = hashlib.sha256((op.get("content", "") or "").encode("utf-8")).hexdigest()
+    merged_pkg = {
+        "config": merged_cfg,
+        "vibeh_body": merged.get("body", ""),
+        "resources": merged_res,
+    }
+    preview_change_items = diff_abstract_packages(theirs["pkg"], merged_pkg)
+
+    return {
+        "success": True,
+        "merged": {
+            "body": merged.get("body", ""),
+            "config": merged.get("config", {}),
+            "resource_ops": merged.get("resource_ops", []),
+        },
+        "preview_change_items": preview_change_items,
+        "manual_conflicts": merged.get("manual_conflicts", []),
+        "notes": merged.get("notes", []),
+        "merge_available": merged.get("merge_available", False),
+        "theirs_hash": theirs["repo_hash"],
+    }
+
+
+async def merge_apply(
+    deployment_id: str,
+    user_id: str,
+    files: List[Dict[str, Any]],
+    merged: Dict[str, Any],
+    expected_theirs_hash: str = "",
+) -> Dict[str, Any]:
+    """AI 合并提交（写回团队仓库）：乐观锁校验 → 补丁 mine 树 → import 写回 →
+    version+1 → 返回 native 构建产物供前端覆盖落盘。"""
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        if not deployment:
+            return {"success": False, "error": "Deployment not found"}
+        if deployment.user_id != user_id:
+            return {"success": False, "error": "Cannot merge another user's deployment"}
+        if not deployment.tracking_enabled:
+            return {"success": False, "error": "Deployment tracking is disabled"}
+        skill_id = deployment.team_skill_id
+        tool_type = deployment.tool_type
+
+    if not files:
+        return {"success": False, "error": "本地内容缺失，无法合并"}
+
+    prefix, _scope = NativeSkillStore._resolve_prefix(skill_id)
+    if not prefix:
+        return {"success": False, "error": "团队仓库内容缺失，无法合并"}
+
+    # 乐观锁：预览之后团队仓库若被第三人再次推送，拦截并要求重新合并
+    current_theirs_hash = _compute_store_hash(prefix)
+    if expected_theirs_hash and current_theirs_hash != expected_theirs_hash:
+        return {
+            "success": False,
+            "conflict": True,
+            "error": "团队仓库已再次更新，请重新合并",
+        }
+
+    theirs_res_map = {
+        r.get("path"): r for r in collect_store_resources(prefix) if r.get("path")
+    }
+
+    with tempfile.TemporaryDirectory() as td:
+        src = Path(td) / "merged"
+        try:
+            write_files(src, files)
+            _apply_merged_config_to_native(src, merged.get("config", {}), merged.get("body", ""))
+            _apply_resource_ops_to_tree(src, merged.get("resource_ops", []), theirs_res_map)
+        except Exception as e:
+            return {"success": False, "error": f"合并落盘失败: {e}"}
+
+        try:
+            await NativeSkillStore.import_from_external(
+                str(src),
+                tool_type,
+                allow_team_update=True,
+                target_skill_id=skill_id,
+            )
+        except Exception as e:
+            return {"success": False, "error": f"写回团队仓库失败: {e}"}
+
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        pkg = await session.get(TeamSkill, skill_id)
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == deployment.project_id,
+                ProjectSkill.skill_id == skill_id,
+            )
+        )
+        promoted_hash = _compute_store_hash(prefix)
+        if pkg:
+            pkg.content_hash = promoted_hash
+        new_version = deployment.repo_version + 1
+        if ref:
+            ref.version += 1
+            ref.content_hash = promoted_hash
+            ref.last_modified_by = user_id
+            new_version = ref.version
+        await session.commit()
+
+    artifact = await _build_artifact_payload(skill_id, tool_type, new_version)
+    if not artifact.get("success"):
+        return {"success": False, "error": artifact.get("error") or "构建合并产物失败"}
+
+    return {"success": True, "conflict": False, "artifact": artifact}
+
+
+async def commit_merge(
+    deployment_id: str,
+    user_id: str,
+    installed_hash: str,
+    repo_hash: str = "",
+    repo_version: int = 1,
+    abstract_snapshot: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """AI 合并提交的登记段（对应 merge_apply 写回 + 本地覆盖落盘之后）：置 synced、
+    写动态(action=merged)、标记其他成员 outdated、广播。"""
+    async with async_session_factory() as session:
+        deployment = await session.get(UserSkillDeployment, deployment_id)
+        if not deployment:
+            return {"success": False, "error": "Deployment not found"}
+        if deployment.user_id != user_id:
+            return {"success": False, "error": "Cannot merge another user's deployment"}
+        if not deployment.tracking_enabled:
+            return {"success": False, "error": "Deployment tracking is disabled"}
+
+        project = await session.get(Project, deployment.project_id)
+        ref = await session.scalar(
+            select(ProjectSkill).where(
+                ProjectSkill.project_id == deployment.project_id,
+                ProjectSkill.skill_id == deployment.team_skill_id,
+            )
+        )
+        skill_id = deployment.team_skill_id
+        prev_installed_hash = deployment.installed_hash
+
+        snapshot_json = (
+            json.dumps(abstract_snapshot, ensure_ascii=False)
+            if abstract_snapshot
+            else deployment.abstract_snapshot
+        )
+        new_repo_hash = repo_hash or deployment.repo_hash
+        new_repo_version = repo_version or (ref.version if ref else deployment.repo_version)
+
+        deployment.repo_version = new_repo_version
+        deployment.repo_hash = new_repo_hash
+        deployment.installed_hash = installed_hash or deployment.installed_hash
+        deployment.abstract_snapshot = snapshot_json
+        deployment.status = "synced"
+        deployment.local_dirty = False
+        deployment.last_seen_at = datetime.now(timezone.utc)
+
+        await _write_change_log(
+            session=session,
+            team_id=project.team_id if project else None,
+            project_id=deployment.project_id,
+            deployment_id=deployment.id,
+            skill_id=skill_id,
+            user_id=user_id,
+            action="merged",
+            version=deployment.repo_version,
+            diff_summary="AI 合并并提交",
+            base_hash=prev_installed_hash,
+            new_hash=new_repo_hash,
+            source="user_deployment",
+        )
+
+        await _mark_other_deployments_outdated(
+            session=session,
+            project_id=deployment.project_id,
+            skill_id=skill_id,
+            exclude_user_id=user_id,
+            repo_version=deployment.repo_version,
+            repo_hash=new_repo_hash,
+        )
+
+        await session.commit()
+        await session.refresh(deployment)
+        result_deployment = _deployment_to_dict(deployment)
+        broadcast_project_id = deployment.project_id
+
+    await _broadcast_push_event(
+        project_id=broadcast_project_id,
+        skill_id=skill_id,
+        user_id=user_id,
+        change_items=[],
+        summary="AI 合并并提交",
+        status="synced",
+    )
+
+    return {"success": True, "conflict": False, "deployment": result_deployment}
+
+
+# ------------------------------------------------------------------
 # Sync metadata
 # ------------------------------------------------------------------
 

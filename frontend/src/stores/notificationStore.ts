@@ -19,6 +19,7 @@ const ACTION_LABELS: Record<string, string> = {
   deployed: '部署了',
   pushed: '推送了',
   pulled: '更新了本地',
+  merged: 'AI 合并提交了',
   conflict: '推送冲突',
   linked: '关联了',
   unlinked: '移除了',
