@@ -1,55 +1,29 @@
 """
-轻量认证服务 — 密码哈希 + JWT token + API Key
+轻量认证服务 — 密码哈希 + 统一有状态凭据（auth_tokens：session / pat）
+
+登录态（session）与长期无头凭据（pat）同表、同一条校验路径（verify_credential）：
+sha256(明文) 命中 token_hash → 未吊销 + 未过期 → 返回 user_id。
 """
 
 import hashlib
 import hmac
 import logging
 import secrets
-import time
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.database import async_session_factory
-from app.core.security import constant_time_compare
+from app.models.auth_token import AuthToken
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-# 稳定的开发默认密钥（方案 B M2）：
-#   - 仅在未注入 JWT_SECRET 时使用；为「稳定常量」而非随机，保证后端重启后
-#     已签发的 token 不会全部失效（开发体验）。
-#   - 这是公开默认值，绝不可用于生产/cloud；cloud 模式使用时会打印显著告警。
-_DEV_DEFAULT_JWT_SECRET = "vibebara-dev-insecure-jwt-secret-change-me"
-
-
-def _resolve_jwt_secret() -> str:
-    """解析 token 签名密钥：独立 JWT_SECRET 优先，否则回退稳定开发默认值。
-
-    停止复用 ``LLM_API_KEY``（M2 §4.4）。未注入 JWT_SECRET 时按运行模式处理：
-    - cloud 模式：**直接拒绝启动**（fail-fast），杜绝用公开默认密钥签发可被伪造的 token；
-    - local 模式：回退稳定开发默认值并提示（重启不失效，便于开发）。
-    """
-    secret = (settings.JWT_SECRET or "").strip()
-    if secret:
-        return secret
-    if settings.DEPLOYMENT_MODE == "cloud":
-        raise RuntimeError(
-            "[security] cloud 模式必须设置 JWT_SECRET（高熵随机值），否则将使用公开默认密钥、"
-            "token 可被伪造。请经环境变量注入，例如："
-            "python -c \"import secrets;print(secrets.token_urlsafe(48))\""
-        )
-    logger.info(
-        "[security] 未设置 JWT_SECRET，使用稳定的开发默认密钥（仅限本地开发，"
-        "请勿用于生产/cloud）。"
-    )
-    return _DEV_DEFAULT_JWT_SECRET
-
-
-_JWT_SECRET = _resolve_jwt_secret()
-_TOKEN_EXPIRE_SECONDS = 7 * 24 * 3600  # 7 days
+# 凭据明文前缀：仅作日志辨识 + 快速拒绝，校验只认 token_hash，不依赖前缀。
+_SESSION_PREFIX = "vhs_"  # 登录态
+_PAT_PREFIX = "vhk_"      # 长期无头凭据（沿用历史 API Key 前缀，CLI 文档一致）
 
 
 def _hash_password(password: str) -> str:
@@ -66,38 +40,89 @@ def _verify_password(password: str, stored: str) -> bool:
     return hmac.compare_digest(h.hex(), expected)
 
 
-def _create_token(user_id: str) -> str:
-    """Simple HMAC-based token: user_id.expire_ts.signature"""
-    expire = int(time.time()) + _TOKEN_EXPIRE_SECONDS
-    payload = f"{user_id}.{expire}"
-    sig = hmac.new(
-        _JWT_SECRET.encode(), payload.encode(), hashlib.sha256
-    ).hexdigest()[:32]
-    return f"{payload}.{sig}"
+def _hash_token(raw: str) -> str:
+    """凭据明文 → sha256 hex（落库只存哈希）。token 为高熵随机，快速哈希足够。"""
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def verify_token(token: str) -> Optional[str]:
-    """Return user_id if valid, else None."""
-    parts = token.split(".")
-    if len(parts) != 3:
-        return None
-    user_id, expire_str, sig = parts
-    try:
-        expire = int(expire_str)
-    except ValueError:
-        return None
-    if time.time() > expire:
-        return None
-    expected = hmac.new(
-        _JWT_SECRET.encode(), f"{user_id}.{expire_str}".encode(), hashlib.sha256
-    ).hexdigest()[:32]
-    if not constant_time_compare(sig, expected):
-        return None
-    return user_id
+async def create_session_token(user_id: str) -> str:
+    """签发登录态凭据（kind=session，带过期）。返回明文（仅此一次可见）。"""
+    raw = f"{_SESSION_PREFIX}{secrets.token_urlsafe(32)}"
+    expires_at = datetime.utcnow() + timedelta(
+        seconds=settings.SESSION_TOKEN_TTL_SECONDS
+    )
+    async with async_session_factory() as session:
+        session.add(
+            AuthToken(
+                user_id=user_id,
+                token_hash=_hash_token(raw),
+                kind="session",
+                expires_at=expires_at,
+            )
+        )
+        await session.commit()
+    return raw
 
 
-def _hash_api_key(api_key: str) -> str:
-    return hashlib.sha256(api_key.encode()).hexdigest()
+async def create_pat(
+    user_id: str, name: str = "", expires_at: Optional[datetime] = None
+) -> str:
+    """签发长期无头凭据（kind=pat，默认无过期）。重签发即吊销该用户现存 active PAT
+    （轮换语义；列出/命名/单独吊销端点属后续）。返回明文（仅此一次可见）。"""
+    raw = f"{_PAT_PREFIX}{secrets.token_urlsafe(32)}"
+    now = datetime.utcnow()
+    async with async_session_factory() as session:
+        existing = (
+            await session.execute(
+                select(AuthToken).where(
+                    AuthToken.user_id == user_id,
+                    AuthToken.kind == "pat",
+                    AuthToken.revoked_at.is_(None),
+                )
+            )
+        ).scalars().all()
+        for row in existing:
+            row.revoked_at = now
+        session.add(
+            AuthToken(
+                user_id=user_id,
+                token_hash=_hash_token(raw),
+                kind="pat",
+                name=name or "",
+                expires_at=expires_at,
+            )
+        )
+        await session.commit()
+    return raw
+
+
+async def verify_credential(raw: str) -> Optional[str]:
+    """统一校验：命中 token_hash 且未吊销、未过期 → user_id；否则 None。
+
+    顺带节流刷新 last_used_at（距上次 > 5min 才写，降写放大）。
+    session 与 pat 共用本路径，仅 expires_at 是否为空不同。
+    """
+    if not raw:
+        return None
+    hashed = _hash_token(raw)
+    now = datetime.utcnow()
+    async with async_session_factory() as session:
+        row = (
+            await session.execute(
+                select(AuthToken).where(AuthToken.token_hash == hashed)
+            )
+        ).scalar_one_or_none()
+        if row is None or row.revoked_at is not None:
+            return None
+        if row.expires_at is not None and now > row.expires_at:
+            return None
+        if (
+            row.last_used_at is None
+            or (now - row.last_used_at).total_seconds() > 300
+        ):
+            row.last_used_at = now
+            await session.commit()
+        return row.user_id
 
 
 async def register(
@@ -150,14 +175,16 @@ async def register(
         session.add(user)
         await session.commit()
         await session.refresh(user)
+        new_user_id = user.id
+        new_username = user.username
 
-        token = _create_token(user.id)
-        return {
-            "success": True,
-            "token": token,
-            "user_id": user.id,
-            "username": user.username,
-        }
+    token = await create_session_token(new_user_id)
+    return {
+        "success": True,
+        "token": token,
+        "user_id": new_user_id,
+        "username": new_username,
+    }
 
 
 async def login(username: str, password: str) -> dict:
@@ -168,14 +195,16 @@ async def login(username: str, password: str) -> dict:
         user = result.scalar_one_or_none()
         if not user or not _verify_password(password, user.password_hash):
             return {"success": False, "error": "用户名或密码错误"}
+        user_id = user.id
+        resolved_username = user.username
 
-        token = _create_token(user.id)
-        return {
-            "success": True,
-            "token": token,
-            "user_id": user.id,
-            "username": user.username,
-        }
+    token = await create_session_token(user_id)
+    return {
+        "success": True,
+        "token": token,
+        "user_id": user_id,
+        "username": resolved_username,
+    }
 
 
 async def get_user_by_id(user_id: str) -> Optional[User]:
@@ -199,14 +228,12 @@ async def save_onboarding(
 
 
 async def generate_api_key(user_id: str) -> dict:
-    raw_key = f"vhk_{secrets.token_urlsafe(32)}"
-    hashed = _hash_api_key(raw_key)
+    """签发长期 API Key（PAT）。重签发即轮换旧 key（见 create_pat）。"""
     async with async_session_factory() as session:
         user = await session.get(User, user_id)
         if not user:
             return {"success": False, "error": "用户不存在"}
-        user.api_key_hash = hashed
-        await session.commit()
+    raw_key = await create_pat(user_id, name="cli")
     return {"success": True, "api_key": raw_key}
 
 

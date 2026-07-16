@@ -40,7 +40,7 @@ def _build_client():
 def _install_router_stubs():
     token_user = {"tok-a": "user-a", "tok-b": "user-b"}
 
-    def fake_verify(token):
+    async def fake_verify(token):
         return token_user.get(token)
 
     async def fake_register(user_id, client_uuid, platform=None, hostname=None,
@@ -74,18 +74,18 @@ def _install_router_stubs():
         return {"success": True, "device_id": device_id, "status": "revoked"}
 
     saved = {
-        "verify": auth_service.verify_token,
+        "verify": auth_service.verify_credential,
         "register": device_service.register_device,
         "revoke": device_service.revoke_device,
     }
-    auth_service.verify_token = fake_verify
+    auth_service.verify_credential = fake_verify
     device_service.register_device = fake_register
     device_service.revoke_device = fake_revoke
     return saved
 
 
 def _restore_router_stubs(saved):
-    auth_service.verify_token = saved["verify"]
+    auth_service.verify_credential = saved["verify"]
     device_service.register_device = saved["register"]
     device_service.revoke_device = saved["revoke"]
 

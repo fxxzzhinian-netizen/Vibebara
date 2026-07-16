@@ -434,9 +434,10 @@ export async function mergeCommitDeployment(
   merged: MergedContent,
   expectedTheirsHash: string,
   deployment?: UserSkillDeploymentInfo | null,
+  mineFiles?: MergePreviewResponse['mineFiles'],
 ): Promise<MergeCommitResult> {
   if (isOrchestrationEnabled() && deployment) {
-    return mergeCommitOrchestrated(deploymentId, deployment, merged, expectedTheirsHash)
+    return mergeCommitOrchestrated(deploymentId, deployment, merged, expectedTheirsHash, mineFiles)
   }
   return { success: false, error: 'AI 合并仅桌面客户端支持' }
 }

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
 from app.services import project_service, team_service
-from app.services.auth_service import verify_token
+from app.services.auth_service import verify_credential
 from app.services.skill_sync_service import SkillSyncService
 from app.services.team_sync_service import TeamSyncService
 from app.websocket.hub import project_ws_manager, team_ws_manager
@@ -29,7 +29,7 @@ async def project_websocket_endpoint(
       4. 防御性多租户校验：该用户必须是项目所属团队成员，否则拒绝（close 4003），
          避免非成员仅凭 project_id 订阅他人项目的 Skill 动态。
     """
-    token_user_id = verify_token(token) if token else None
+    token_user_id = (await verify_credential(token)) if token else None
     if not token_user_id or token_user_id != user_id:
         await websocket.close(code=4001, reason="invalid token")
         return
@@ -72,7 +72,7 @@ async def team_websocket_endpoint(
       2. token 解析出的 user_id 必须与连接 user_id 一致（防伪冒）；
       3. 必须是该团队成员，否则拒绝（close 4003），避免非成员订阅他人团队动态。
     """
-    token_user_id = verify_token(token) if token else None
+    token_user_id = (await verify_credential(token)) if token else None
     if not token_user_id or token_user_id != user_id:
         await websocket.close(code=4001, reason="invalid token")
         return

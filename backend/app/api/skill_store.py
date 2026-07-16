@@ -473,7 +473,6 @@ async def build_skill(
 @api_router.post(
     "/{skill_id}/build-artifact",
     response_model=BuildArtifactResponse,
-    response_model_by_alias=True,
 )
 async def build_store_skill_artifact(
     skill_id: str, data: BuildArtifactRequest,

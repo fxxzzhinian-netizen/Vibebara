@@ -26,6 +26,7 @@ import {
   type ChangeLogItem,
   type UserSkillDeploymentInfo,
   type MergedContent,
+  type MergePreviewResponse,
 } from '@/api/projects'
 
 export const useProjectSyncStore = defineStore('project-sync', () => {
@@ -221,9 +222,22 @@ export const useProjectSyncStore = defineStore('project-sync', () => {
     return await getDeploymentLocalStatus(deploymentId, findDeployment(deploymentId))
   }
 
+  // R-D：缓存 preview 阶段读到的本地 mine 文件树，供 mergeCommit 复用，
+  // 使「预览→提交」两步只读一次本地（详见 orchestration.ts mergeCommitOrchestrated）。
+  const mergeMineFilesCache = new Map<
+    string,
+    NonNullable<MergePreviewResponse['mineFiles']>
+  >()
+
   /** AI 合并预览（只算不写）。 */
   async function mergePreview(deploymentId: string) {
-    return await mergePreviewDeployment(deploymentId, findDeployment(deploymentId))
+    const res = await mergePreviewDeployment(deploymentId, findDeployment(deploymentId))
+    if (res.success && res.mineFiles) {
+      mergeMineFilesCache.set(deploymentId, res.mineFiles)
+    } else {
+      mergeMineFilesCache.delete(deploymentId)
+    }
+    return res
   }
 
   /** AI 合并提交（写回团队仓库 + 覆盖本地 + 登记同步）。 */
@@ -233,12 +247,16 @@ export const useProjectSyncStore = defineStore('project-sync', () => {
     expectedTheirsHash: string,
   ) {
     const projectId = currentProjectId.value
+    const mineFiles = mergeMineFilesCache.get(deploymentId)
     const res = await mergeCommitDeployment(
       deploymentId,
       merged,
       expectedTheirsHash,
       findDeployment(deploymentId),
+      mineFiles,
     )
+    // 一次提交后即失效缓存（无论成败）：避免下次预览前误用过期 mine。
+    mergeMineFilesCache.delete(deploymentId)
     if (res.success && projectId) {
       await selectProject(projectId)
     }

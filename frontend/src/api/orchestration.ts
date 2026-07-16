@@ -8,10 +8,11 @@
  *
  * 云端协作端点 DTO 严格对齐 `contracts/local-agent-api.md` §9。
  *
- * ⚠️ 云端依赖（M1 落地）：build-artifact / register-deployment / commit-pull /
- * push（内容版）/ import-content 等端点属云端 C 类改造，**当前后端尚未实现**。
- * 因此这些编排路径仅在 runtimeConfig.orchestration=true（桌面/联调）时启用；web 灰度
- * 默认走旧端点（见各 api/*.ts 的分流）。所有依赖云端新端点处均以 TODO(cloud) 标注。
+ * 云端依赖（M1 已落地）：build-artifact / register-deployment / commit-pull /
+ * push（内容版）/ import-content / merge-preview / merge-apply / commit-merge 等
+ * 协作端点已在后端 `backend/app/api/projects.py` 实现。这些编排路径在
+ * runtimeConfig.orchestration=true（桌面/联调）时启用；web 灰度默认走旧端点
+ * （见各 api/*.ts 的分流）。
  */
 import { cloudClient } from './client'
 import { TOOL_TYPES } from '@/constants/platforms'
@@ -53,16 +54,19 @@ export interface CloudResourceItem {
 /** 抽象快照（云端权威生成；deploy/pull 由云端从构建产物直接产出）。 */
 export type AbstractSnapshot = Record<string, unknown>
 
-/** ① 云端构建产物（不写盘、不登记）。 */
+/**
+ * ① 云端构建产物（不写盘、不登记）。
+ * R-A 统一口径：响应体为 snake_case（与后端 BuildArtifactResponse 对齐）。
+ */
 export interface BuildArtifactResponse {
   success: boolean
-  skillId: string
+  skill_id: string
   tool: ToolType
   contents: Record<string, string>
   resources: CloudResourceItem[]
-  repoHash: string
-  repoVersion: number
-  abstractSnapshot: AbstractSnapshot
+  repo_hash: string
+  repo_version: number
+  abstract_snapshot: AbstractSnapshot
   error?: string
 }
 
@@ -102,7 +106,7 @@ export interface ImportContentRequest {
   teamId?: string
 }
 
-// ===================== 云端编排端点调用（TODO: M1 后端落地）=====================
+// ===================== 云端编排端点调用（M1 已落地，见 backend/app/api/projects.py）=====================
 
 /** POST /projects/{pid}/skills/{sid}/build-artifact —— 项目 Skill 构建产物。 */
 async function buildArtifactForProjectSkill(
@@ -110,7 +114,7 @@ async function buildArtifactForProjectSkill(
   skillId: string,
   tool: ToolType,
 ): Promise<BuildArtifactResponse> {
-  // TODO(cloud): 云端 C 类端点（M1）。返回 contents+resources+repoHash+abstractSnapshot。
+  // 云端协作端点（已实现）：返回 contents+resources+repoHash+abstractSnapshot。
   const { data } = await cloudClient.post<BuildArtifactResponse>(
     `/projects/${projectId}/skills/${skillId}/build-artifact`,
     { tool },
@@ -122,7 +126,7 @@ async function buildArtifactForProjectSkill(
 async function buildArtifactForDeployment(
   deploymentId: string,
 ): Promise<BuildArtifactResponse> {
-  // TODO(cloud): 云端 C 类端点（M1）。build 团队仓库最新 → contents+resources+teamHash。
+  // 云端协作端点（已实现）：build 团队仓库最新 → contents+resources+teamHash。
   const { data } = await cloudClient.post<BuildArtifactResponse>(
     `/skill-deployments/${deploymentId}/build-artifact`,
     {},
@@ -135,8 +139,8 @@ async function buildArtifactForStoreSkill(
   skillId: string,
   tool: ToolType,
 ): Promise<BuildArtifactResponse> {
-  // TODO(cloud): 契约 §9 仅列了 project/deployment build-artifact；个人仓库部署所需的
-  // store 级 build-artifact（返回 contents+resources）需 M1 补齐并与云端对齐字段。
+  // 云端协作端点（已实现）：契约 §9 列了 project/deployment build-artifact；
+  // 此为 store 级 build-artifact（返回 contents+resources），用于个人仓库部署。
   const { data } = await cloudClient.post<BuildArtifactResponse>(
     `/skill-forge/store/${skillId}/build-artifact`,
     { tool },
@@ -150,7 +154,7 @@ async function registerDeployment(
   skillId: string,
   body: RegisterDeploymentRequest,
 ): Promise<SkillDeploymentResponse> {
-  // TODO(cloud): 云端 C 类端点（M1）。UPSERT UserSkillDeployment + 写 change log。
+  // 云端协作端点（已实现）：UPSERT UserSkillDeployment + 写 change log。
   const { data } = await cloudClient.post<SkillDeploymentResponse>(
     `/projects/${projectId}/skills/${skillId}/register-deployment`,
     body,
@@ -163,7 +167,7 @@ async function commitPull(
   deploymentId: string,
   body: CommitPullRequest,
 ): Promise<PullUpdateResponse> {
-  // TODO(cloud): 云端 C 类端点（M1）。status=synced, local_dirty=false, 写 change log(pulled)。
+  // 云端协作端点（已实现）：status=synced, local_dirty=false, 写 change log(pulled)。
   const { data } = await cloudClient.post<PullUpdateResponse>(
     `/skill-deployments/${deploymentId}/commit-pull`,
     body,
@@ -176,7 +180,7 @@ async function pushContent(
   deploymentId: string,
   body: PushDeploymentRequest,
 ): Promise<PushDeploymentResponse> {
-  // TODO(cloud): 同名端点 M1 改造为接收 {currentHash, files}（临时目录重建 → diff → 写回 Store）。
+  // 云端协作端点（已实现）：接收 {currentHash, files}（临时目录重建 → diff → 写回 Store）。
   const { data } = await cloudClient.post<PushDeploymentResponse>(
     `/skill-deployments/${deploymentId}/push`,
     body,
@@ -188,7 +192,7 @@ async function pushContent(
 async function importContent(
   body: ImportContentRequest,
 ): Promise<MutationResponse> {
-  // TODO(cloud): 云端 C 类端点（M1）。临时目录重建 files → 复用 import_from_external 解析落 Store。
+  // 云端协作端点（已实现）：临时目录重建 files → 复用 import_from_external 解析落 Store。
   const { data } = await cloudClient.post<MutationResponse>(
     '/skill-forge/store/import-content',
     body,
@@ -249,7 +253,7 @@ export async function deployProjectSkillOrchestrated(
       deployPath: payload.deploy_path,
       scope: 'project',
       tool,
-      skillId: artifact.skillId || skillId,
+      skillId: artifact.skill_id || skillId,
       contents: artifact.contents,
       resources: toWriteResources(artifact.resources),
       overwrite: payload.overwrite ?? false,
@@ -262,9 +266,9 @@ export async function deployProjectSkillOrchestrated(
       deployPath: payload.deploy_path,
       installPath: write.installPath,
       installedHash: write.installedHash,
-      repoHash: artifact.repoHash,
-      repoVersion: artifact.repoVersion,
-      abstractSnapshot: artifact.abstractSnapshot,
+      repoHash: artifact.repo_hash,
+      repoVersion: artifact.repo_version,
+      abstractSnapshot: artifact.abstract_snapshot,
       overwrite: payload.overwrite,
     })
   } catch (e) {
@@ -294,7 +298,7 @@ export async function deployProjectSkillGlobalOrchestrated(
     const write = await localAgent.writeSkill({
       scope: 'platform',
       tool,
-      skillId: artifact.skillId || skillId,
+      skillId: artifact.skill_id || skillId,
       contents: artifact.contents,
       resources: toWriteResources(artifact.resources),
       overwrite: true,
@@ -332,7 +336,7 @@ export async function pullUpdateOrchestrated(
       deployPath: deployment.deploy_path,
       scope: 'project',
       tool,
-      skillId: artifact.skillId,
+      skillId: artifact.skill_id,
       contents: artifact.contents,
       resources: toWriteResources(artifact.resources),
       overwrite: true,
@@ -342,9 +346,9 @@ export async function pullUpdateOrchestrated(
     // 云端登记拉取提交
     return await commitPull(deploymentId, {
       installedHash: write.installedHash,
-      repoHash: artifact.repoHash,
-      repoVersion: artifact.repoVersion,
-      abstractSnapshot: artifact.abstractSnapshot,
+      repoHash: artifact.repo_hash,
+      repoVersion: artifact.repo_version,
+      abstractSnapshot: artifact.abstract_snapshot,
     })
   } catch (e) {
     return { success: false, error: errMsg(e) }
@@ -429,6 +433,12 @@ export interface MergePreviewResponse {
   notes: string[]
   merge_available: boolean
   theirs_hash: string
+  /**
+   * 客户端编排回填（server 不返回）：preview 阶段读到的本地 mine 文件树。
+   * 供 commit 复用，使 preview/apply 只读一次本地（R-D），并保证「合并稿所基于的
+   * mine」与 apply 落库的 mine 完全一致。
+   */
+  mineFiles?: FilePayload[]
 }
 
 /** merge-apply 响应（artifact 为 native 构建产物，供覆盖落盘）。 */
@@ -480,7 +490,8 @@ export async function mergePreviewOrchestrated(
       `/skill-deployments/${deploymentId}/merge-preview`,
       { currentHash: cur.hash, files: folder.files },
     )
-    return data
+    // R-D：回填本地 mine 文件树，供 commit 复用，避免 apply 二次 read-folder。
+    return { ...data, mineFiles: folder.files }
   } catch (e) {
     return emptyPreview(errMsg(e))
   }
@@ -495,16 +506,25 @@ export async function mergeCommitOrchestrated(
   deployment: UserSkillDeploymentInfo,
   merged: MergedContent,
   expectedTheirsHash: string,
+  mineFiles?: FilePayload[],
 ): Promise<MergeCommitResult> {
   const tool = asTool(deployment.tool_type)
   try {
-    const folder = await localAgent.readFolder({
-      path: deployment.install_path,
-      include: 'all',
-    })
+    // R-D：优先复用 preview 阶段读到的本地 mine 文件，保证「合并稿所基于的 mine」与
+    // apply 落库的 mine 一致，且 preview/apply 只读一次本地；缺失时（如绕过 preview
+    // 直接提交）回退再读一次盘。
+    const files =
+      mineFiles && mineFiles.length > 0
+        ? mineFiles
+        : (
+            await localAgent.readFolder({
+              path: deployment.install_path,
+              include: 'all',
+            })
+          ).files
     const { data: apply } = await cloudClient.post<MergeApplyResponse>(
       `/skill-deployments/${deploymentId}/merge-apply`,
-      { files: folder.files, merged, expectedTheirsHash },
+      { files, merged, expectedTheirsHash },
     )
     if (!apply.success || !apply.artifact) {
       return { success: false, conflict: apply.conflict, error: apply.error || '合并提交失败' }
@@ -514,7 +534,7 @@ export async function mergeCommitOrchestrated(
       deployPath: deployment.deploy_path,
       scope: 'project',
       tool,
-      skillId: artifact.skillId || deployment.team_skill_id,
+      skillId: artifact.skill_id || deployment.team_skill_id,
       contents: artifact.contents,
       resources: toWriteResources(artifact.resources),
       overwrite: true,
@@ -524,9 +544,9 @@ export async function mergeCommitOrchestrated(
       `/skill-deployments/${deploymentId}/commit-merge`,
       {
         installedHash: write.installedHash,
-        repoHash: artifact.repoHash,
-        repoVersion: artifact.repoVersion,
-        abstractSnapshot: artifact.abstractSnapshot,
+        repoHash: artifact.repo_hash,
+        repoVersion: artifact.repo_version,
+        abstractSnapshot: artifact.abstract_snapshot,
       },
     )
     return data
@@ -618,7 +638,7 @@ export async function deployNativeSkillOrchestrated(
       deployPath: destPath,
       scope,
       tool,
-      skillId: artifact.skillId || id,
+      skillId: artifact.skill_id || id,
       contents: artifact.contents,
       resources: toWriteResources(artifact.resources),
       overwrite: true,

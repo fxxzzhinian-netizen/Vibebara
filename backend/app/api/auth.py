@@ -36,17 +36,21 @@ def _check_captcha(captcha_token: str) -> Optional[dict]:
 async def get_current_user_id(
     authorization: Optional[str] = Header(None),
 ) -> str:
-    """从 Authorization header 提取并验证 token，返回 user_id。"""
+    """从 Authorization header 提取并校验凭据，返回 user_id。
+
+    统一凭据路径：登录态（vhs_）与长期 API Key（vhk_）同走 verify_credential。
+    """
     if not authorization:
         raise HTTPException(status_code=401, detail="未提供认证信息")
 
     token = authorization
     if token.startswith("Bearer "):
         token = token[7:]
+    token = token.strip()
 
-    user_id = auth_service.verify_token(token)
+    user_id = await auth_service.verify_credential(token)
     if not user_id:
-        raise HTTPException(status_code=401, detail="无效或过期的 token")
+        raise HTTPException(status_code=401, detail="无效或过期的凭据")
     return user_id
 
 

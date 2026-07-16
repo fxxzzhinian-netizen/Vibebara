@@ -20,9 +20,6 @@ class User(Base):
     )
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(128), default="")
-    api_key_hash: Mapped[str | None] = mapped_column(
-        String(128), nullable=True, unique=True
-    )
     # 注册时消费的邀请码（规范化形式），用于追溯；种子/历史用户为空
     invite_code_used: Mapped[str | None] = mapped_column(
         String(16), nullable=True

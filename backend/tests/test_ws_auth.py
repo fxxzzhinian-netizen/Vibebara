@@ -74,7 +74,11 @@ class _FakeSync:
 
 def _patch_project(monkey_token_user, team_id, is_member):
     proj = _ProjMgr()
-    r.verify_token = lambda tok: monkey_token_user
+
+    async def _verify(tok):
+        return monkey_token_user
+
+    r.verify_credential = _verify
 
     async def _get_team(pid):
         return team_id

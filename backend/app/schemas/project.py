@@ -182,11 +182,13 @@ class SyncPullResponse(BaseModel):
 # =========================================================================
 # 方案 B · M4 云端编排端点 DTO（镜像 contracts/local-agent-api.md §9）
 #
-# 约定：请求体同时接受 camelCase（契约口径，前端编排默认）与 snake_case（后端
-# 既有口径）——`populate_by_name=True` + camelCase alias。响应体：
-#   - build-artifact 为全新产物端点，**输出 camelCase**（与契约 TS interface 一致）；
-#   - register-deployment / commit-pull / push 复用既有 snake_case 响应 schema
-#     （契约 §9 注：「保持响应体不变，仅入参从路径改为内容/hash」）。
+# 约定（R-A 统一口径，2026-06）：
+#   - 请求体：同时接受 camelCase（契约口径，前端编排默认）与 snake_case（后端
+#     既有口径 / CLI）——`populate_by_name=True` + camelCase alias。
+#   - 响应体：**全量 snake_case**。build-artifact / merge-apply.artifact 历史上
+#     曾输出 camelCase；现已去除 serialization_alias 与路由 response_model_by_alias，
+#     与 merge-preview / push / pull / commit-* 等其余响应口径统一为 snake_case，
+#     消除「逐端点大小写混用」陷阱（见 docs/design/skill-merge-cli.md §16 R-A）。
 # =========================================================================
 
 
@@ -221,20 +223,16 @@ class BuildArtifactRequest(BaseModel):
 
 
 class BuildArtifactResponse(BaseModel):
-    """① 构建产物（不写盘、不登记）——契约 BuildArtifactResponse（camelCase 输出）。"""
-
-    model_config = ConfigDict(populate_by_name=True)
+    """① 构建产物（不写盘、不登记）——契约 BuildArtifactResponse（R-A 统一为 snake_case 输出）。"""
 
     success: bool
-    skill_id: str = Field(default="", serialization_alias="skillId")
+    skill_id: str = ""
     tool: str = ""
     contents: Dict[str, str] = {}
     resources: List[CloudResourceItem] = []
-    repo_hash: str = Field(default="", serialization_alias="repoHash")
-    repo_version: int = Field(default=0, serialization_alias="repoVersion")
-    abstract_snapshot: Dict[str, Any] = Field(
-        default_factory=dict, serialization_alias="abstractSnapshot"
-    )
+    repo_hash: str = ""
+    repo_version: int = 0
+    abstract_snapshot: Dict[str, Any] = Field(default_factory=dict)
     error: Optional[str] = None
 
 

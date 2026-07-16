@@ -1,4 +1,5 @@
 from app.models.user import User
+from app.models.auth_token import AuthToken
 from app.models.team import Team, TeamMember
 from app.models.project import Project, ProjectSkill, UserSkillDeployment
 from app.models.skill_package import PersonalSkill, TeamSkill
@@ -10,6 +11,7 @@ from app.models.invite_code import InviteCode
 
 __all__ = [
     "User",
+    "AuthToken",
     "Team",
     "TeamMember",
     "Project",

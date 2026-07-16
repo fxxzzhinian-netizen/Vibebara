@@ -288,7 +288,7 @@ def _install_router_stubs():
     """打桩 token 校验 / 团队成员 / 项目归属 / 编排服务，绕开 DB 与 Node。"""
     token_user = {"tok-member": "u-member", "tok-other": "u-other"}
 
-    def fake_verify(token):
+    async def fake_verify(token):
         return token_user.get(token)
 
     async def fake_get_team_id(project_id):
@@ -313,13 +313,13 @@ def _install_router_stubs():
         return {"success": True, "deployment": None}
 
     saved = {
-        "verify": auth_service.verify_token,
+        "verify": auth_service.verify_credential,
         "team_id": project_service.get_project_team_id,
         "is_member": team_service.is_team_member,
         "build": project_service.build_project_skill_artifact,
         "register": project_service.register_deployment,
     }
-    auth_service.verify_token = fake_verify
+    auth_service.verify_credential = fake_verify
     project_service.get_project_team_id = fake_get_team_id
     team_service.is_team_member = fake_is_member
     project_service.build_project_skill_artifact = fake_build
@@ -328,7 +328,7 @@ def _install_router_stubs():
 
 
 def _restore_router_stubs(saved):
-    auth_service.verify_token = saved["verify"]
+    auth_service.verify_credential = saved["verify"]
     project_service.get_project_team_id = saved["team_id"]
     team_service.is_team_member = saved["is_member"]
     project_service.build_project_skill_artifact = saved["build"]
@@ -352,7 +352,7 @@ def test_router_auth_and_tenancy():
         )
         assert r.status_code == 403, r.text
 
-        # 团队成员 → 放行，返回 camelCase 产物
+        # 团队成员 → 放行，返回 snake_case 产物（R-A 统一口径）
         r = client.post(
             f"{base}/build-artifact",
             json={"tool": "cursor"},
@@ -360,9 +360,9 @@ def test_router_auth_and_tenancy():
         )
         assert r.status_code == 200, r.text
         body = r.json()
-        assert body["skillId"] == "skill1"
-        assert body["repoHash"] == "h"
-        assert "abstractSnapshot" in body
+        assert body["skill_id"] == "skill1"
+        assert body["repo_hash"] == "h"
+        assert "abstract_snapshot" in body
 
         # register-deployment：非成员 → 403
         reg_body = {
@@ -404,7 +404,7 @@ def test_store_build_artifact_route():
 
     token_user = {"tok-a": "u-a"}
 
-    def fake_verify(token):
+    async def fake_verify(token):
         return token_user.get(token)
 
     async def fake_assert_ok(skill_id, user_id):
@@ -425,10 +425,10 @@ def test_store_build_artifact_route():
             "abstract_snapshot": {},
         }
 
-    saved_verify = auth_service.verify_token
+    saved_verify = auth_service.verify_credential
     saved_assert = ss._assert_skill_accessible
     saved_build = ss.project_service.build_store_skill_artifact
-    auth_service.verify_token = fake_verify
+    auth_service.verify_credential = fake_verify
     ss.project_service.build_store_skill_artifact = lambda sid, uid, tool: fake_build(sid, uid, tool)
     path = "/api/v1/skill-forge/store/my-skill/build-artifact"
     try:
@@ -442,16 +442,16 @@ def test_store_build_artifact_route():
         assert r.status_code == 200, r.text
         assert r.json()["success"] is False
 
-        # 有权 → 放行，返回 camelCase 产物
+        # 有权 → 放行，返回 snake_case 产物（R-A 统一口径）
         ss._assert_skill_accessible = fake_assert_ok
         r = client.post(path, json={"tool": "cursor"}, headers={"Authorization": "Bearer tok-a"})
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["success"] is True
-        assert body["skillId"] == "my-skill"
-        assert body["repoHash"] == "h"
+        assert body["skill_id"] == "my-skill"
+        assert body["repo_hash"] == "h"
     finally:
-        auth_service.verify_token = saved_verify
+        auth_service.verify_credential = saved_verify
         ss._assert_skill_accessible = saved_assert
         ss.project_service.build_store_skill_artifact = saved_build
 

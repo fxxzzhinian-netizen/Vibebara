@@ -262,7 +262,6 @@ async def deploy_project_skill(
 @api_router.post(
     "/projects/{project_id}/skills/{skill_id}/build-artifact",
     response_model=BuildArtifactResponse,
-    response_model_by_alias=True,
 )
 async def build_project_skill_artifact(
     project_id: str,
@@ -425,7 +424,6 @@ async def pull_update_deployment(
 @api_router.post(
     "/skill-deployments/{deployment_id}/build-artifact",
     response_model=BuildArtifactResponse,
-    response_model_by_alias=True,
 )
 async def build_deployment_artifact(
     deployment_id: str,
@@ -483,7 +481,6 @@ async def merge_preview(
 @api_router.post(
     "/skill-deployments/{deployment_id}/merge-apply",
     response_model=MergeApplyResponse,
-    response_model_by_alias=True,
 )
 async def merge_apply(
     deployment_id: str,
