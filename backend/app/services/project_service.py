@@ -1465,6 +1465,25 @@ async def pull_update_deployment(
     }
 
 
+async def list_user_deployments(user_id: str) -> List[Dict[str, Any]]:
+    """列出当前用户跨项目的全部部署实例，供无头客户端寻址。
+
+    只按部署行自身的 user_id 隔离，不依赖客户端提供 project/team 条件，避免
+    CLI 为枚举 deployment_id 逐项目请求。排序固定为最近更新优先，便于 status
+    输出稳定且优先展示活跃部署。
+    """
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(UserSkillDeployment)
+            .where(UserSkillDeployment.user_id == user_id)
+            .order_by(
+                UserSkillDeployment.updated_at.desc(),
+                UserSkillDeployment.id,
+            )
+        )
+        return [_deployment_to_dict(row) for row in result.scalars().all()]
+
+
 async def list_tracked_deployments() -> List[Dict[str, Any]]:
     async with async_session_factory() as session:
         result = await session.execute(

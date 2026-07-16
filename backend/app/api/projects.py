@@ -32,6 +32,7 @@ from app.schemas.project import (
     SyncPullResponse,
     SyncPullItem,
     SyncStatusResponse,
+    UserSkillDeploymentListResponse,
 )
 from app.services import project_service, team_service
 from app.services.native_skill_store import NativeSkillStore
@@ -306,6 +307,18 @@ async def register_deployment(
         abstract_snapshot=data.abstract_snapshot,
         overwrite=data.overwrite,
     )
+
+
+@api_router.get(
+    "/skill-deployments/mine",
+    response_model=UserSkillDeploymentListResponse,
+)
+async def list_my_deployments(
+    user_id: str = Depends(get_current_user_id),
+):
+    """列出当前用户跨项目的部署实例，供 CLI/status 与 deployment 寻址。"""
+    deployments = await project_service.list_user_deployments(user_id)
+    return {"success": True, "deployments": deployments}
 
 
 @api_router.delete("/skill-deployments/{deployment_id}")

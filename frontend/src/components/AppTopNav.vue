@@ -4,10 +4,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/authStore'
 import { useTeamStore } from '@/stores/teamStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
+import { generateApiKey } from '@/api/auth'
 import { toast } from '@/composables/useToast'
 import { useSlideIndicator } from '@/composables/useSlideIndicator'
 import BaseModal from '@/components/BaseModal.vue'
-import { isDesktop } from '@/runtime/desktopBridge'
+import { getDesktopBridge, isDesktop } from '@/runtime/desktopBridge'
+import { getRuntimeConfig } from '@/runtime/config'
 import logoUrl from '@/img/logo.png'
 
 // 桌面壳（Electron）下隐藏了原生标题栏，顶栏需充当窗口拖动区，并为右上角原生窗口按钮留白。
@@ -28,6 +30,9 @@ const userMenuRef = ref<HTMLElement | null>(null)
 const spaceMenuOpen = ref(false)
 // 中间搜索栏输入（聚焦时展开宽度）。
 const searchQuery = ref('')
+const cliAuthorizing = ref(false)
+const cliKeyModalOpen = ref(false)
+const generatedCliKey = ref('')
 
 // 中间导航项随当前空间动态变化：
 //   个人空间 → SKILL 仓库 / SKILL 市场
@@ -181,6 +186,73 @@ function logout() {
   closeUserMenu()
   authStore.logout()
   router.push('/login')
+}
+
+async function authorizeCli() {
+  if (cliAuthorizing.value) return
+  if (
+    !window.confirm(
+      '为 CLI 生成新的长期凭据？继续后会吊销此前生成的 CLI API Key。',
+    )
+  ) {
+    return
+  }
+
+  cliAuthorizing.value = true
+  try {
+    const bridge = getDesktopBridge()
+    const cloudApiBase = bridge ? getRuntimeConfig().cloudApiBase : ''
+    if (bridge) {
+      const parsed = new URL(cloudApiBase)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error('桌面云端地址无效，无法写入 CLI 配置')
+      }
+    }
+
+    const issued = await generateApiKey()
+    if (!issued.success || !issued.api_key) {
+      throw new Error(issued.error || 'API Key 生成失败')
+    }
+
+    if (bridge) {
+      try {
+        const result = await bridge.cli.authorize({
+          apiKey: issued.api_key,
+          cloudApiBase,
+        })
+        closeUserMenu()
+        toast.success(`CLI 已授权，配置已写入 ${result.configPath}`)
+      } catch {
+        // PAT 明文只返回一次；自动写盘失败时必须回显，避免刚轮换的 key 永久丢失。
+        generatedCliKey.value = issued.api_key
+        cliKeyModalOpen.value = true
+        closeUserMenu()
+        toast.error('自动写入失败，请复制 API Key 手动登录 CLI')
+      }
+    } else {
+      generatedCliKey.value = issued.api_key
+      cliKeyModalOpen.value = true
+      closeUserMenu()
+    }
+  } catch (error) {
+    toast.error((error as Error)?.message || 'CLI 授权失败')
+  } finally {
+    cliAuthorizing.value = false
+  }
+}
+
+async function copyGeneratedCliKey() {
+  try {
+    await navigator.clipboard.writeText(generatedCliKey.value)
+    toast.success('API Key 已复制')
+  } catch {
+    toast.error('复制失败，请手动复制')
+  }
+}
+
+function selectGeneratedCliKey(event: FocusEvent) {
+  const target = event.target as HTMLTextAreaElement | null
+  target?.select()
 }
 
 function onClickOutside(e: MouseEvent) {
@@ -384,6 +456,14 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="dropdown-divider"></div>
+            <button
+              class="dropdown-item cli-auth"
+              :disabled="cliAuthorizing"
+              @click="authorizeCli"
+            >
+              {{ cliAuthorizing ? '正在授权…' : desktop ? '为 CLI 授权' : '生成 CLI API Key' }}
+            </button>
+            <div class="dropdown-divider"></div>
             <button class="dropdown-item logout" @click="logout">退出登录</button>
           </div>
         </transition>
@@ -422,6 +502,26 @@ onBeforeUnmount(() => {
       </div>
       <template #footer>
         <button class="btn-sm btn-primary" @click="submitJoinTeam">加入</button>
+      </template>
+    </BaseModal>
+
+    <BaseModal
+      :model-value="cliKeyModalOpen"
+      title="CLI API Key（仅显示一次）"
+      @update:model-value="cliKeyModalOpen = $event"
+    >
+      <p class="cli-key-help">
+        请运行 <code>vibebara login --api-key &lt;key&gt;</code>，或将密钥保存到 CI Secret。
+      </p>
+      <textarea
+        class="cli-key-value"
+        :value="generatedCliKey"
+        readonly
+        rows="4"
+        @focus="selectGeneratedCliKey"
+      ></textarea>
+      <template #footer>
+        <button class="btn-sm btn-primary" @click="copyGeneratedCliKey">复制 API Key</button>
       </template>
     </BaseModal>
   </header>
@@ -856,6 +956,15 @@ onBeforeUnmount(() => {
   background: #fef2f2;
 }
 
+.dropdown-item.cli-auth {
+  font-weight: 600;
+}
+
+.dropdown-item:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .dropdown-enter-active,
 .dropdown-leave-active {
   transition: opacity 0.15s ease, transform 0.15s ease;
@@ -933,6 +1042,32 @@ onBeforeUnmount(() => {
   background: #2d2f2f;
   border-color: #2d2f2f;
   color: #ffffff;
+}
+
+.cli-key-help {
+  margin: 0 0 12px;
+  color: #6b7280;
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.cli-key-help code {
+  color: #151717;
+}
+
+.cli-key-value {
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  padding: 10px 12px;
+  border: 1px solid #dfe2e6;
+  border-radius: 7px;
+  background: #f6f7f8;
+  color: #151717;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  word-break: break-all;
 }
 
 @media (max-width: 768px) {

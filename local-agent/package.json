@@ -28,6 +28,7 @@
     "windsurf"
   ],
   "dependencies": {
+    "@vibebara/local-core": "file:../local-core",
     "js-yaml": "^4.1.0",
     "ws": "^8.18.0"
   },

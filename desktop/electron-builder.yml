@@ -36,6 +36,12 @@ extraResources:
   - from: ../local-agent/node_modules/argparse
     to: local-agent/node_modules/argparse
     filter: ["**/*"]
+  # local-agent 与 CLI 共用的文件/hash 内核（file: 依赖不会随上面三方依赖自动打包）。
+  - from: ../local-core
+    to: local-agent/node_modules/@vibebara/local-core
+    filter:
+      - package.json
+      - dist/**/*
   - from: ../local-agent/package.json
     to: local-agent/package.json
   - from: ../frontend/dist

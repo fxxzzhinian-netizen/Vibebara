@@ -12,6 +12,7 @@ docs/
 │   ├── skill-forge.md               抽象 Skill 包格式 & 多平台构建规则、反向导入
 │   ├── skill-collaboration-sync.md  ★ Skill 协作与同步的当前实现（单一事实来源）
 │   ├── ai-assisted-merge.md         冲突时的 AI 三方合并（预览可编辑 + 一键提交）
+│   ├── skill-merge-cli.md           无头 CLI 的架构、执行进度与验收计划
 │   ├── ide-import.md                从 IDE 工具导入 Skill 到个人仓库
 │   ├── personal-team-skill-split.md 个人 / 团队 Skill 拆表（数据层隔离）
 │   └── cos-storage.md               后端 Skill 存储迁移到腾讯云 COS（对象存储）
@@ -35,6 +36,7 @@ docs/
 | [design/skill-forge.md](design/skill-forge.md) | 设计 | 抽象 Skill 包（`skill.config.yaml` + `SKILL.md`）、多平台构建规则、反向导入 |
 | [design/skill-collaboration-sync.md](design/skill-collaboration-sync.md) | 实现纪要 | 个人/团队仓库隔离、放入团队、部署、手动推送（抽象层 diff）、拉取更新的完整链路（**单一事实来源**） |
 | [design/ai-assisted-merge.md](design/ai-assisted-merge.md) | 设计 | 推送冲突时对 base/mine/theirs 做 AI 三方合并（正文 + 配置 + 文本资源），预览可编辑后一键提交 |
+| [design/skill-merge-cli.md](design/skill-merge-cli.md) | 设计与执行计划 | `vibebara` CLI 的鉴权、本地共享内核、merge/push/pull 编排、分发与验收进度 |
 | [design/ide-import.md](design/ide-import.md) | 设计 | 从已安装 IDE（Cursor/Codex 等）的全局目录反向导入 Skill 到个人仓库 |
 | [design/personal-team-skill-split.md](design/personal-team-skill-split.md) | 设计 | 个人 / 团队 Skill 数据层拆表隔离（`owner_id` / `scope`） |
 | [design/cos-storage.md](design/cos-storage.md) | 设计 | Skill 持久化由本地磁盘卷迁移到腾讯云 COS；hash 口径与本地代理位级一致 |

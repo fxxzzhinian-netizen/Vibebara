@@ -16,12 +16,15 @@
 | 阶段 | 状态 | 交付物 / 验收 |
 |------|------|---------------|
 | P0 设计与风险收口 | ✅ 已完成 | Token 根治、响应 snake_case、merge 本地只读一次、同机锁定、包结构与 npm 分发方案均已敲定 |
-| M-pre PAT 引导 | ⏳ 待实施 | 桌面「为 CLI 授权」一键写入 `~/.vibebara/config.json`；web/CI 回退为一次性复制 PAT |
-| M0–M2 本地内核 | ⏳ 待实施 | 新建 `local-core` / `cli` 包；抽取文件与 hash 逻辑；local-agent 切源；三方 hash 对拍 |
-| M3 后端寻址 | ⏳ 待实施 | `GET /skill-deployments/mine` + 用户归属隔离测试（唯一新增后端业务端点） |
-| M4–M5 CLI 基础 | ⏳ 待实施 | config / REST client / DTO / 输出与退出码；login / whoami / logout / status；同机校验 |
-| M6–M7 协作命令 | ⏳ 待实施 | merge / push / pull 完整编排 |
-| M8–M9 分发验收 | ⏳ 待实施 | npm / `npx vibebara`、README、Agent `SKILL.md`、端到端与跨工具冒烟 |
+| M-pre PAT 引导 | 🟡 代码完成，待桌面实机 | 已实现「为 CLI 授权」→ preload/IPC → 原子写 `~/.vibebara/config.json`；web 回退一次性复制；desktop build、vue-tsc、桌面/移动视口 UI 已验证 |
+| M0–M1 脚手架/本地内核 | ✅ 已完成 | 已建 `local-core` / `cli` 包；抽取 hash/读写/安全/平台逻辑；core 3 tests passed |
+| M2 local-agent 切源 | ✅ 已完成 | local-agent 已经 `file:` 依赖/re-export `local-core`，47 tests passed；Windows unpackaged build 成功并确认 core `package.json + dist/index.js` 在资源目录 |
+| M3 后端寻址 | ✅ 已完成 | `GET /skill-deployments/mine` + `list_user_deployments` + 用户归属查询/路由鉴权测试 |
+| M4 CLI 基础设施 | ✅ 已完成 | config / REST client / DTO / 输出与退出码已落地；CLI build + 3 tests passed |
+| M5 CLI 基础命令 | 🟡 代码完成，待云端联调 | login / whoami / logout / status、仓库寻址、同机校验已实现；待 P3 的真实 IP/账号联调 |
+| M6–M7 协作命令 | 🟡 代码完成，待云端端到端 | merge preview/apply 单次读盘、乐观锁、push/pull 与退出码均已实现；mock 云端编排测试通过 |
+| M8 npm 分发准备 | 🟡 产物完成，待 scope 发布 | README、Agent `SKILL.md`、prepack 与 bundled local-core 已完成；tarball 已在全新临时目录安装并成功运行 `vibebara --help` |
+| M9 端到端验收 | ⏳ 待 P3 | 真实 IP/账号下的 merge/push/pull 与跨工具冒烟 |
 
 **关键路径**：`M0 → M1 → M2 → M4 → M5 → M6/M7 → M8 → M9`；`M-pre` 可与 `M0–M4` 并行但必须在 M5 联调前完成，M3 可与 M0–M2 并行。
 
@@ -163,7 +166,7 @@ cli/                             # 新增：vibebara CLI
 └── tsconfig.json
 ```
 
-技术栈与 `local-agent` / `skill-forge` 对齐：TypeScript(ESM) + Commander.js + Vitest；Node>=20，HTTP 用内置 `fetch`（避免新增 axios 依赖）。
+技术栈：Node>=20 + TypeScript + Vitest；`cli` 使用 ESM + Commander.js + 内置 `fetch`（避免新增 axios），`local-core` 输出 CommonJS，以便现有 CommonJS `local-agent` 零模块制式迁移直接复用（ESM CLI 可正常消费 CommonJS 导出）。
 
 ---
 
@@ -326,16 +329,16 @@ pull：`build-artifact` 取团队最新 → `writeSkill` 覆盖 → `commit-pull
 > - **P3 可达后端地址 + 测试账号**：M5+ 调试与 M9 端到端需一个可达 `IP:port` 与能登录的账号（Q5 现状为 IP+HTTP）。
 > - **不构成前置**：正式 HTTPS 域名（Q5，仅挡 GA）、npm scope 归属（Q6/M8，仅挡发布，本地 `file:` 开发不需要）。
 
-- **M-pre｜PAT 引导（C+，前置 P2）**：①`frontend` 设置区加按钮「为 CLI 授权」（desktop 模式可见），调 `POST /auth/api-key` 取 `vhk_`；②`desktop` preload/contextBridge + 主进程把 `{apiKey, cloudApiBase}` 写入 `~/.vibebara/config.json`（`0600`，复用 CLI 同一路径/格式）；③web/CI 回退：同按钮一次性回显 `vhk_` 供人工 `login --api-key`。**可与 M0–M4 并行，须在 M5 登录联调前完成**。不依赖 `local-core`/`cli` 包。
-- **M0｜脚手架**：建 `local-core/` 与 `cli/` 包（package.json/tsconfig/vitest，`@vibebara/*`、ESM、Node>=20、`tsc` 构建，与现有 node 包一致）；`cli` bin 注册 `vibebara`；**两包共用机制 = `file:` 依赖（§15-Q2 已定）**：`cli` 与（M2 起）`local-agent` 各自 `"@vibebara/local-core": "file:../local-core"`，**不建 workspace 根**、各包保留独立 `node_modules`。构建顺序：先 `local-core build` 再装依赖方。
-- **M1｜local-core 抽取**：迁入 `hash/walk/fileio/security/gitignore/platform`；落地纯函数 `readFolder()` / `writeSkill()`；补单测（**重点**：`computeDirHash` 与 `local-agent` 现产同输入同输出的对拍测试，锁死口径）。
-- **M2｜local-agent 切源**：`local-agent` 的对应模块改为从 `local-core` re-export / 调用（删重复实现），跑通既有 `local-agent/test/*`（hash/writeSkill/readFolder）。**桌面打包硬清单**：`local-agent` 新增运行时依赖 `@vibebara/local-core`，必须在 `desktop/electron-builder.yml` 的 `extraResources` 增一条把 `../local-core/dist` 打进 `local-agent/node_modules/@vibebara/local-core/dist`（否则装机后 local-agent 启动即 `MODULE_NOT_FOUND`）；并回归一次 `dist:win` 打包验证。
-- **M3｜后端寻址**：鉴权已随「Token 根治」完成（仅复用，见 §6）；本里程碑只实现 §10-2 —— `GET /skill-deployments/mine` + `project_service.list_user_deployments`，补后端测试（`mine` 列表归属隔离：只含本人部署）。
-- **M4｜CLI 基础设施**：`config`（凭据/base 读写）、`cloud/client`（Bearer=API Key + 错误归一）、`cloud/types`（DTO 移植）、`output`（人读 + `--json`）、退出码体系。
-- **M5｜命令：login/whoami/logout/status**：打通鉴权与 `status`（含本地 hash 实算与状态判定）；实现 §9.1 解析 + §9.2 **同机校验**（跨机 → 退码 6 友好提示），供 merge/push/pull 复用。
-- **M6｜命令：merge**（核心）：移植 `mergePreview/mergeCommit` 编排（preview→apply→writeSkill→commit-merge + 乐观锁）；实现 `--preview/--yes/--force-manual`。
-- **M7｜命令：push/pull**：移植对应编排；冲突拦截与退出码。
-- **M8｜分发与文档**：产出 `dist`；写 `cli/README.md`；产出一份给 Agent 用的 `SKILL.md`（指令="调 `vibebara merge`"），可经现有 skill 分发链路下发到各工具；把本文状态改为「已实现」并登记进 `docs/README.md` 索引。
+- **M-pre｜PAT 引导（C+，前置 P2）—— 🟡 代码完成，待桌面实机**：①`frontend` 用户菜单已加「为 CLI 授权」，调 `POST /auth/api-key`；②`desktop` 已加 preload/contextBridge/IPC + 主进程原子写 `{apiKey, cloudApiBase}` 到 `~/.vibebara/config.json`（`0600`）；③web/自动写盘失败会一次性回显 `vhk_`。`desktop build`、`vue-tsc` 与浏览器桌面/移动视口通过；待 Electron 实机点击验证。
+- **M0｜脚手架 —— ✅ 已完成**：已建 `local-core/`（CommonJS，兼容现有 local-agent）与 `cli/`（ESM）包，Node>=20；`cli` bin=`vibebara`；两端均以 `"@vibebara/local-core": "file:../local-core"` 复用，不建 workspace。
+- **M1｜local-core 抽取 —— ✅ 已完成**：已迁入 `hash/walk/fileio/security/gitignore/platform`，落地 `readFolder()` / `writeSkill()`；独立 Python 参考 hash / 固定 cloud hex 对拍与读写/逃逸测试共 3 项通过。
+- **M2｜local-agent 切源 —— ✅ 已完成**：对应模块已从 `local-core` re-export / 调用，既有 local-agent 47 tests passed；`electron-builder.yml` 已把 core `package.json + dist` 打进 local-agent 依赖目录。`electron-builder --win --dir` 成功，并已核验 `release/win-unpacked/resources/local-agent/node_modules/@vibebara/local-core/{package.json,dist/index.js}` 存在。
+- **M3｜后端寻址 —— ✅ 已完成**：已实现 `GET /skill-deployments/mine` + `project_service.list_user_deployments`，固定最近更新排序；数据库查询 user_id 过滤测试 + 路由鉴权测试通过。
+- **M4｜CLI 基础设施 —— ✅ 已完成**：已实现 config（同 C+ 格式）、Bearer REST client、snake_case DTO、JSON/人读输出、退出码体系；CLI build + 3 tests passed。
+- **M5｜命令：login/whoami/logout/status —— 🟡 代码完成，待云端联调**：已实现 PAT 登录校验/存储、身份查询、登出、跨项目 status、本地 hash 实算与状态判定；已实现 §9.1 仓库/部署解析 + §9.2 同机校验（退码 6）。待 P3 的真实后端 IP/测试账号做联调。
+- **M6｜命令：merge（核心）—— 🟡 代码完成，待云端端到端**：已移植 preview→apply→writeSkill→commit-merge，preview/apply 复用同一份 mine files；已实现 `--preview/--yes/--force-manual`、人工冲突退码 4、theirs 乐观锁冲突退码 3。mock 测试验证 preview 后本地文件变化不会污染 apply 上传树。
+- **M7｜命令：push/pull —— 🟡 代码完成，待云端端到端**：push 已实现本地无改动短路、全量文件上传、版本快照参数与冲突退码；pull 已实现本地 dirty 拦截、build-artifact→writeSkill→commit-pull。mock 云端 + 真实临时目录测试通过。
+- **M8｜分发与文档 —— 🟡 产物完成，待 npm scope 发布**：已产出 `dist`、`cli/README.md` 与 Agent `SKILL.md`，并登记到 `docs/README.md`；`npm pack --dry-run --json` 通过。发现并修复 `file:../local-core` 在外部安装不可达的问题：npm 包通过 `bundleDependencies` 内嵌 local-core，dry-run 确认 bundled dependency 与 79 个文件完整；生成 tarball 后已在全新临时目录 `npm install`，`vibebara --help` 与内嵌 core 路径核验均通过。待确认/登录 `@vibebara` npm scope 后移除 `private` 并正式发布；发布前不把本文状态改为「已实现」。
 - **M9｜端到端验收**：见 §12。
 
 每个里程碑结束需：本里程碑单测绿 + 不破坏既有 `local-agent` / `backend` 测试。
@@ -373,11 +376,11 @@ pull：`build-artifact` 取团队最新 → `writeSkill` 覆盖 → `commit-pull
 ## 15. 待决策 / 开放问题（评审时确认）
 
 - **Q1 local-agent 是否本期就切 `local-core`？** —— ✅ **已定（2026-06-29）：本期切（同源）**。M1 抽 `local-core`、M2 让 local-agent 切源删重复实现，并用 **fixture 对拍测试**（`local-core` == 旧 local-agent 产出 == 云端 `_compute_content_hash`）摁住 hash 漂移（§12 头号验收）。后备：若要缩半径，M1 先只让 CLI 用、local-agent 切源延到 M2 末。
-- **Q2 CLI 包归属与共享机制** —— ✅ **已定（2026-06-29）**。`cli` 与 `local-core` **各自独立成包**（`local-core`=纯文件/哈希引擎，被 local-agent 与 cli 共用；`cli`=命令行 App，依赖 local-core + 打云端），CLI **不并入** frontend/backend/desktop/skill-forge。共用机制 = **`file:` 依赖、不建 workspace 根**：各包保留独立 `node_modules`，`cli`/`local-agent` 经 `"@vibebara/local-core": "file:../local-core"` 引用。理由：`desktop/electron-builder.yml` 的 `extraResources` 逐个拷贝 `../local-agent/node_modules/<dep>`，**workspaces 的依赖 hoist 会令这些路径失效、打断正在发版的桌面打包**；`file:` 保留"每包各自 node_modules"模型，零扰动（代价：dev 时先 build local-core）。scope `@vibebara/cli`、bin 名 `vibebara`（与 `vibebara-local-agent` 区分）。
+- **Q2 CLI 包归属与共享机制** —— ✅ **已定（2026-06-29；2026-07-16 补充分发闭环）**。`cli` 与 `local-core` **各自独立成包**（`local-core`=纯文件/哈希引擎，被 local-agent 与 cli 共用；`cli`=命令行 App，依赖 local-core + 打云端），CLI **不并入** frontend/backend/desktop/skill-forge。仓库内共用机制 = **`file:` 依赖、不建 workspace 根**：各包保留独立 `node_modules`，`cli`/`local-agent` 经 `"@vibebara/local-core": "file:../local-core"` 引用。理由：`desktop/electron-builder.yml` 的 `extraResources` 逐个拷贝 `../local-agent/node_modules/<dep>`，**workspaces 的依赖 hoist 会令这些路径失效、打断桌面打包**；`file:` 保留"每包各自 node_modules"模型。**npm 分发闭环**：外部用户不存在 `../local-core`，故 `@vibebara/cli` 通过 `bundleDependencies` 将 local-core 内嵌在 tarball，不要求单独发布 local-core。scope `@vibebara/cli`、bin 名 `vibebara`。
 - **Q3 PAT 管理面** —— 🔸 **后续（不阻塞本期）**。当前「重生成 = 轮换」对 CLI 够用；是否补「列出 / 命名 / 单独吊销 PAT」端点 + 设置页 UI（`auth_tokens` 表已支持多条 / 命名 / 吊销，**仅缺端点**）留作增强。
 - **Q4 合并稿人工编辑** —— 🔸 **后续（不阻塞本期）**。本期用 `--preview` + 本地改文件 + `push`；`--edit` 拉起 `$EDITOR` 直接改 `merged` 留作增强。
 - **Q5 生产云端 Base URL 默认值** —— ✅ **已定（2026-06-29，方向）**。背景：CLI 是首个「无承载来源」的客户端——web 前端用同源相对 `/api/v1`（随 origin 解析）、桌面由外壳注入 `cloudApiBase`，CLI **既无 serving origin 也无注入壳**，必须显式取值。**现状：暂无正式域名，仅 IP**。决策：本期**不烤死生产默认**，由 `vibebara login --cloud http://<ip>:<port>/api/v1`（或 `VIBEBARA_CLOUD_API_BASE` / `--cloud-api-base`）写入 `~/.vibebara/config.json`；CLI 编码不被阻塞，仅"开箱即连生产"延后。**待正式域名（HTTPS）就位后**：把默认值烤进二进制并默认走 HTTPS。⚠️ **安全注记**：IP + HTTP 下 Bearer / API Key **明文过线**，仅限可信内网；公网 GA 前**必须**切 HTTPS 域名。CLI 本期不需 `cloudWsBase`（merge/push/pull/status 全 REST）。
-- **Q6 分发方式** —— ✅ **已定（2026-06-29）：主路 npm 包 + `npx vibebara` / 全局装**（目标多为有 Node 的开发机；更新省事、契合工具无关定位）。后续按需补 pkg / Node SEA 单文件二进制给无 Node 的 CI；桌面可顺带 bundle 一份，但**不作主分发**。技术栈对齐现有 node 包：`@vibebara/*`、ESM、Node>=20、`tsc` 构建、Vitest。
+- **Q6 分发方式** —— ✅ **已定（2026-06-29）：主路 npm 包 + `npx vibebara` / 全局装**（目标多为有 Node 的开发机；更新省事、契合工具无关定位）。后续按需补 pkg / Node SEA 单文件二进制给无 Node 的 CI；桌面可顺带 bundle 一份，但**不作主分发**。CLI 技术栈：`@vibebara/cli`、ESM、Node>=20、`tsc`、Vitest；共享 `local-core` 为兼容现有 local-agent 输出 CommonJS。
 
 ---
 

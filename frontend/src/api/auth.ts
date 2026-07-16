@@ -30,6 +30,12 @@ export interface OnboardingResponse {
   error?: string
 }
 
+export interface GenerateApiKeyResponse {
+  success: boolean
+  api_key: string
+  error?: string
+}
+
 export interface UserResponse {
   success: boolean
   user?: UserInfo
@@ -106,6 +112,11 @@ export async function login(
 
 export async function getMe(): Promise<UserResponse> {
   const { data } = await apiClient.get<UserResponse>('/auth/me')
+  return data
+}
+
+export async function generateApiKey(): Promise<GenerateApiKeyResponse> {
+  const { data } = await apiClient.post<GenerateApiKeyResponse>('/auth/api-key')
   return data
 }
 

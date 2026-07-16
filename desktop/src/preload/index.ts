@@ -22,6 +22,7 @@ const CH = {
   LAUNCHER_LAUNCH: "vibebara:launcher-launch",
   DEVICE_PERSIST_ID: "vibebara:device-persist-id",
   LOCAL_AGENT_CHANGED: "vibebara:local-agent-changed",
+  CLI_AUTHORIZE: "vibebara:cli-authorize",
 } as const;
 
 interface RuntimeConfigPayload {
@@ -39,6 +40,11 @@ interface RuntimeConfigPayload {
 interface LocalAgentChangePayload {
   localAgentBase: string;
   localAgentPort: number;
+}
+
+interface CliAuthorizationRequest {
+  apiKey: string;
+  cloudApiBase: string;
 }
 
 const runtime =
@@ -81,6 +87,10 @@ contextBridge.exposeInMainWorld("__VIBEBARA_DESKTOP__", {
       tokenCache = "";
       void ipcRenderer.invoke(CH.TOKEN_CLEAR);
     },
+  },
+  cli: {
+    authorize: (request: CliAuthorizationRequest) =>
+      ipcRenderer.invoke(CH.CLI_AUTHORIZE, request),
   },
   launcher: {
     listTools: () => ipcRenderer.invoke(CH.LAUNCHER_LIST),

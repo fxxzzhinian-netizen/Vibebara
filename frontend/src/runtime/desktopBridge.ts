@@ -49,6 +49,16 @@ export interface LocalAgentChangePayload {
   localAgentPort: number
 }
 
+export interface CliAuthorizationRequest {
+  apiKey: string
+  cloudApiBase: string
+}
+
+export interface CliAuthorizationResult {
+  success: true
+  configPath: string
+}
+
 export interface VibebaraDesktopBridge {
   mode: 'desktop'
   /** 有效设备标识（M5-b）：registeredDeviceId ?? clientUuid。 */
@@ -72,6 +82,10 @@ export interface VibebaraDesktopBridge {
     set(token: string): void
     /** 清除登录 token。 */
     clear(): void
+  }
+  cli: {
+    /** 将当前会话铸造的 PAT 与云端地址写入用户级 CLI 配置。 */
+    authorize(req: CliAuthorizationRequest): Promise<CliAuthorizationResult>
   }
   launcher: {
     listTools(): Promise<{ tools: DesktopToolInfo[] }>

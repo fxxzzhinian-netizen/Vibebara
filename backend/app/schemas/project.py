@@ -32,6 +32,12 @@ class UserSkillDeploymentInfo(BaseModel):
     updated_at: Optional[str] = None
 
 
+class UserSkillDeploymentListResponse(BaseModel):
+    success: bool
+    deployments: List[UserSkillDeploymentInfo] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
 class ProjectSkillInfo(BaseModel):
     skill_id: str
     display_name: str = ""

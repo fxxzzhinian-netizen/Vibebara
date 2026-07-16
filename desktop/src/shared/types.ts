@@ -41,6 +41,16 @@ export interface LocalAgentChangePayload {
   localAgentPort: number;
 }
 
+export interface CliAuthorizationRequest {
+  apiKey: string;
+  cloudApiBase: string;
+}
+
+export interface CliAuthorizationResult {
+  success: true;
+  configPath: string;
+}
+
 /** IPC 通道名（main ↔ preload）。 */
 export const IPC = {
   /** 同步取运行时配置（preload sendSync，窗口加载前已就绪）。 */
@@ -59,6 +69,8 @@ export const IPC = {
   DEVICE_PERSIST_ID: "vibebara:device-persist-id",
   /** 主进程 → 渲染层推送：本地代理端口漂移（热更 localAgentBase）。 */
   LOCAL_AGENT_CHANGED: "vibebara:local-agent-changed",
+  /** 将已认证会话铸造的 PAT 写入 CLI 配置文件。 */
+  CLI_AUTHORIZE: "vibebara:cli-authorize",
 } as const;
 
 export type LauncherToolId =

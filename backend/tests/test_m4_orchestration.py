@@ -275,6 +275,42 @@ def test_service_ownership_interception():
 # 5. 路由鉴权与多租户（TestClient + 打桩，不连 DB / Node）
 # ------------------------------------------------------------------
 
+def test_list_user_deployments_filters_owner():
+    """mine 服务查询必须在数据库层按当前 user_id 隔离。"""
+    captured = {}
+
+    class FakeResult:
+        class Scalars:
+            @staticmethod
+            def all():
+                return []
+
+        def scalars(self):
+            return self.Scalars()
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def execute(self, statement):
+            captured["statement"] = statement
+            return FakeResult()
+
+    saved_factory = project_service.async_session_factory
+    project_service.async_session_factory = FakeSession
+    try:
+        assert asyncio.run(project_service.list_user_deployments("u-owner")) == []
+        statement = captured["statement"]
+        assert "user_skill_deployments.user_id" in str(statement)
+        assert "ORDER BY" in str(statement)
+        assert "u-owner" in statement.compile().params.values()
+    finally:
+        project_service.async_session_factory = saved_factory
+
+
 def _build_client():
     from fastapi.testclient import TestClient
     import app.main as m
@@ -312,18 +348,35 @@ def _install_router_stubs():
     async def fake_register(**kwargs):
         return {"success": True, "deployment": None}
 
+    async def fake_list_user_deployments(user_id):
+        assert user_id == "u-member"
+        return [
+            {
+                "id": "dep-1",
+                "user_id": user_id,
+                "project_id": "proj1",
+                "team_skill_id": "skill1",
+                "skill_name": "Demo",
+                "tool_type": "cursor",
+                "deploy_path": "C:/proj",
+                "install_path": "C:/proj/.cursor/skills/skill1",
+            }
+        ]
+
     saved = {
         "verify": auth_service.verify_credential,
         "team_id": project_service.get_project_team_id,
         "is_member": team_service.is_team_member,
         "build": project_service.build_project_skill_artifact,
         "register": project_service.register_deployment,
+        "list_user_deployments": project_service.list_user_deployments,
     }
     auth_service.verify_credential = fake_verify
     project_service.get_project_team_id = fake_get_team_id
     team_service.is_team_member = fake_is_member
     project_service.build_project_skill_artifact = fake_build
     project_service.register_deployment = lambda **kw: fake_register(**kw)
+    project_service.list_user_deployments = fake_list_user_deployments
     return saved
 
 
@@ -333,6 +386,7 @@ def _restore_router_stubs(saved):
     team_service.is_team_member = saved["is_member"]
     project_service.build_project_skill_artifact = saved["build"]
     project_service.register_deployment = saved["register"]
+    project_service.list_user_deployments = saved["list_user_deployments"]
 
 
 def test_router_auth_and_tenancy():
@@ -389,6 +443,17 @@ def test_router_auth_and_tenancy():
         )
         assert r.status_code == 200, r.text
         assert r.json()["success"] is True
+
+        # mine：仅依赖当前登录用户，跨项目返回自己的 deployment。
+        r = client.get(
+            "/api/v1/skill-deployments/mine",
+            headers={"Authorization": "Bearer tok-member"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["deployments"][0]["id"] == "dep-1"
+
+        r = client.get("/api/v1/skill-deployments/mine")
+        assert r.status_code == 401, r.text
     finally:
         _restore_router_stubs(saved)
 

@@ -1,5 +1,11 @@
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
-import { IPC, type LauncherLaunchRequest, type RuntimeConfigPayload } from "../shared/types";
+import {
+  IPC,
+  type CliAuthorizationRequest,
+  type LauncherLaunchRequest,
+  type RuntimeConfigPayload,
+} from "../shared/types";
+import { writeCliAuthorization } from "./cliConfig";
 import * as launcher from "./launcher";
 import * as tokenStore from "./tokenStore";
 
@@ -37,6 +43,13 @@ export function registerIpc(deps: {
     tokenStore.clearToken();
     return true;
   });
+
+  // —— C+：已登录桌面会话为 CLI 铸 PAT 后，一键写入用户级 CLI 配置 ——
+  ipcMain.handle(
+    IPC.CLI_AUTHORIZE,
+    (_e: IpcMainInvokeEvent, request: CliAuthorizationRequest) =>
+      writeCliAuthorization(request),
+  );
 
   // —— launcher 一键启动（异步）——
   ipcMain.handle(IPC.LAUNCHER_LIST, () => {
