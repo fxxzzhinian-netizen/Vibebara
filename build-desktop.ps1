@@ -33,6 +33,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $ROOT = $PSScriptRoot
 $backendDir   = Join-Path $ROOT "backend"
 $frontendDir  = Join-Path $ROOT "frontend"
+$localCoreDir = Join-Path $ROOT "local-core"
 $agentDir     = Join-Path $ROOT "local-agent"
 $desktopDir   = Join-Path $ROOT "desktop"
 $venvPython   = Join-Path $backendDir ".venv\Scripts\python.exe"
@@ -178,7 +179,10 @@ Write-Host "  Node $(node --version) · npm $(npm --version)" -ForegroundColor D
 
 $skipBuild = $Quick
 if (-not $skipBuild) {
-    Write-Section "构建三件套"
+    Write-Section "构建桌面端四件套"
+    # local-agent 通过 file:../local-core 复用共享文件/hash 内核；必须先产出
+    # local-core/dist，干净机器上 local-agent 的 npm install/tsc 才能解析类型与运行时入口。
+    Build-Node $localCoreDir "local-core"
     Build-Node $agentDir   "local-agent"
     if (-not $Dev) {
         Build-Node $frontendDir "frontend"
@@ -190,11 +194,13 @@ if (-not $skipBuild) {
 else {
     # Quick 模式：检查产物是否存在
     $missing = @()
+    if (-not (Test-Path (Join-Path $localCoreDir "dist\index.js")))      { $missing += "local-core/dist" }
     if (-not (Test-Path (Join-Path $agentDir "dist\index.js")))          { $missing += "local-agent/dist" }
     if (-not $Dev -and -not (Test-Path (Join-Path $frontendDir "dist\index.html"))) { $missing += "frontend/dist" }
     if (-not (Test-Path (Join-Path $desktopDir "dist-electron\main\index.js")))     { $missing += "desktop/dist-electron" }
     if ($missing.Count -gt 0) {
         Write-Host "  [WARN] -Quick 但以下产物缺失，将自动构建: $($missing -join ', ')" -ForegroundColor Yellow
+        if ($missing -contains "local-core/dist")     { Build-Node $localCoreDir "local-core" }
         if ($missing -contains "local-agent/dist")    { Build-Node $agentDir   "local-agent" }
         if ($missing -contains "frontend/dist")       { Build-Node $frontendDir "frontend" }
         if ($missing -contains "desktop/dist-electron"){ Build-Node $desktopDir "desktop" }
@@ -234,7 +240,7 @@ if ($Pack) {
 
 if ($BuildOnly) {
     Write-Section "构建完成"
-    Write-Host "  local-agent/dist, frontend/dist, desktop/dist-electron" -ForegroundColor Green
+    Write-Host "  local-core/dist, local-agent/dist, frontend/dist, desktop/dist-electron" -ForegroundColor Green
     Write-Host ""; exit 0
 }
 
